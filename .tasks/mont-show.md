@@ -2,6 +2,8 @@
 id: mont-show
 title: Implement mont show command
 parent: cli-commands
+preconditions:
+  - mont-check
 validations:
   - test
 ---

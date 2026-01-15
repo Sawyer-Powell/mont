@@ -29,4 +29,6 @@ with changes to the requirements, then implement.
 A new file `validations.rs` with at least two functions, one for full graph validation
 and another for single task validation.
 
+Validation function for single tasks needs to also validate that the other tasks it references in the yaml also exist and are valid
+
 Simple small collection of tests against these functions.
