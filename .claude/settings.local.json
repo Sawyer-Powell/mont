@@ -9,7 +9,8 @@
       "Bash(cargo build:*)",
       "Bash(./target/release/mont list:*)",
       "Bash(jj describe:*)",
-      "Bash(jj new:*)"
+      "Bash(jj new:*)",
+      "Bash(jj commit:*)"
     ]
   }
 }

@@ -1,7 +1,8 @@
 ---
 id: list-tweaks
 title: A number of tweaks to mont list
-type: epic
+type: bug
+complete: true
 validators:
   - test
   - interview-validator

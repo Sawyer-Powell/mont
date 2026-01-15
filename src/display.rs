@@ -108,8 +108,10 @@ fn sort_by_component<'a>(tasks: &[&'a Task], graph: &TaskGraph) -> Vec<&'a Task>
 }
 
 /// Topological sort for a subset of tasks.
+/// Bugs are prioritized to appear first when they have no unsatisfied dependencies.
 fn topological_sort_subset<'a>(tasks: &[&'a Task], _graph: &TaskGraph) -> Vec<&'a Task> {
     let task_ids: HashSet<&str> = tasks.iter().map(|t| t.id.as_str()).collect();
+    let task_map: HashMap<&str, &Task> = tasks.iter().map(|t| (t.id.as_str(), *t)).collect();
 
     let mut dependents: HashMap<&str, Vec<&str>> = HashMap::new();
     let mut in_degree: HashMap<&str, usize> = HashMap::new();
@@ -139,14 +141,28 @@ fn topological_sort_subset<'a>(tasks: &[&'a Task], _graph: &TaskGraph) -> Vec<&'
         }
     }
 
+    // Sort comparator: bugs first, then alphabetically
+    // Returns (priority, id) where priority 0 = bug, 1 = other
+    let is_bug = |id: &str| -> bool {
+        task_map
+            .get(id)
+            .map(|t| t.task_type == TaskType::Bug)
+            .unwrap_or(false)
+    };
+
     let mut queue: Vec<&str> = in_degree
         .iter()
         .filter(|(_, deg)| **deg == 0)
         .map(|(&id, _)| id)
         .collect();
-    queue.sort();
+    // Sort: bugs first (false < true when reversed), then alphabetically
+    // We sort ascending by (!is_bug, id), so bugs come first
+    queue.sort_by(|a, b| {
+        let a_priority = (!is_bug(a), *a);
+        let b_priority = (!is_bug(b), *b);
+        a_priority.cmp(&b_priority)
+    });
 
-    let task_map: HashMap<&str, &Task> = tasks.iter().map(|t| (t.id.as_str(), *t)).collect();
     let mut result: Vec<&Task> = Vec::new();
 
     while let Some(task_id) = queue.pop() {
@@ -159,7 +175,12 @@ fn topological_sort_subset<'a>(tasks: &[&'a Task], _graph: &TaskGraph) -> Vec<&'
                 if let Some(deg) = in_degree.get_mut(dep) {
                     *deg -= 1;
                     if *deg == 0 {
-                        let pos = queue.partition_point(|&x| x > dep);
+                        // Insert maintaining sort order
+                        let dep_priority = (!is_bug(dep), dep);
+                        let pos = queue.partition_point(|&x| {
+                            let x_priority = (!is_bug(x), x);
+                            x_priority < dep_priority
+                        });
                         queue.insert(pos, dep);
                     }
                 }
@@ -240,28 +261,11 @@ fn render_section(output: &mut String, tasks: &[&Task], graph: &TaskGraph) {
         .collect();
     let effective_successors = graph::transitive_reduction(&section_graph);
 
-    // Track which tasks are connected (for group separation)
-    let connected = build_component_map(tasks);
-
     // Active lines: maps column index to the task_id that line is heading towards
     let mut active_lines: Vec<Option<&str>> = Vec::new();
-    let mut last_component: Option<usize> = None;
-
-    // Track pending fork to integrate with next task's line
-    let mut pending_fork: Option<(Vec<usize>, usize)> = None; // (fork_columns, source_column)
 
     for (_idx, task) in tasks.iter().enumerate() {
         let task_id = task.id.as_str();
-
-        // Check if we're starting a new independent group
-        let current_component = connected.get(task_id).copied();
-        if let (Some(last), Some(current)) = (last_component, current_component) {
-            if last != current {
-                output.push('\n');
-                pending_fork = None; // Clear fork on group change
-            }
-        }
-        last_component = current_component;
 
         // Find columns of children's lines pointing to this task
         let child_columns: Vec<usize> = active_lines
@@ -299,13 +303,8 @@ fn render_section(output: &mut String, tasks: &[&Task], graph: &TaskGraph) {
             render_merge_lines(output, &active_lines, &child_columns, task_column);
         }
 
-        // Build prefix - integrate pending fork if this is the first successor
-        let graph_prefix = if let Some((ref fork_cols, source_col)) = pending_fork {
-            build_fork_prefix(&active_lines, fork_cols, source_col)
-        } else {
-            build_graph_prefix(&active_lines, task_column)
-        };
-        pending_fork = None; // Clear after use
+        // Build prefix
+        let graph_prefix = build_graph_prefix(&active_lines, task_column);
 
         // Close lines from children
         for &col in &child_columns {
@@ -336,7 +335,7 @@ fn render_section(output: &mut String, tasks: &[&Task], graph: &TaskGraph) {
 
         render_task_line(output, task, &graph_prefix, graph);
 
-        // If multiple successors, set pending fork for next task
+        // If multiple successors, render fork lines
         if successors.len() > 1 {
             let fork_columns: Vec<usize> = active_lines
                 .iter()
@@ -345,9 +344,53 @@ fn render_section(output: &mut String, tasks: &[&Task], graph: &TaskGraph) {
                 .map(|(col, _)| col)
                 .collect();
             if fork_columns.len() > 1 {
-                pending_fork = Some((fork_columns, task_column));
+                render_fork_lines(output, &active_lines, &fork_columns, task_column);
             }
         }
+    }
+}
+
+fn render_fork_lines(
+    output: &mut String,
+    active_lines: &[Option<&str>],
+    fork_columns: &[usize],
+    source_column: usize,
+) {
+    if fork_columns.len() <= 1 {
+        return;
+    }
+
+    let min_col = *fork_columns.iter().min().unwrap();
+    let max_col = *fork_columns.iter().max().unwrap();
+
+    let mut line = String::new();
+    for col in 0..=max_col.max(active_lines.len().saturating_sub(1)) {
+        if col == source_column {
+            if fork_columns.contains(&col) {
+                line.push_str("├─");
+            } else {
+                line.push_str("│ ");
+            }
+        } else if fork_columns.contains(&col) {
+            if col == max_col {
+                line.push_str("╮ ");
+            } else if col > min_col {
+                line.push_str("┬─");
+            } else {
+                line.push_str("├─");
+            }
+        } else if col > min_col && col < max_col {
+            line.push_str("──");
+        } else if active_lines.get(col).copied().flatten().is_some() {
+            line.push_str("│ ");
+        } else {
+            line.push_str("  ");
+        }
+    }
+
+    if !line.trim().is_empty() {
+        output.push_str(&line.trim_end());
+        output.push('\n');
     }
 }
 
@@ -417,49 +460,29 @@ fn build_graph_prefix(active_lines: &[Option<&str>], task_column: usize) -> Stri
     prefix
 }
 
-fn build_fork_prefix(
-    active_lines: &[Option<&str>],
-    fork_columns: &[usize],
-    source_column: usize,
-) -> String {
-    let min_col = *fork_columns.iter().min().unwrap_or(&0);
-    let max_col = *fork_columns.iter().max().unwrap_or(&0);
+const MAX_TITLE_LEN: usize = 60;
 
-    let mut prefix = String::new();
-    for col in 0..=max_col {
-        if col == source_column {
-            if fork_columns.contains(&col) {
-                prefix.push_str("├─");
-            } else {
-                prefix.push_str("│ ");
-            }
-        } else if fork_columns.contains(&col) {
-            if col == max_col {
-                prefix.push_str("╮ ");
-            } else if col > min_col {
-                prefix.push_str("┬─");
-            } else {
-                prefix.push_str("├─");
-            }
-        } else if col > min_col && col < max_col {
-            prefix.push_str("──");
-        } else if active_lines.get(col).copied().flatten().is_some() {
-            prefix.push_str("│ ");
-        } else {
-            prefix.push_str("  ");
-        }
+fn truncate_title(title: &str) -> String {
+    if title.len() <= MAX_TITLE_LEN {
+        title.to_string()
+    } else {
+        format!("{}…", &title[..MAX_TITLE_LEN - 1])
     }
-
-    prefix
 }
 
 fn render_task_line(output: &mut String, task: &Task, graph_prefix: &str, graph: &TaskGraph) {
     let is_available = !task.complete && !task.validator && graph::is_available(task, graph);
+    let is_bug = task.task_type == TaskType::Bug;
+    let is_epic = task.task_type == TaskType::Epic;
 
     let marker = if task.validator {
         "◈".purple().to_string()
     } else if task.complete {
         "●".bright_black().to_string()
+    } else if is_available && is_bug {
+        "◉".red().to_string()
+    } else if is_available && is_epic {
+        "◉".cyan().to_string()
     } else if is_available {
         "◉".bright_green().to_string()
     } else {
@@ -470,13 +493,19 @@ fn render_task_line(output: &mut String, task: &Task, graph_prefix: &str, graph:
         task.id.bright_black().bold().to_string()
     } else if task.validator {
         task.id.purple().bold().to_string()
+    } else if is_available && is_bug {
+        task.id.red().bold().to_string()
+    } else if is_available && is_epic {
+        task.id.cyan().bold().to_string()
     } else if is_available {
         task.id.bright_green().bold().to_string()
     } else {
         task.id.bright_black().bold().to_string()
     };
 
-    let title_display = task.title.as_deref().unwrap_or("");
+    let title_raw = task.title.as_deref().unwrap_or("");
+    let title_truncated = truncate_title(title_raw);
+
     let type_suffix = match task.task_type {
         TaskType::Bug => {
             if is_available {
@@ -494,14 +523,19 @@ fn render_task_line(output: &mut String, task: &Task, graph_prefix: &str, graph:
         }
         TaskType::Feature => String::new(),
     };
+
     let title_formatted = if task.complete {
-        format!("{}{}", title_display.bright_black(), type_suffix)
+        format!("{}{}", title_truncated.bright_black(), type_suffix)
     } else if task.validator {
-        format!("{} {}{}", title_display, "[validator]".purple(), type_suffix)
+        format!("{} {}{}", title_truncated, "[validator]".purple(), type_suffix)
+    } else if is_available && is_bug {
+        format!("{}{}", title_truncated.red(), type_suffix)
+    } else if is_available && is_epic {
+        format!("{}{}", title_truncated.cyan(), type_suffix)
     } else if is_available {
-        format!("{}{}", title_display.bright_green(), type_suffix)
+        format!("{}{}", title_truncated.bright_green(), type_suffix)
     } else {
-        format!("{}{}", title_display.bright_black(), type_suffix)
+        format!("{}{}", title_truncated.bright_black(), type_suffix)
     };
 
     output.push_str(&format!(
@@ -834,12 +868,10 @@ mod tests {
         let output = render_task_graph(&tasks);
         println!("\n--- Multiple Independent Trees ---\n{}", output);
 
-        let lines: Vec<&str> = output.lines().collect();
-        let empty_lines = lines.iter().filter(|l| l.trim().is_empty()).count();
-        assert!(
-            empty_lines >= 2,
-            "should have separators between independent trees"
-        );
+        // All trees should be present, rendered compactly without separators
+        assert!(output.contains("tree1-root"));
+        assert!(output.contains("tree2-root"));
+        assert!(output.contains("tree3-solo"));
     }
 
     #[test]
@@ -984,5 +1016,163 @@ mod tests {
         assert!(output.contains("root"));
         assert!(output.contains("blocked-bug"));
         assert!(output.contains("[bug]"));
+    }
+
+    // ========================================================================
+    // E2E Visual Tests - validate exact output to catch regressions
+    // ========================================================================
+
+    /// Strip ANSI escape codes for visual comparison
+    fn strip_ansi(s: &str) -> String {
+        let re = regex::Regex::new(r"\x1b\[[0-9;]*m").unwrap();
+        re.replace_all(s, "").to_string()
+    }
+
+    #[test]
+    fn test_e2e_simple_parent_child() {
+        let tasks = vec![
+            make_task("parent", Some("Parent Task"), None),
+            make_task("child", Some("Child Task"), Some("parent")),
+        ];
+
+        let output = strip_ansi(&render_task_graph(&tasks));
+        let expected = "\
+◉ child Child Task
+○ parent Parent Task
+";
+        assert_eq!(output, expected, "\n--- Got ---\n{}\n--- Expected ---\n{}", output, expected);
+    }
+
+    #[test]
+    fn test_e2e_two_children_merge() {
+        let tasks = vec![
+            make_task("parent", Some("Parent"), None),
+            make_task("child-a", Some("Child A"), Some("parent")),
+            make_task("child-b", Some("Child B"), Some("parent")),
+        ];
+
+        let output = strip_ansi(&render_task_graph(&tasks));
+        let expected = "\
+◉ child-b Child B
+│ ◉ child-a Child A
+├─╯
+○ parent Parent
+";
+        assert_eq!(output, expected, "\n--- Got ---\n{}\n--- Expected ---\n{}", output, expected);
+    }
+
+    #[test]
+    fn test_e2e_diamond_pattern() {
+        // Diamond: precondition forks to A and B, both merge back to parent
+        // task-a and task-b are blocked (○) because precond is not complete
+        let tasks = vec![
+            make_task("parent", Some("Parent"), None),
+            make_task("precond", Some("Precondition"), Some("parent")),
+            make_task_with_preconditions("task-a", Some("Task A"), Some("parent"), vec!["precond"]),
+            make_task_with_preconditions("task-b", Some("Task B"), Some("parent"), vec!["precond"]),
+        ];
+
+        let output = strip_ansi(&render_task_graph(&tasks));
+        let expected = "\
+◉ precond Precondition
+├─╮
+│ ○ task-b Task B
+○ task-a Task A
+├─╯
+○ parent Parent
+";
+        assert_eq!(output, expected, "\n--- Got ---\n{}\n--- Expected ---\n{}", output, expected);
+    }
+
+    #[test]
+    fn test_e2e_chain_with_fork() {
+        // A chain where one task forks to two successors
+        let tasks = vec![
+            make_task("root", Some("Root"), None),
+            make_task("middle", Some("Middle"), Some("root")),
+            make_task("branch-a", Some("Branch A"), Some("middle")),
+            make_task("branch-b", Some("Branch B"), Some("middle")),
+        ];
+
+        let output = strip_ansi(&render_task_graph(&tasks));
+        let expected = "\
+◉ branch-b Branch B
+│ ◉ branch-a Branch A
+├─╯
+○ middle Middle
+○ root Root
+";
+        assert_eq!(output, expected, "\n--- Got ---\n{}\n--- Expected ---\n{}", output, expected);
+    }
+
+    #[test]
+    fn test_e2e_three_children() {
+        let tasks = vec![
+            make_task("parent", Some("Parent"), None),
+            make_task("child-1", Some("Child 1"), Some("parent")),
+            make_task("child-2", Some("Child 2"), Some("parent")),
+            make_task("child-3", Some("Child 3"), Some("parent")),
+        ];
+
+        let output = strip_ansi(&render_task_graph(&tasks));
+        let expected = "\
+◉ child-3 Child 3
+│ ◉ child-2 Child 2
+│ │ ◉ child-1 Child 1
+├─┴─╯
+○ parent Parent
+";
+        assert_eq!(output, expected, "\n--- Got ---\n{}\n--- Expected ---\n{}", output, expected);
+    }
+
+    #[test]
+    fn test_e2e_nested_hierarchy() {
+        // Parent with child, child has grandchild
+        let tasks = vec![
+            make_task("grandparent", Some("Grandparent"), None),
+            make_task("parent", Some("Parent"), Some("grandparent")),
+            make_task("child", Some("Child"), Some("parent")),
+        ];
+
+        let output = strip_ansi(&render_task_graph(&tasks));
+        let expected = "\
+◉ child Child
+○ parent Parent
+○ grandparent Grandparent
+";
+        assert_eq!(output, expected, "\n--- Got ---\n{}\n--- Expected ---\n{}", output, expected);
+    }
+
+    #[test]
+    fn test_e2e_independent_trees() {
+        let tasks = vec![
+            make_task("tree1-root", Some("Tree 1 Root"), None),
+            make_task("tree1-child", Some("Tree 1 Child"), Some("tree1-root")),
+            make_task("tree2-solo", Some("Tree 2 Solo"), None),
+        ];
+
+        let output = strip_ansi(&render_task_graph(&tasks));
+        let expected = "\
+◉ tree1-child Tree 1 Child
+○ tree1-root Tree 1 Root
+◉ tree2-solo Tree 2 Solo
+";
+        assert_eq!(output, expected, "\n--- Got ---\n{}\n--- Expected ---\n{}", output, expected);
+    }
+
+    #[test]
+    fn test_e2e_validators_separate_section() {
+        let tasks = vec![
+            make_task("feature", Some("Feature"), None),
+            make_validator("test", Some("Run tests")),
+        ];
+
+        let output = strip_ansi(&render_task_graph(&tasks));
+        let expected = "\
+◉ feature Feature
+
+◈ test Run tests [validator]
+";
+        assert_eq!(output, expected, "\n--- Got ---\n{}\n--- Expected ---\n{}", output, expected);
     }
 }

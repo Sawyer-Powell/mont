@@ -13,8 +13,9 @@ Implement the `mont start <task-id>` CLI command.
 
 1. Takes a task ID as argument
 2. Validates the task exists in `.tasks/`
-3. Creates a new JJ revision with description: "Working on: <task-title>"
-4. Prints confirmation message
+3. Creates a new JJ revision empty
+4. Marks task as in progress in markdown file
+5. Prints confirmation message
 
 # Implementation
 
