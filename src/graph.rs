@@ -113,7 +113,7 @@ pub fn connected_components(graph: &TaskGraph) -> Vec<Vec<&str>> {
         }
 
         for validation in &task.validations {
-            if let Some(&val_idx) = id_to_idx.get(validation.as_str()) {
+            if let Some(&val_idx) = id_to_idx.get(validation.id.as_str()) {
                 union(&mut parent, task_idx, val_idx);
             }
         }
@@ -308,7 +308,7 @@ pub fn form_graph(tasks: Vec<Task>) -> Result<TaskGraph, ValidationError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::task::TaskType;
+    use crate::task::{TaskType, ValidationItem, ValidationStatus};
 
     fn make_task(id: &str) -> Task {
         Task {
@@ -335,6 +335,13 @@ mod tests {
             complete: false,
             task_type: TaskType::Feature,
             description: String::new(),
+        }
+    }
+
+    fn validation(id: &str) -> ValidationItem {
+        ValidationItem {
+            id: id.to_string(),
+            status: ValidationStatus::Pending,
         }
     }
 
@@ -434,7 +441,7 @@ mod tests {
     fn test_valid_validation() {
         let validator = make_validator("validator");
         let mut task = make_task("task");
-        task.validations = vec!["validator".to_string()];
+        task.validations = vec![validation("validator")];
 
         let result = form_graph(vec![validator, task]);
         assert!(result.is_ok());
@@ -443,7 +450,7 @@ mod tests {
     #[test]
     fn test_validation_points_to_nonexistent() {
         let mut task = make_task("task");
-        task.validations = vec!["nonexistent".to_string()];
+        task.validations = vec![validation("nonexistent")];
 
         let result = form_graph(vec![task]);
         assert_eq!(
@@ -459,7 +466,7 @@ mod tests {
     fn test_validation_points_to_non_validator() {
         let not_validator = make_task("not-validator");
         let mut task = make_task("task");
-        task.validations = vec!["not-validator".to_string()];
+        task.validations = vec![validation("not-validator")];
 
         let result = form_graph(vec![not_validator, task]);
         assert_eq!(
@@ -477,7 +484,7 @@ mod tests {
         let mut validator = make_validator("validator");
         validator.parent = Some("parent".to_string());
         let mut task = make_task("task");
-        task.validations = vec!["validator".to_string()];
+        task.validations = vec![validation("validator")];
 
         let result = form_graph(vec![parent, validator, task]);
         assert_eq!(
@@ -572,7 +579,7 @@ mod tests {
         let mut task1 = make_task("task1");
         task1.parent = Some("task2".to_string());
         task1.preconditions = vec!["task3".to_string()];
-        task1.validations = vec!["validator1".to_string(), "validator2".to_string()];
+        task1.validations = vec![validation("validator1"), validation("validator2")];
 
         let result = form_graph(vec![validator1, validator2, task2, task3, task1]);
         assert!(result.is_ok());

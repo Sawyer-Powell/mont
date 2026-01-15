@@ -230,7 +230,7 @@ fn build_component_map<'a>(tasks: &[&'a Task]) -> HashMap<&'a str, usize> {
         }
 
         for validation in &task.validations {
-            if let Some(&val_idx) = id_to_idx.get(validation.as_str()) {
+            if let Some(&val_idx) = id_to_idx.get(validation.id.as_str()) {
                 union(&mut parent, task_idx, val_idx);
             }
         }

@@ -21,6 +21,9 @@ Implement the `mont show <task-id>` command to display a single task's details.
    - Preconditions (if any)
    - Validations (if any)
    - Description (the markdown content)
+4. Or, if -e is specified open in the user's $EDITOR, the user can also specify an editor with -e (or --editor) <editor command>
+
+Support a flag to show a shortened version of the task that just pretty prints everything but the description
 
 # Example Output
 

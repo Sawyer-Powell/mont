@@ -69,25 +69,25 @@ pub fn validate_task(task: &Task, graph: &TaskGraph) -> Result<(), ValidationErr
         }
     }
 
-    for validation_id in &task.validations {
-        let Some(validator) = graph.get(validation_id) else {
+    for validation in &task.validations {
+        let Some(validator) = graph.get(&validation.id) else {
             return Err(ValidationError::InvalidValidation {
                 task_id: task.id.clone(),
-                validation_id: validation_id.clone(),
+                validation_id: validation.id.clone(),
             });
         };
 
         if !validator.validator {
             return Err(ValidationError::InvalidValidation {
                 task_id: task.id.clone(),
-                validation_id: validation_id.clone(),
+                validation_id: validation.id.clone(),
             });
         }
 
         if validator.parent.is_some() {
             return Err(ValidationError::ValidationNotRootValidator {
                 task_id: task.id.clone(),
-                validation_id: validation_id.clone(),
+                validation_id: validation.id.clone(),
             });
         }
     }
@@ -171,7 +171,7 @@ fn dfs_cycle(graph: &TaskGraph, task_id: &str, colors: &mut HashMap<String, Colo
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::task::TaskType;
+    use crate::task::{TaskType, ValidationItem, ValidationStatus};
 
     fn make_task(id: &str) -> Task {
         Task {
@@ -207,7 +207,10 @@ mod tests {
         let validator = make_validator("validator");
         let mut task = make_task("task");
         task.parent = Some("parent".to_string());
-        task.validations = vec!["validator".to_string()];
+        task.validations = vec![ValidationItem {
+            id: "validator".to_string(),
+            status: ValidationStatus::Pending,
+        }];
 
         let mut graph = TaskGraph::new();
         graph.insert("parent".to_string(), parent);

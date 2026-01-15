@@ -14,4 +14,6 @@ When given a task to work on by task id first:
 - When implementation is complete, check the `validations` list in the yaml, if set, and find the corresponding task files (by id) in the .tasks folder that correspond to the validation tasks
 - Run the validation tasks, resolve issues if validations fail
 - Conduct an interview with the user to confirm implementation
-- If user gives green light, use `jj commit -m ...` to record what you worked on, and move to a new jj revision
+- If user gives green light 
+    - Mark the task as complete in the frontmatter of the task using `complete: true`
+    - Use `jj commit -m ...` to record what you worked on, and move to a new jj revision

@@ -10,6 +10,63 @@ pub enum TaskType {
     Feature,
 }
 
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum ValidationStatus {
+    #[default]
+    Pending,
+    Passed,
+    Failed,
+    Skipped,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ValidationItem {
+    pub id: String,
+    pub status: ValidationStatus,
+}
+
+impl<'de> Deserialize<'de> for ValidationItem {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de::{self, MapAccess, Visitor};
+
+        struct ValidationItemVisitor;
+
+        impl<'de> Visitor<'de> for ValidationItemVisitor {
+            type Value = ValidationItem;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a string or a map with {id: status}")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<ValidationItem, E>
+            where
+                E: de::Error,
+            {
+                Ok(ValidationItem {
+                    id: value.to_string(),
+                    status: ValidationStatus::Pending,
+                })
+            }
+
+            fn visit_map<M>(self, mut map: M) -> Result<ValidationItem, M::Error>
+            where
+                M: MapAccess<'de>,
+            {
+                let Some((id, status)) = map.next_entry::<String, ValidationStatus>()? else {
+                    return Err(de::Error::custom("expected a single key-value pair"));
+                };
+                Ok(ValidationItem { id, status })
+            }
+        }
+
+        deserializer.deserialize_any(ValidationItemVisitor)
+    }
+}
+
 #[derive(Error, Debug)]
 pub enum ParseError {
     #[error("missing frontmatter delimiters")]
@@ -29,7 +86,7 @@ pub struct Task {
     #[serde(default)]
     pub preconditions: Vec<String>,
     #[serde(default)]
-    pub validations: Vec<String>,
+    pub validations: Vec<ValidationItem>,
     pub title: Option<String>,
     #[serde(default)]
     pub validator: bool,
@@ -41,13 +98,19 @@ pub struct Task {
     pub description: String,
 }
 
+impl Task {
+    pub fn validation_ids(&self) -> impl Iterator<Item = &str> {
+        self.validations.iter().map(|v| v.id.as_str())
+    }
+}
+
 /// Parses a task markdown file, extracting frontmatter and description.
 ///
 /// # Examples
 ///
 /// Parsing a valid task:
 /// ```
-/// use mont::task::{parse, ParseError};
+/// use mont::task::{parse, ParseError, ValidationStatus};
 ///
 /// let content = r#"---
 /// id: test-task
@@ -66,7 +129,9 @@ pub struct Task {
 /// assert_eq!(task.id, "test-task");
 /// assert_eq!(task.parent, Some("parent1".to_string()));
 /// assert_eq!(task.preconditions, vec!["pre1"]);
-/// assert_eq!(task.validations, vec!["val1"]);
+/// assert_eq!(task.validations.len(), 1);
+/// assert_eq!(task.validations[0].id, "val1");
+/// assert_eq!(task.validations[0].status, ValidationStatus::Pending);
 /// assert_eq!(task.title, Some("Test Task".to_string()));
 /// assert!(!task.validator);
 /// assert_eq!(task.description, "This is the task description.");
@@ -177,7 +242,9 @@ Task description here.
         assert_eq!(task.id, "test-task");
         assert_eq!(task.parent, Some("parent1".to_string()));
         assert_eq!(task.preconditions, vec!["pre1"]);
-        assert_eq!(task.validations, vec!["val1"]);
+        assert_eq!(task.validations.len(), 1);
+        assert_eq!(task.validations[0].id, "val1");
+        assert_eq!(task.validations[0].status, ValidationStatus::Pending);
         assert_eq!(task.title, Some("Test Task".to_string()));
         assert!(!task.validator);
         assert_eq!(task.description, "Task description here.");
@@ -365,5 +432,99 @@ No type field specified.
         let task = parse(content).unwrap();
         assert_eq!(task.id, "regular-task");
         assert_eq!(task.task_type, TaskType::Feature);
+    }
+
+    #[test]
+    fn test_parse_validation_with_status_passed() {
+        let content = r#"---
+id: test-task
+validations:
+  - val1: passed
+---
+
+Task with passed validation.
+"#;
+        let task = parse(content).unwrap();
+        assert_eq!(task.validations.len(), 1);
+        assert_eq!(task.validations[0].id, "val1");
+        assert_eq!(task.validations[0].status, ValidationStatus::Passed);
+    }
+
+    #[test]
+    fn test_parse_validation_with_status_failed() {
+        let content = r#"---
+id: test-task
+validations:
+  - val1: failed
+---
+
+Task with failed validation.
+"#;
+        let task = parse(content).unwrap();
+        assert_eq!(task.validations.len(), 1);
+        assert_eq!(task.validations[0].id, "val1");
+        assert_eq!(task.validations[0].status, ValidationStatus::Failed);
+    }
+
+    #[test]
+    fn test_parse_validation_with_status_skipped() {
+        let content = r#"---
+id: test-task
+validations:
+  - val1: skipped
+---
+
+Task with skipped validation.
+"#;
+        let task = parse(content).unwrap();
+        assert_eq!(task.validations.len(), 1);
+        assert_eq!(task.validations[0].id, "val1");
+        assert_eq!(task.validations[0].status, ValidationStatus::Skipped);
+    }
+
+    #[test]
+    fn test_parse_mixed_validations() {
+        let content = r#"---
+id: test-task
+validations:
+  - val1
+  - val2: passed
+  - val3: failed
+  - val4: skipped
+---
+
+Task with mixed validation statuses.
+"#;
+        let task = parse(content).unwrap();
+        assert_eq!(task.validations.len(), 4);
+
+        assert_eq!(task.validations[0].id, "val1");
+        assert_eq!(task.validations[0].status, ValidationStatus::Pending);
+
+        assert_eq!(task.validations[1].id, "val2");
+        assert_eq!(task.validations[1].status, ValidationStatus::Passed);
+
+        assert_eq!(task.validations[2].id, "val3");
+        assert_eq!(task.validations[2].status, ValidationStatus::Failed);
+
+        assert_eq!(task.validations[3].id, "val4");
+        assert_eq!(task.validations[3].status, ValidationStatus::Skipped);
+    }
+
+    #[test]
+    fn test_validation_ids_helper() {
+        let content = r#"---
+id: test-task
+validations:
+  - val1
+  - val2: passed
+  - val3: failed
+---
+
+Task description.
+"#;
+        let task = parse(content).unwrap();
+        let ids: Vec<&str> = task.validation_ids().collect();
+        assert_eq!(ids, vec!["val1", "val2", "val3"]);
     }
 }
