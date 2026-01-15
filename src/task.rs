@@ -14,8 +14,7 @@ pub enum ParseError {
 #[derive(Debug, Deserialize, PartialEq)]
 pub struct Task {
     pub id: String,
-    #[serde(default)]
-    pub parents: Vec<String>,
+    pub parent: Option<String>,
     #[serde(default)]
     pub preconditions: Vec<String>,
     #[serde(default)]
@@ -37,9 +36,7 @@ pub struct Task {
 ///
 /// let content = r#"---
 /// id: test-task
-/// parents:
-///   - parent1
-///   - parent2
+/// parent: parent1
 /// preconditions:
 ///   - pre1
 /// validations:
@@ -52,7 +49,7 @@ pub struct Task {
 ///
 /// let task = parse(content).unwrap();
 /// assert_eq!(task.id, "test-task");
-/// assert_eq!(task.parents, vec!["parent1", "parent2"]);
+/// assert_eq!(task.parent, Some("parent1".to_string()));
 /// assert_eq!(task.preconditions, vec!["pre1"]);
 /// assert_eq!(task.validations, vec!["val1"]);
 /// assert_eq!(task.title, Some("Test Task".to_string()));
@@ -67,8 +64,7 @@ pub struct Task {
 /// let content = r#"---
 /// id: test-validator
 /// validator: true
-/// parents:
-///   - parent1
+/// parent: parent1
 /// ---
 ///
 /// Validator description.
@@ -76,7 +72,7 @@ pub struct Task {
 ///
 /// let task = parse(content).unwrap();
 /// assert!(task.validator);
-/// assert_eq!(task.parents, vec!["parent1"]);
+/// assert_eq!(task.parent, Some("parent1".to_string()));
 /// ```
 ///
 /// Missing frontmatter returns an error:
@@ -148,8 +144,7 @@ mod tests {
     fn test_parse_valid_task() {
         let content = r#"---
 id: test-task
-parents:
-  - parent1
+parent: parent1
 preconditions:
   - pre1
 validations:
@@ -161,7 +156,7 @@ Task description here.
 "#;
         let task = parse(content).unwrap();
         assert_eq!(task.id, "test-task");
-        assert_eq!(task.parents, vec!["parent1"]);
+        assert_eq!(task.parent, Some("parent1".to_string()));
         assert_eq!(task.preconditions, vec!["pre1"]);
         assert_eq!(task.validations, vec!["val1"]);
         assert_eq!(task.title, Some("Test Task".to_string()));
@@ -174,8 +169,7 @@ Task description here.
         let content = r#"---
 id: my-validator
 validator: true
-parents:
-  - parent1
+parent: parent1
 ---
 
 Validator description.
@@ -183,7 +177,7 @@ Validator description.
         let task = parse(content).unwrap();
         assert_eq!(task.id, "my-validator");
         assert!(task.validator);
-        assert_eq!(task.parents, vec!["parent1"]);
+        assert_eq!(task.parent, Some("parent1".to_string()));
         assert!(task.preconditions.is_empty());
     }
 
@@ -240,7 +234,7 @@ Minimal task.
 "#;
         let task = parse(content).unwrap();
         assert_eq!(task.id, "minimal");
-        assert!(task.parents.is_empty());
+        assert!(task.parent.is_none());
         assert!(task.preconditions.is_empty());
         assert!(task.validations.is_empty());
         assert!(task.title.is_none());

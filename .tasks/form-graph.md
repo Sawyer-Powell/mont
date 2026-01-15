@@ -3,7 +3,7 @@ title: Form graph out of tasks
 ---
 
 Update the structure of tasks to not include "subtasks" but
-a parent id, or a vec of parent task ids.
+a single optional parent id.
 
 We also need to add a new parsing requirement to validator tasks.
 Do this in a unit test on the parse function.
@@ -20,10 +20,10 @@ Using a vec of Tasks, ensure a few rules:
 # Implementation Details
 
 ## `task.rs` changes
-- Replace `subtasks: Vec<String>` with `parents: Vec<String>`
+- Replace `subtasks: Vec<String>` with `parent: Option<String>`
 - Add `ValidatorWithPreconditions` error variant to `ParseError`
 - Update `parse` function to reject validators that have preconditions
-- Update doc examples to use `parents` instead of `subtasks`
+- Update doc examples to use `parent` instead of `subtasks`
 
 ## New `src/graph.rs`
 - `TaskGraph` type alias: `type TaskGraph = HashMap<String, Task>`
@@ -31,7 +31,7 @@ Using a vec of Tasks, ensure a few rules:
   - `InvalidParent { task_id, parent_id }` - parent doesn't exist
   - `InvalidPrecondition { task_id, precondition_id }` - precondition doesn't exist
   - `InvalidValidation { task_id, validation_id }` - validation points to non-validator
-  - `ValidationNotRootValidator { task_id, validation_id }` - validator has parents
+  - `ValidationNotRootValidator { task_id, validation_id }` - validator has a parent
   - `CycleDetected` - graph has cycles
 - `form_graph(tasks: Vec<Task>) -> Result<TaskGraph, GraphError>` function
 - DFS-based cycle detection (3-color algorithm)

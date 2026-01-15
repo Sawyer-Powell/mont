@@ -52,8 +52,8 @@ pub fn form_graph(tasks: Vec<Task>) -> Result<TaskGraph, GraphError> {
 
     // Validate all references
     for task in graph.values() {
-        // Check parents
-        for parent_id in &task.parents {
+        // Check parent
+        if let Some(parent_id) = &task.parent {
             if !graph.contains_key(parent_id) {
                 return Err(GraphError::InvalidParent {
                     task_id: task.id.clone(),
@@ -88,7 +88,7 @@ pub fn form_graph(tasks: Vec<Task>) -> Result<TaskGraph, GraphError> {
                 });
             }
 
-            if !validator.parents.is_empty() {
+            if validator.parent.is_some() {
                 return Err(GraphError::ValidationNotRootValidator {
                     task_id: task.id.clone(),
                     validation_id: validation_id.clone(),
@@ -134,8 +134,9 @@ fn dfs_cycle(graph: &TaskGraph, task_id: &str, colors: &mut HashMap<String, Colo
 
     let task = &graph[task_id];
 
-    // Check edges: parents and preconditions form the dependency graph
-    for neighbor_id in task.parents.iter().chain(task.preconditions.iter()) {
+    // Check edges: parent and preconditions form the dependency graph
+    let neighbors = task.parent.iter().chain(task.preconditions.iter());
+    for neighbor_id in neighbors {
         let neighbor_color = colors.get(neighbor_id).copied().unwrap_or(Color::Black);
 
         match neighbor_color {
@@ -160,7 +161,7 @@ mod tests {
     fn make_task(id: &str) -> Task {
         Task {
             id: id.to_string(),
-            parents: vec![],
+            parent: None,
             preconditions: vec![],
             validations: vec![],
             title: None,
@@ -172,7 +173,7 @@ mod tests {
     fn make_validator(id: &str) -> Task {
         Task {
             id: id.to_string(),
-            parents: vec![],
+            parent: None,
             preconditions: vec![],
             validations: vec![],
             title: None,
@@ -211,7 +212,7 @@ mod tests {
     fn test_valid_parent() {
         let parent = make_task("parent");
         let mut child = make_task("child");
-        child.parents = vec!["parent".to_string()];
+        child.parent = Some("parent".to_string());
 
         let result = form_graph(vec![parent, child]);
         assert!(result.is_ok());
@@ -220,7 +221,7 @@ mod tests {
     #[test]
     fn test_invalid_parent() {
         let mut task = make_task("task-1");
-        task.parents = vec!["nonexistent".to_string()];
+        task.parent = Some("nonexistent".to_string());
 
         let result = form_graph(vec![task]);
         assert_eq!(
@@ -302,7 +303,7 @@ mod tests {
     fn test_validation_not_root_validator() {
         let parent = make_task("parent");
         let mut validator = make_validator("validator");
-        validator.parents = vec!["parent".to_string()];
+        validator.parent = Some("parent".to_string());
         let mut task = make_task("task");
         task.validations = vec!["validator".to_string()];
 
@@ -318,12 +319,12 @@ mod tests {
 
     #[test]
     fn test_valid_dag() {
-        // A -> B -> C
+        // A -> B -> C (each child has one parent)
         let mut a = make_task("a");
         let mut b = make_task("b");
         let c = make_task("c");
-        b.parents = vec!["c".to_string()];
-        a.parents = vec!["b".to_string()];
+        b.parent = Some("c".to_string());
+        a.parent = Some("b".to_string());
 
         let result = form_graph(vec![a, b, c]);
         assert!(result.is_ok());
@@ -332,7 +333,7 @@ mod tests {
     #[test]
     fn test_cycle_self_loop() {
         let mut task = make_task("task");
-        task.parents = vec!["task".to_string()];
+        task.parent = Some("task".to_string());
 
         let result = form_graph(vec![task]);
         assert_eq!(result, Err(GraphError::CycleDetected));
@@ -342,8 +343,8 @@ mod tests {
     fn test_cycle_two_nodes() {
         let mut a = make_task("a");
         let mut b = make_task("b");
-        a.parents = vec!["b".to_string()];
-        b.parents = vec!["a".to_string()];
+        a.parent = Some("b".to_string());
+        b.parent = Some("a".to_string());
 
         let result = form_graph(vec![a, b]);
         assert_eq!(result, Err(GraphError::CycleDetected));
@@ -354,9 +355,9 @@ mod tests {
         let mut a = make_task("a");
         let mut b = make_task("b");
         let mut c = make_task("c");
-        a.parents = vec!["b".to_string()];
-        b.parents = vec!["c".to_string()];
-        c.parents = vec!["a".to_string()];
+        a.parent = Some("b".to_string());
+        b.parent = Some("c".to_string());
+        c.parent = Some("a".to_string());
 
         let result = form_graph(vec![a, b, c]);
         assert_eq!(result, Err(GraphError::CycleDetected));
@@ -374,13 +375,13 @@ mod tests {
     }
 
     #[test]
-    fn test_cycle_mixed_parents_and_preconditions() {
+    fn test_cycle_mixed_parent_and_preconditions() {
         let mut a = make_task("a");
         let mut b = make_task("b");
         let mut c = make_task("c");
-        a.parents = vec!["b".to_string()];
+        a.parent = Some("b".to_string());
         b.preconditions = vec!["c".to_string()];
-        c.parents = vec!["a".to_string()];
+        c.parent = Some("a".to_string());
 
         let result = form_graph(vec![a, b, c]);
         assert_eq!(result, Err(GraphError::CycleDetected));
@@ -389,21 +390,20 @@ mod tests {
     #[test]
     fn test_complex_valid_graph() {
         // validator1, validator2 (root validators)
-        // task1 -> task2, task3 (parents)
-        // task1 has precondition on task4
-        // task1 validates against validator1
+        // task1 has parent task2
+        // task1 has precondition on task3
+        // task1 validates against validator1 and validator2
         let validator1 = make_validator("validator1");
         let validator2 = make_validator("validator2");
         let task2 = make_task("task2");
         let task3 = make_task("task3");
-        let task4 = make_task("task4");
         let mut task1 = make_task("task1");
-        task1.parents = vec!["task2".to_string(), "task3".to_string()];
-        task1.preconditions = vec!["task4".to_string()];
+        task1.parent = Some("task2".to_string());
+        task1.preconditions = vec!["task3".to_string()];
         task1.validations = vec!["validator1".to_string(), "validator2".to_string()];
 
-        let result = form_graph(vec![validator1, validator2, task2, task3, task4, task1]);
+        let result = form_graph(vec![validator1, validator2, task2, task3, task1]);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().len(), 6);
+        assert_eq!(result.unwrap().len(), 5);
     }
 }
