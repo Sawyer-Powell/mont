@@ -7,13 +7,15 @@ pub enum ParseError {
     MissingFrontmatter,
     #[error("invalid yaml: {0}")]
     InvalidYaml(#[from] serde_yaml::Error),
+    #[error("validator task '{0}' must not have preconditions")]
+    ValidatorWithPreconditions(String),
 }
 
 #[derive(Debug, Deserialize, PartialEq)]
 pub struct Task {
     pub id: String,
     #[serde(default)]
-    pub subtasks: Vec<String>,
+    pub parents: Vec<String>,
     #[serde(default)]
     pub preconditions: Vec<String>,
     #[serde(default)]
@@ -35,15 +37,14 @@ pub struct Task {
 ///
 /// let content = r#"---
 /// id: test-task
-/// subtasks:
-///   - sub1
-///   - sub2
+/// parents:
+///   - parent1
+///   - parent2
 /// preconditions:
 ///   - pre1
 /// validations:
 ///   - val1
 /// title: Test Task
-/// validator: true
 /// ---
 ///
 /// This is the task description.
@@ -51,12 +52,31 @@ pub struct Task {
 ///
 /// let task = parse(content).unwrap();
 /// assert_eq!(task.id, "test-task");
-/// assert_eq!(task.subtasks, vec!["sub1", "sub2"]);
+/// assert_eq!(task.parents, vec!["parent1", "parent2"]);
 /// assert_eq!(task.preconditions, vec!["pre1"]);
 /// assert_eq!(task.validations, vec!["val1"]);
 /// assert_eq!(task.title, Some("Test Task".to_string()));
-/// assert!(task.validator);
+/// assert!(!task.validator);
 /// assert_eq!(task.description, "This is the task description.");
+/// ```
+///
+/// Parsing a validator task (no preconditions allowed):
+/// ```
+/// use mont::task::{parse, ParseError};
+///
+/// let content = r#"---
+/// id: test-validator
+/// validator: true
+/// parents:
+///   - parent1
+/// ---
+///
+/// Validator description.
+/// "#;
+///
+/// let task = parse(content).unwrap();
+/// assert!(task.validator);
+/// assert_eq!(task.parents, vec!["parent1"]);
 /// ```
 ///
 /// Missing frontmatter returns an error:
@@ -81,6 +101,24 @@ pub struct Task {
 /// let result = parse(content);
 /// assert!(matches!(result, Err(ParseError::InvalidYaml(_))));
 /// ```
+///
+/// Validator with preconditions returns an error:
+/// ```
+/// use mont::task::{parse, ParseError};
+///
+/// let content = r#"---
+/// id: bad-validator
+/// validator: true
+/// preconditions:
+///   - some-task
+/// ---
+///
+/// This should fail.
+/// "#;
+///
+/// let result = parse(content);
+/// assert!(matches!(result, Err(ParseError::ValidatorWithPreconditions(_))));
+/// ```
 pub fn parse(content: &str) -> Result<Task, ParseError> {
     let Some(start) = content.find("---") else {
         return Err(ParseError::MissingFrontmatter);
@@ -94,5 +132,118 @@ pub fn parse(content: &str) -> Result<Task, ParseError> {
 
     let mut task: Task = serde_yaml::from_str(yaml)?;
     task.description = description;
+
+    if task.validator && !task.preconditions.is_empty() {
+        return Err(ParseError::ValidatorWithPreconditions(task.id));
+    }
+
     Ok(task)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_valid_task() {
+        let content = r#"---
+id: test-task
+parents:
+  - parent1
+preconditions:
+  - pre1
+validations:
+  - val1
+title: Test Task
+---
+
+Task description here.
+"#;
+        let task = parse(content).unwrap();
+        assert_eq!(task.id, "test-task");
+        assert_eq!(task.parents, vec!["parent1"]);
+        assert_eq!(task.preconditions, vec!["pre1"]);
+        assert_eq!(task.validations, vec!["val1"]);
+        assert_eq!(task.title, Some("Test Task".to_string()));
+        assert!(!task.validator);
+        assert_eq!(task.description, "Task description here.");
+    }
+
+    #[test]
+    fn test_parse_validator_without_preconditions() {
+        let content = r#"---
+id: my-validator
+validator: true
+parents:
+  - parent1
+---
+
+Validator description.
+"#;
+        let task = parse(content).unwrap();
+        assert_eq!(task.id, "my-validator");
+        assert!(task.validator);
+        assert_eq!(task.parents, vec!["parent1"]);
+        assert!(task.preconditions.is_empty());
+    }
+
+    #[test]
+    fn test_parse_validator_with_preconditions_fails() {
+        let content = r#"---
+id: bad-validator
+validator: true
+preconditions:
+  - some-task
+---
+
+Should fail.
+"#;
+        let result = parse(content);
+        assert!(matches!(
+            result,
+            Err(ParseError::ValidatorWithPreconditions(id)) if id == "bad-validator"
+        ));
+    }
+
+    #[test]
+    fn test_parse_missing_frontmatter() {
+        let result = parse("No frontmatter here");
+        assert!(matches!(result, Err(ParseError::MissingFrontmatter)));
+    }
+
+    #[test]
+    fn test_parse_missing_closing_delimiter() {
+        let content = "---\nid: test\nNo closing delimiter";
+        let result = parse(content);
+        assert!(matches!(result, Err(ParseError::MissingFrontmatter)));
+    }
+
+    #[test]
+    fn test_parse_missing_id() {
+        let content = r#"---
+title: No id
+---
+
+Description.
+"#;
+        let result = parse(content);
+        assert!(matches!(result, Err(ParseError::InvalidYaml(_))));
+    }
+
+    #[test]
+    fn test_parse_empty_optional_fields() {
+        let content = r#"---
+id: minimal
+---
+
+Minimal task.
+"#;
+        let task = parse(content).unwrap();
+        assert_eq!(task.id, "minimal");
+        assert!(task.parents.is_empty());
+        assert!(task.preconditions.is_empty());
+        assert!(task.validations.is_empty());
+        assert!(task.title.is_none());
+        assert!(!task.validator);
+    }
 }
