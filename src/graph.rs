@@ -472,6 +472,7 @@ fn dfs_cycle(graph: &TaskGraph, task_id: &str, colors: &mut HashMap<String, Colo
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::task::TaskType;
 
     fn make_task(id: &str) -> Task {
         Task {
@@ -482,6 +483,7 @@ mod tests {
             title: None,
             validator: false,
             complete: false,
+            task_type: TaskType::Feature,
             description: String::new(),
         }
     }
@@ -495,6 +497,7 @@ mod tests {
             title: None,
             validator: true,
             complete: false,
+            task_type: TaskType::Feature,
             description: String::new(),
         }
     }

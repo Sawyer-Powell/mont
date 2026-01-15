@@ -1,6 +1,15 @@
 use serde::Deserialize;
 use thiserror::Error;
 
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum TaskType {
+    Bug,
+    Epic,
+    #[default]
+    Feature,
+}
+
 #[derive(Error, Debug)]
 pub enum ParseError {
     #[error("missing frontmatter delimiters")]
@@ -26,6 +35,8 @@ pub struct Task {
     pub validator: bool,
     #[serde(default)]
     pub complete: bool,
+    #[serde(default, rename = "type")]
+    pub task_type: TaskType,
     #[serde(skip)]
     pub description: String,
 }
@@ -293,5 +304,66 @@ An incomplete task.
         let task = parse(content).unwrap();
         assert_eq!(task.id, "incomplete-task");
         assert!(!task.complete);
+    }
+
+    #[test]
+    fn test_parse_type_bug() {
+        let content = r#"---
+id: fix-login-crash
+title: Fix crash on login with empty password
+type: bug
+---
+
+App crashes when user submits login form with empty password field.
+"#;
+        let task = parse(content).unwrap();
+        assert_eq!(task.id, "fix-login-crash");
+        assert_eq!(task.task_type, TaskType::Bug);
+        assert_eq!(
+            task.title,
+            Some("Fix crash on login with empty password".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_type_epic() {
+        let content = r#"---
+id: user-auth
+title: User Authentication
+type: epic
+---
+
+Epic for all authentication features.
+"#;
+        let task = parse(content).unwrap();
+        assert_eq!(task.id, "user-auth");
+        assert_eq!(task.task_type, TaskType::Epic);
+    }
+
+    #[test]
+    fn test_parse_type_feature() {
+        let content = r#"---
+id: add-button
+type: feature
+---
+
+A feature task.
+"#;
+        let task = parse(content).unwrap();
+        assert_eq!(task.id, "add-button");
+        assert_eq!(task.task_type, TaskType::Feature);
+    }
+
+    #[test]
+    fn test_parse_type_defaults_to_feature() {
+        let content = r#"---
+id: regular-task
+---
+
+No type field specified.
+"#;
+        let task = parse(content).unwrap();
+        assert_eq!(task.id, "regular-task");
+        assert_eq!(task.task_type, TaskType::Feature);
     }
 }

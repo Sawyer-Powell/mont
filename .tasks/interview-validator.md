@@ -1,0 +1,13 @@
+---
+id: interview-validator
+title: Conduct interview to confirm changes
+validator: true
+---
+
+Review and collate all decisinos you made while working on this task.
+Identify specifically:
+- Any architectural or structural decisions you made
+- Any new libraries or techniques you used
+- How your changes fit into the larger architecture
+
+Using the AskQuestion tool, confirm each architectural decision with the user.

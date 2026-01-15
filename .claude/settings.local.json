@@ -3,7 +3,13 @@
     "allow": [
       "WebSearch",
       "Bash(jj status:*)",
-      "Bash(md5:*)"
+      "Bash(md5:*)",
+      "Bash(cargo run:*)",
+      "Bash(cargo test:*)",
+      "Bash(cargo build:*)",
+      "Bash(./target/release/mont list:*)",
+      "Bash(jj describe:*)",
+      "Bash(jj new:*)"
     ]
   }
 }

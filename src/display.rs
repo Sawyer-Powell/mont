@@ -2,7 +2,7 @@ use owo_colors::OwoColorize;
 use std::collections::{HashMap, HashSet};
 
 use crate::graph::{self, TaskGraph};
-use crate::task::Task;
+use crate::task::{Task, TaskType};
 
 /// Renders a task graph to a string for display.
 ///
@@ -445,14 +445,31 @@ fn render_task_line(output: &mut String, task: &Task, graph_prefix: &str, graph:
     };
 
     let title_display = task.title.as_deref().unwrap_or("");
+    let type_suffix = match task.task_type {
+        TaskType::Bug => {
+            if is_available {
+                format!(" {}", "[bug]".red())
+            } else {
+                format!(" {}", "[bug]".bright_black())
+            }
+        }
+        TaskType::Epic => {
+            if is_available {
+                format!(" {}", "[epic]".cyan())
+            } else {
+                format!(" {}", "[epic]".bright_black())
+            }
+        }
+        TaskType::Feature => String::new(),
+    };
     let title_formatted = if task.complete {
-        title_display.bright_black().to_string()
+        format!("{}{}", title_display.bright_black(), type_suffix)
     } else if task.validator {
-        format!("{} {}", title_display, "[validator]".purple())
+        format!("{} {}{}", title_display, "[validator]".purple(), type_suffix)
     } else if is_available {
-        title_display.bright_green().to_string()
+        format!("{}{}", title_display.bright_green(), type_suffix)
     } else {
-        title_display.bright_black().to_string()
+        format!("{}{}", title_display.bright_black(), type_suffix)
     };
 
     output.push_str(&format!(
@@ -474,6 +491,7 @@ mod tests {
             title: title.map(String::from),
             validator: false,
             complete: false,
+            task_type: TaskType::Feature,
             description: String::new(),
         }
     }
@@ -487,6 +505,7 @@ mod tests {
             title: title.map(String::from),
             validator: true,
             complete: false,
+            task_type: TaskType::Feature,
             description: String::new(),
         }
     }
@@ -500,6 +519,7 @@ mod tests {
             title: title.map(String::from),
             validator: false,
             complete: true,
+            task_type: TaskType::Feature,
             description: String::new(),
         }
     }
@@ -518,6 +538,7 @@ mod tests {
             title: title.map(String::from),
             validator: false,
             complete: false,
+            task_type: TaskType::Feature,
             description: String::new(),
         }
     }
@@ -531,6 +552,21 @@ mod tests {
             title: title.map(String::from),
             validator: true,
             complete: false,
+            task_type: TaskType::Feature,
+            description: String::new(),
+        }
+    }
+
+    fn make_bug(id: &str, title: Option<&str>, parent: Option<&str>) -> Task {
+        Task {
+            id: id.to_string(),
+            parent: parent.map(String::from),
+            preconditions: vec![],
+            validations: vec![],
+            title: title.map(String::from),
+            validator: false,
+            complete: false,
+            task_type: TaskType::Bug,
             description: String::new(),
         }
     }
@@ -832,5 +868,36 @@ mod tests {
         assert!(output.contains("◉"), "should have available marker");
         assert!(output.contains("○"), "should have blocked marker");
         assert!(output.contains("●"), "should have complete marker");
+    }
+
+    #[test]
+    fn test_bug_task_display() {
+        let tasks = vec![
+            make_bug("crash-fix", Some("Fix crash on login"), None),
+            make_task("feature", Some("New feature"), None),
+        ];
+
+        let output = render_task_graph(&tasks);
+        println!("\n--- Bug Task Display ---\n{}", output);
+
+        assert!(output.contains("[bug]"), "should have [bug] suffix");
+        assert!(output.contains("crash-fix"));
+        assert!(output.contains("Fix crash on login"));
+    }
+
+    #[test]
+    fn test_bug_with_blocked_parent() {
+        let tasks = vec![
+            make_task("root", Some("Parent task"), None),
+            make_bug("blocked-bug", Some("Blocked bug task"), Some("root")),
+        ];
+
+        let output = render_task_graph(&tasks);
+        println!("\n--- Blocked Bug Task ---\n{}", output);
+
+        // Both should be present
+        assert!(output.contains("root"));
+        assert!(output.contains("blocked-bug"));
+        assert!(output.contains("[bug]"));
     }
 }
