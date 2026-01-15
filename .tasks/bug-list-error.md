@@ -2,6 +2,7 @@
 id: bug-list-error
 title: Display is not correct when running mont-list
 type: bug
+complete: true
 ---
 
 # Replication steps

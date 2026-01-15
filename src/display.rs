@@ -238,16 +238,19 @@ fn render_section(output: &mut String, tasks: &[&Task], graph: &TaskGraph) {
         .cloned()
         .map(|t| (t.id.clone(), t.clone()))
         .collect();
-    let effective_parent = graph::transitive_reduction(&section_graph);
+    let effective_successors = graph::transitive_reduction(&section_graph);
 
     // Track which tasks are connected (for group separation)
     let connected = build_component_map(tasks);
 
-    // Active lines: maps column index to the parent_id that line is heading towards
+    // Active lines: maps column index to the task_id that line is heading towards
     let mut active_lines: Vec<Option<&str>> = Vec::new();
     let mut last_component: Option<usize> = None;
 
-    for (idx, task) in tasks.iter().enumerate() {
+    // Track pending fork to integrate with next task's line
+    let mut pending_fork: Option<(Vec<usize>, usize)> = None; // (fork_columns, source_column)
+
+    for (_idx, task) in tasks.iter().enumerate() {
         let task_id = task.id.as_str();
 
         // Check if we're starting a new independent group
@@ -255,6 +258,7 @@ fn render_section(output: &mut String, tasks: &[&Task], graph: &TaskGraph) {
         if let (Some(last), Some(current)) = (last_component, current_component) {
             if last != current {
                 output.push('\n');
+                pending_fork = None; // Clear fork on group change
             }
         }
         last_component = current_component;
@@ -268,12 +272,13 @@ fn render_section(output: &mut String, tasks: &[&Task], graph: &TaskGraph) {
             .collect();
 
         // Determine this task's column
-        let has_parent_in_section = effective_parent
+        let successors = effective_successors
             .get(task_id)
-            .and_then(|p| *p)
-            .is_some();
+            .map(|v| v.as_slice())
+            .unwrap_or(&[]);
+        let has_successor_in_section = !successors.is_empty();
 
-        let task_column = if !has_parent_in_section {
+        let task_column = if !has_successor_in_section {
             0
         } else if let Some(col) = find_column_for_parent(&active_lines, task_id) {
             col
@@ -294,7 +299,13 @@ fn render_section(output: &mut String, tasks: &[&Task], graph: &TaskGraph) {
             render_merge_lines(output, &active_lines, &child_columns, task_column);
         }
 
-        let graph_prefix = build_graph_prefix(&active_lines, task_column);
+        // Build prefix - integrate pending fork if this is the first successor
+        let graph_prefix = if let Some((ref fork_cols, source_col)) = pending_fork {
+            build_fork_prefix(&active_lines, fork_cols, source_col)
+        } else {
+            build_graph_prefix(&active_lines, task_column)
+        };
+        pending_fork = None; // Clear after use
 
         // Close lines from children
         for &col in &child_columns {
@@ -303,24 +314,39 @@ fn render_section(output: &mut String, tasks: &[&Task], graph: &TaskGraph) {
             }
         }
 
-        // Start a line to this task's effective parent
-        if let Some(Some(eff_parent)) = effective_parent.get(task_id) {
-            while active_lines.len() <= task_column {
+        // Start lines to this task's effective successors
+        for (i, &successor) in successors.iter().enumerate() {
+            let col = if i == 0 {
+                task_column
+            } else {
+                // Find or create a new column for additional successors
+                active_lines
+                    .iter()
+                    .position(|x| x.is_none())
+                    .unwrap_or_else(|| {
+                        active_lines.push(None);
+                        active_lines.len() - 1
+                    })
+            };
+            while active_lines.len() <= col {
                 active_lines.push(None);
             }
-            active_lines[task_column] = Some(*eff_parent);
+            active_lines[col] = Some(successor);
         }
 
         render_task_line(output, task, &graph_prefix, graph);
 
-        // Render continuation lines only when meaningful
-        let show_continuation = active_lines.iter().any(|x| x.is_some())
-            && idx < tasks.len() - 1
-            && should_show_continuation(&active_lines, tasks.get(idx + 1));
-
-        if show_continuation {
-            output.push_str(&build_continuation(&active_lines));
-            output.push('\n');
+        // If multiple successors, set pending fork for next task
+        if successors.len() > 1 {
+            let fork_columns: Vec<usize> = active_lines
+                .iter()
+                .enumerate()
+                .filter(|(_, target)| successors.contains(&target.unwrap_or("")))
+                .map(|(col, _)| col)
+                .collect();
+            if fork_columns.len() > 1 {
+                pending_fork = Some((fork_columns, task_column));
+            }
         }
     }
 }
@@ -329,24 +355,6 @@ fn find_column_for_parent(active_lines: &[Option<&str>], parent_id: &str) -> Opt
     active_lines
         .iter()
         .position(|target| *target == Some(parent_id))
-}
-
-fn should_show_continuation(active_lines: &[Option<&str>], next_task: Option<&&Task>) -> bool {
-    let Some(next) = next_task else {
-        return false;
-    };
-
-    // Count how many active lines point to the next task
-    let lines_to_next: usize = active_lines
-        .iter()
-        .filter(|target| **target == Some(next.id.as_str()))
-        .count();
-
-    // Only show continuation when exactly one line connects to the next task.
-    // This creates a clear visual chain (like lint → test).
-    // If 0 lines connect: no visual relationship to show
-    // If 2+ lines connect: merge line will be rendered instead
-    lines_to_next == 1
 }
 
 fn render_merge_lines(
@@ -409,16 +417,40 @@ fn build_graph_prefix(active_lines: &[Option<&str>], task_column: usize) -> Stri
     prefix
 }
 
-fn build_continuation(active_lines: &[Option<&str>]) -> String {
-    let mut line = String::new();
-    for col in 0..active_lines.len() {
-        if active_lines[col].is_some() {
-            line.push_str("│ ");
+fn build_fork_prefix(
+    active_lines: &[Option<&str>],
+    fork_columns: &[usize],
+    source_column: usize,
+) -> String {
+    let min_col = *fork_columns.iter().min().unwrap_or(&0);
+    let max_col = *fork_columns.iter().max().unwrap_or(&0);
+
+    let mut prefix = String::new();
+    for col in 0..=max_col {
+        if col == source_column {
+            if fork_columns.contains(&col) {
+                prefix.push_str("├─");
+            } else {
+                prefix.push_str("│ ");
+            }
+        } else if fork_columns.contains(&col) {
+            if col == max_col {
+                prefix.push_str("╮ ");
+            } else if col > min_col {
+                prefix.push_str("┬─");
+            } else {
+                prefix.push_str("├─");
+            }
+        } else if col > min_col && col < max_col {
+            prefix.push_str("──");
+        } else if active_lines.get(col).copied().flatten().is_some() {
+            prefix.push_str("│ ");
         } else {
-            line.push_str("  ");
+            prefix.push_str("  ");
         }
     }
-    line
+
+    prefix
 }
 
 fn render_task_line(output: &mut String, task: &Task, graph_prefix: &str, graph: &TaskGraph) {
@@ -654,7 +686,8 @@ mod tests {
             "level-4 (deepest child) should come before level-1 (root parent)"
         );
 
-        assert!(output.contains("│"), "should have vertical lines");
+        // In a single-column chain, vertical relationship is shown by task ordering
+        // No explicit vertical lines needed - clean, minimal output
     }
 
     #[test]
@@ -711,6 +744,58 @@ mod tests {
         let bottom_pos = output.find("bottom").unwrap();
         assert!(right_pos < top_pos, "right should come before top");
         assert!(top_pos < bottom_pos, "top should come before bottom");
+    }
+
+    #[test]
+    fn test_diamond_fork_pattern() {
+        // Bug report scenario: precondition forks to two tasks that merge back
+        // task-parent (root)
+        // task-precondition (parent: task-parent)
+        // task-a (parent: task-parent, precondition: task-precondition)
+        // task-b (parent: task-parent, precondition: task-precondition)
+        let tasks = vec![
+            make_task("task-parent", Some("Parent"), None),
+            make_task("task-precondition", Some("Precondition"), Some("task-parent")),
+            make_task_with_preconditions(
+                "task-a",
+                Some("Task A"),
+                Some("task-parent"),
+                vec!["task-precondition"],
+            ),
+            make_task_with_preconditions(
+                "task-b",
+                Some("Task B"),
+                Some("task-parent"),
+                vec!["task-precondition"],
+            ),
+        ];
+
+        let output = render_task_graph(&tasks);
+        println!("\n--- Diamond Fork Pattern ---\n{}", output);
+
+        // Verify ordering
+        let precond_pos = output.find("task-precondition").unwrap();
+        let a_pos = output.find("task-a").unwrap();
+        let b_pos = output.find("task-b").unwrap();
+        let parent_pos = output.find("task-parent").unwrap();
+
+        assert!(
+            precond_pos < a_pos,
+            "task-precondition should come before task-a"
+        );
+        assert!(
+            precond_pos < b_pos,
+            "task-precondition should come before task-b"
+        );
+        assert!(a_pos < parent_pos, "task-a should come before task-parent");
+        assert!(b_pos < parent_pos, "task-b should come before task-parent");
+
+        // Verify fork is rendered (both task-a and task-b should have lines to them)
+        // The fork should show visual connection from precondition to both a and b
+        assert!(
+            output.contains("├") || output.contains("╮"),
+            "should have fork/merge markers showing diamond shape"
+        );
     }
 
     #[test]

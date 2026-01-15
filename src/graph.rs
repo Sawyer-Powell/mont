@@ -198,11 +198,11 @@ pub fn topological_sort(graph: &TaskGraph) -> Vec<&Task> {
 }
 
 /// Computes the transitive reduction of dependency edges.
-/// Returns a map from task_id to its "effective parent" after removing redundant edges.
+/// Returns a map from task_id to its effective successors after removing redundant edges.
 ///
 /// For example, if A → B → C and A → C, the edge A → C is redundant.
-/// After reduction, A's effective parent is B (not C).
-pub fn transitive_reduction(graph: &TaskGraph) -> HashMap<&str, Option<&str>> {
+/// After reduction, A's effective successors are just [B] (not [B, C]).
+pub fn transitive_reduction(graph: &TaskGraph) -> HashMap<&str, Vec<&str>> {
     let task_ids: HashSet<&str> = graph.keys().map(|s| s.as_str()).collect();
 
     // Build dependency edges: from task to tasks that depend on it
@@ -258,8 +258,8 @@ pub fn transitive_reduction(graph: &TaskGraph) -> HashMap<&str, Option<&str>> {
         reachable.insert(start, visited);
     }
 
-    // Compute effective parent after reduction
-    let mut effective_parent: HashMap<&str, Option<&str>> = HashMap::new();
+    // Compute effective successors after reduction
+    let mut effective_successors: HashMap<&str, Vec<&str>> = HashMap::new();
 
     for task in graph.values() {
         let task_id = task.id.as_str();
@@ -278,32 +278,15 @@ pub fn transitive_reduction(graph: &TaskGraph) -> HashMap<&str, Option<&str>> {
                 }
             }
 
-            effective_parent.insert(
-                task_id,
-                match reduced.len() {
-                    0 => None,
-                    1 => Some(reduced[0]),
-                    _ => {
-                        // Multiple successors - prefer original parent if in list
-                        let original = task.parent.as_ref().map(|p| p.as_str());
-                        if let Some(p) = original {
-                            if reduced.contains(&p) {
-                                Some(p)
-                            } else {
-                                Some(reduced[0])
-                            }
-                        } else {
-                            Some(reduced[0])
-                        }
-                    }
-                },
-            );
+            // Sort for deterministic output
+            reduced.sort();
+            effective_successors.insert(task_id, reduced);
         } else {
-            effective_parent.insert(task_id, None);
+            effective_successors.insert(task_id, Vec::new());
         }
     }
 
-    effective_parent
+    effective_successors
 }
 
 #[derive(Error, Debug, PartialEq)]
