@@ -93,9 +93,9 @@ mont list --show-completed # include completed tasks
 
 ## Current output of `mont list` for this repo
 
-Items with ◉ icon are not blocked
+Items with ◉ icon are ready for work
 
-```bash
+```
 ◉ actionable-errors Make all error messages actionable
 
 ◉ bug-tasks Allow tasks to be marked as bugs
