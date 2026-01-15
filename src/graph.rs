@@ -166,6 +166,7 @@ mod tests {
             validations: vec![],
             title: None,
             validator: false,
+            complete: false,
             description: String::new(),
         }
     }
@@ -178,6 +179,7 @@ mod tests {
             validations: vec![],
             title: None,
             validator: true,
+            complete: false,
             description: String::new(),
         }
     }

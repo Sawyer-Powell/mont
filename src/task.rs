@@ -22,6 +22,8 @@ pub struct Task {
     pub title: Option<String>,
     #[serde(default)]
     pub validator: bool,
+    #[serde(default)]
+    pub complete: bool,
     #[serde(skip)]
     pub description: String,
 }
@@ -239,5 +241,34 @@ Minimal task.
         assert!(task.validations.is_empty());
         assert!(task.title.is_none());
         assert!(!task.validator);
+        assert!(!task.complete);
+    }
+
+    #[test]
+    fn test_parse_complete_true() {
+        let content = r#"---
+id: done-task
+complete: true
+---
+
+A completed task.
+"#;
+        let task = parse(content).unwrap();
+        assert_eq!(task.id, "done-task");
+        assert!(task.complete);
+    }
+
+    #[test]
+    fn test_parse_complete_false() {
+        let content = r#"---
+id: incomplete-task
+complete: false
+---
+
+An incomplete task.
+"#;
+        let task = parse(content).unwrap();
+        assert_eq!(task.id, "incomplete-task");
+        assert!(!task.complete);
     }
 }
