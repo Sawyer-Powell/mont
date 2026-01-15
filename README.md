@@ -13,22 +13,24 @@ Items with ◉ icon are ready for work
 
 ```
 ◉ actionable-errors Make all error messages actionable
-
-◉ bug-tasks Allow tasks to be marked as bugs
-
-◉ epic-tasks Allow tasks to be marked as epics
-
-◉ mont-show Implement mont show command
-│ ◉ mont-ready Implement mont ready command
-│ │ ◉ mont-new Implement mont new command
-│ │ │ ◉ mont-complete Implement mont complete command
-│ │ │ │ ◉ in-progress-status Add in-progress status to tasks
-│ │ │ │ │ ◉ add-jj-lib Add jj-lib integration
-│ │ │ │ ├─╯
-│ │ │ │ ○ mont-start Implement mont start command
+◉ mont-check Implement mont check command, and internals
+├─╮
+│ ○ mont-show Implement mont show command
+○ mont-new Implement mont new command
+│ │ ◉ in-progress-status Add in-progress status to tasks
+│ │ ├─╮
+│ │ ○ mont-ready Implement mont ready command
+│ │ │ │ ◉ add-jj-lib Add jj-lib integration
+│ │ │ │ ├─╮
+│ │ │ ├───╯
+│ │ │ ○ mont-start Implement mont start command
+│ │ │ │ ○ mont-complete Implement mont complete command
 ├─┴─┴─┴─╯
 ○ cli-commands Mont CLI Commands
+◉ track-succeeding-validations
 
+◈ interview-validator Conduct interview to confirm changes [validator]
+◈ readme-validator Ensure the readme is up to date with code [validator]
 ◈ test Run tests [validator]
 ```
 

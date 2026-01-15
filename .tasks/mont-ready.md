@@ -4,6 +4,7 @@ title: Implement mont ready command
 parent: cli-commands
 preconditions:
   - mont-list
+  - in-progress-status
 ---
 
 Implement the `mont ready` CLI command to show tasks ready to work on.
