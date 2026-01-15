@@ -7,6 +7,31 @@ version controlled way. Architected from the ground up to eventually serve as th
 for coordinating parallel execution of coding agents. Today it helps you, your team, and your
 agent plan and tackle work in your codebase.
 
+## Current output of `mont list` for this repo
+
+Items with ◉ icon are ready for work
+
+```
+◉ actionable-errors Make all error messages actionable
+
+◉ bug-tasks Allow tasks to be marked as bugs
+
+◉ epic-tasks Allow tasks to be marked as epics
+
+◉ mont-show Implement mont show command
+│ ◉ mont-ready Implement mont ready command
+│ │ ◉ mont-new Implement mont new command
+│ │ │ ◉ mont-complete Implement mont complete command
+│ │ │ │ ◉ in-progress-status Add in-progress status to tasks
+│ │ │ │ │ ◉ add-jj-lib Add jj-lib integration
+│ │ │ │ ├─╯
+│ │ │ │ ○ mont-start Implement mont start command
+├─┴─┴─┴─╯
+○ cli-commands Mont CLI Commands
+
+◈ test Run tests [validator]
+```
+
 ## Core ideas:
 
 There's been an uptick in interest in version controlled task trackers for codebases as
@@ -91,27 +116,3 @@ mont list                  # show task graph (hides completed)
 mont list --show-completed # include completed tasks
 ```
 
-## Current output of `mont list` for this repo
-
-Items with ◉ icon are ready for work
-
-```
-◉ actionable-errors Make all error messages actionable
-
-◉ bug-tasks Allow tasks to be marked as bugs
-
-◉ epic-tasks Allow tasks to be marked as epics
-
-◉ mont-show Implement mont show command
-│ ◉ mont-ready Implement mont ready command
-│ │ ◉ mont-new Implement mont new command
-│ │ │ ◉ mont-complete Implement mont complete command
-│ │ │ │ ◉ in-progress-status Add in-progress status to tasks
-│ │ │ │ │ ◉ add-jj-lib Add jj-lib integration
-│ │ │ │ ├─╯
-│ │ │ │ ○ mont-start Implement mont start command
-├─┴─┴─┴─╯
-○ cli-commands Mont CLI Commands
-
-◈ test Run tests [validator]
-```
