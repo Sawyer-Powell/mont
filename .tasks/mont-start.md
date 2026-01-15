@@ -4,6 +4,7 @@ title: Implement mont start command
 parent: cli-commands
 preconditions:
   - add-jj-lib
+  - in-progress-status
 ---
 
 Implement the `mont start <task-id>` CLI command.

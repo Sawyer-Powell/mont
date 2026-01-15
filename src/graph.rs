@@ -1,9 +1,310 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use thiserror::Error;
 
 use crate::task::Task;
 
 pub type TaskGraph = HashMap<String, Task>;
+
+// ============================================================================
+// Graph Query Operations
+// ============================================================================
+
+/// Returns tasks that are available to work on (all dependencies satisfied).
+///
+/// A task is available if:
+/// - It is not complete
+/// - It is not a validator
+/// - All preconditions are complete
+/// - All children are complete
+pub fn available_tasks(graph: &TaskGraph) -> Vec<&Task> {
+    graph
+        .values()
+        .filter(|task| !task.complete && !task.validator && is_available(task, graph))
+        .collect()
+}
+
+/// Check if a specific task is available to work on.
+pub fn is_available(task: &Task, graph: &TaskGraph) -> bool {
+    // Check all preconditions are complete
+    for precond_id in &task.preconditions {
+        if let Some(precond) = graph.get(precond_id) {
+            if !precond.complete {
+                return false;
+            }
+        }
+    }
+
+    // Check all children are complete (tasks that have this task as parent)
+    for other_task in graph.values() {
+        if let Some(parent_id) = &other_task.parent {
+            if parent_id == &task.id && !other_task.complete {
+                return false;
+            }
+        }
+    }
+
+    true
+}
+
+/// Check if a task belongs to a fully complete group.
+/// A task is in a complete group if it and all its ancestors are complete.
+pub fn is_group_complete(task: &Task, graph: &TaskGraph) -> bool {
+    if !task.complete {
+        return false;
+    }
+
+    if let Some(parent_id) = &task.parent {
+        if let Some(parent) = graph.get(parent_id) {
+            return is_group_complete(parent, graph);
+        }
+    }
+
+    true
+}
+
+/// Returns connected components of tasks using union-find.
+/// Tasks are connected if they share parent, precondition, or validation relationships.
+pub fn connected_components(graph: &TaskGraph) -> Vec<Vec<&str>> {
+    let task_ids: Vec<&str> = graph.keys().map(|s| s.as_str()).collect();
+    if task_ids.is_empty() {
+        return Vec::new();
+    }
+
+    let id_to_idx: HashMap<&str, usize> = task_ids
+        .iter()
+        .enumerate()
+        .map(|(i, &id)| (id, i))
+        .collect();
+
+    // Union-find parent array
+    let mut parent: Vec<usize> = (0..task_ids.len()).collect();
+
+    fn find(parent: &mut [usize], i: usize) -> usize {
+        if parent[i] != i {
+            parent[i] = find(parent, parent[i]);
+        }
+        parent[i]
+    }
+
+    fn union(parent: &mut [usize], i: usize, j: usize) {
+        let pi = find(parent, i);
+        let pj = find(parent, j);
+        if pi != pj {
+            parent[pi] = pj;
+        }
+    }
+
+    // Union tasks that are connected
+    for task in graph.values() {
+        let task_idx = id_to_idx[task.id.as_str()];
+
+        if let Some(p) = &task.parent {
+            if let Some(&parent_idx) = id_to_idx.get(p.as_str()) {
+                union(&mut parent, task_idx, parent_idx);
+            }
+        }
+
+        for precond in &task.preconditions {
+            if let Some(&precond_idx) = id_to_idx.get(precond.as_str()) {
+                union(&mut parent, task_idx, precond_idx);
+            }
+        }
+
+        for validation in &task.validations {
+            if let Some(&val_idx) = id_to_idx.get(validation.as_str()) {
+                union(&mut parent, task_idx, val_idx);
+            }
+        }
+    }
+
+    // Group by component
+    let mut components: HashMap<usize, Vec<&str>> = HashMap::new();
+    for (i, &id) in task_ids.iter().enumerate() {
+        let root = find(&mut parent, i);
+        components.entry(root).or_default().push(id);
+    }
+
+    components.into_values().collect()
+}
+
+/// Returns tasks in topological order (dependencies before dependents).
+/// Children come before parents, preconditions come before tasks that depend on them.
+pub fn topological_sort(graph: &TaskGraph) -> Vec<&Task> {
+    if graph.is_empty() {
+        return Vec::new();
+    }
+
+    let task_ids: HashSet<&str> = graph.keys().map(|s| s.as_str()).collect();
+
+    let mut dependents: HashMap<&str, Vec<&str>> = HashMap::new();
+    let mut in_degree: HashMap<&str, usize> = HashMap::new();
+
+    for task in graph.values() {
+        in_degree.entry(task.id.as_str()).or_insert(0);
+        dependents.entry(task.id.as_str()).or_default();
+
+        // Preconditions: this task depends on precondition completing
+        for precond in &task.preconditions {
+            if task_ids.contains(precond.as_str()) {
+                dependents
+                    .entry(precond.as_str())
+                    .or_default()
+                    .push(&task.id);
+                *in_degree.entry(task.id.as_str()).or_insert(0) += 1;
+            }
+        }
+
+        // Parent: parent depends on this task completing (child before parent)
+        if let Some(parent) = &task.parent {
+            if task_ids.contains(parent.as_str()) {
+                dependents
+                    .entry(task.id.as_str())
+                    .or_default()
+                    .push(parent.as_str());
+                *in_degree.entry(parent.as_str()).or_insert(0) += 1;
+            }
+        }
+    }
+
+    // Kahn's algorithm with sorted queue for determinism
+    let mut queue: Vec<&str> = in_degree
+        .iter()
+        .filter(|(_, deg)| **deg == 0)
+        .map(|(&id, _)| id)
+        .collect();
+    queue.sort();
+
+    let mut result: Vec<&Task> = Vec::new();
+
+    while let Some(task_id) = queue.pop() {
+        if let Some(task) = graph.get(task_id) {
+            result.push(task);
+        }
+
+        if let Some(deps) = dependents.get(task_id) {
+            for &dep in deps {
+                if let Some(deg) = in_degree.get_mut(dep) {
+                    *deg -= 1;
+                    if *deg == 0 {
+                        let pos = queue.partition_point(|&x| x > dep);
+                        queue.insert(pos, dep);
+                    }
+                }
+            }
+        }
+    }
+
+    result
+}
+
+/// Computes the transitive reduction of dependency edges.
+/// Returns a map from task_id to its "effective parent" after removing redundant edges.
+///
+/// For example, if A → B → C and A → C, the edge A → C is redundant.
+/// After reduction, A's effective parent is B (not C).
+pub fn transitive_reduction(graph: &TaskGraph) -> HashMap<&str, Option<&str>> {
+    let task_ids: HashSet<&str> = graph.keys().map(|s| s.as_str()).collect();
+
+    // Build dependency edges: from task to tasks that depend on it
+    let mut edges: HashMap<&str, HashSet<&str>> = HashMap::new();
+
+    for task in graph.values() {
+        edges.entry(task.id.as_str()).or_default();
+
+        // Parent relationship: parent depends on this task
+        if let Some(parent) = &task.parent {
+            if task_ids.contains(parent.as_str()) {
+                edges
+                    .entry(task.id.as_str())
+                    .or_default()
+                    .insert(parent.as_str());
+            }
+        }
+
+        // Precondition relationship: this task depends on precondition
+        for precond in &task.preconditions {
+            if task_ids.contains(precond.as_str()) {
+                edges
+                    .entry(precond.as_str())
+                    .or_default()
+                    .insert(task.id.as_str());
+            }
+        }
+    }
+
+    // Compute reachability for each node
+    let mut reachable: HashMap<&str, HashSet<&str>> = HashMap::new();
+
+    for &start in task_ids.iter() {
+        let mut visited = HashSet::new();
+        let mut stack = vec![start];
+
+        while let Some(node) = stack.pop() {
+            if visited.contains(node) {
+                continue;
+            }
+            visited.insert(node);
+
+            if let Some(neighbors) = edges.get(node) {
+                for &neighbor in neighbors {
+                    if !visited.contains(neighbor) {
+                        stack.push(neighbor);
+                    }
+                }
+            }
+        }
+
+        visited.remove(start);
+        reachable.insert(start, visited);
+    }
+
+    // Compute effective parent after reduction
+    let mut effective_parent: HashMap<&str, Option<&str>> = HashMap::new();
+
+    for task in graph.values() {
+        let task_id = task.id.as_str();
+
+        if let Some(direct_successors) = edges.get(task_id) {
+            // Find successors not reachable through other successors
+            let mut reduced: Vec<&str> = Vec::new();
+
+            for &succ in direct_successors {
+                let reachable_via_other = direct_successors.iter().any(|&other| {
+                    other != succ && reachable.get(other).map_or(false, |r| r.contains(succ))
+                });
+
+                if !reachable_via_other {
+                    reduced.push(succ);
+                }
+            }
+
+            effective_parent.insert(
+                task_id,
+                match reduced.len() {
+                    0 => None,
+                    1 => Some(reduced[0]),
+                    _ => {
+                        // Multiple successors - prefer original parent if in list
+                        let original = task.parent.as_ref().map(|p| p.as_str());
+                        if let Some(p) = original {
+                            if reduced.contains(&p) {
+                                Some(p)
+                            } else {
+                                Some(reduced[0])
+                            }
+                        } else {
+                            Some(reduced[0])
+                        }
+                    }
+                },
+            );
+        } else {
+            effective_parent.insert(task_id, None);
+        }
+    }
+
+    effective_parent
+}
 
 #[derive(Error, Debug, PartialEq)]
 pub enum GraphError {
@@ -11,6 +312,11 @@ pub enum GraphError {
     InvalidParent { task_id: String, parent_id: String },
     #[error("task '{task_id}' references invalid precondition '{precondition_id}'")]
     InvalidPrecondition {
+        task_id: String,
+        precondition_id: String,
+    },
+    #[error("task '{task_id}' has validator '{precondition_id}' as precondition (use validations instead)")]
+    PreconditionIsValidator {
         task_id: String,
         precondition_id: String,
     },
@@ -36,6 +342,7 @@ pub enum GraphError {
 /// - No duplicate task IDs
 /// - All parent references point to valid tasks
 /// - All precondition references point to valid tasks
+/// - Non-validator tasks cannot have validators as preconditions
 /// - All validation references point to tasks marked as validators
 /// - All validation references point to root validators (no parents)
 /// - The graph forms a DAG (no cycles)
@@ -64,8 +371,16 @@ pub fn form_graph(tasks: Vec<Task>) -> Result<TaskGraph, GraphError> {
 
         // Check preconditions
         for precondition_id in &task.preconditions {
-            if !graph.contains_key(precondition_id) {
+            let Some(precondition) = graph.get(precondition_id) else {
                 return Err(GraphError::InvalidPrecondition {
+                    task_id: task.id.clone(),
+                    precondition_id: precondition_id.clone(),
+                });
+            };
+
+            // Non-validator tasks cannot have validators as preconditions
+            if !task.validator && precondition.validator {
+                return Err(GraphError::PreconditionIsValidator {
                     task_id: task.id.clone(),
                     precondition_id: precondition_id.clone(),
                 });
@@ -256,6 +571,22 @@ mod tests {
             Err(GraphError::InvalidPrecondition {
                 task_id: "task-1".to_string(),
                 precondition_id: "nonexistent".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn test_precondition_is_validator() {
+        let validator = make_validator("validator");
+        let mut task = make_task("task");
+        task.preconditions = vec!["validator".to_string()];
+
+        let result = form_graph(vec![validator, task]);
+        assert_eq!(
+            result,
+            Err(GraphError::PreconditionIsValidator {
+                task_id: "task".to_string(),
+                precondition_id: "validator".to_string(),
             })
         );
     }

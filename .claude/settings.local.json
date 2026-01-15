@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "WebSearch",
-      "Bash(jj status:*)"
+      "Bash(jj status:*)",
+      "Bash(md5:*)"
     ]
   }
 }

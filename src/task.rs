@@ -9,9 +9,11 @@ pub enum ParseError {
     InvalidYaml(#[from] serde_yaml::Error),
     #[error("validator task '{0}' must not have preconditions")]
     ValidatorWithPreconditions(String),
+    #[error("validator task '{0}' cannot be marked complete")]
+    ValidatorMarkedComplete(String),
 }
 
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct Task {
     pub id: String,
     pub parent: Option<String>,
@@ -135,6 +137,10 @@ pub fn parse(content: &str) -> Result<Task, ParseError> {
         return Err(ParseError::ValidatorWithPreconditions(task.id));
     }
 
+    if task.validator && task.complete {
+        return Err(ParseError::ValidatorMarkedComplete(task.id));
+    }
+
     Ok(task)
 }
 
@@ -198,6 +204,23 @@ Should fail.
         assert!(matches!(
             result,
             Err(ParseError::ValidatorWithPreconditions(id)) if id == "bad-validator"
+        ));
+    }
+
+    #[test]
+    fn test_parse_validator_marked_complete_fails() {
+        let content = r#"---
+id: complete-validator
+validator: true
+complete: true
+---
+
+Should fail.
+"#;
+        let result = parse(content);
+        assert!(matches!(
+            result,
+            Err(ParseError::ValidatorMarkedComplete(id)) if id == "complete-validator"
         ));
     }
 

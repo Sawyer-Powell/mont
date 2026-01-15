@@ -1,5 +1,7 @@
 ---
+id: form-graph
 title: Form graph out of tasks
+complete: true
 ---
 
 Update the structure of tasks to not include "subtasks" but

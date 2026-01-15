@@ -1,14 +1,10 @@
 ---
+id: test
 title: Run tests
+validator: true
 ---
 
 Run
-
-```bash
-cargo test --doc
-```
-
-Then 
 ```bash
 cargo test
 ```

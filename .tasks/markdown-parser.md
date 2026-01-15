@@ -1,5 +1,7 @@
 ---
+id: markdown-parser
 title: Build a markdown parser that can parse task files
+complete: true
 ---
 
 # Description

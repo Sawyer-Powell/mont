@@ -1,6 +1,7 @@
 ---
 id: add-complete-field
 title: Add complete field to Task struct
+complete: true
 ---
 
 Add an optional `complete` field to the Task struct to track whether a task is complete.
