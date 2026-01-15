@@ -2,9 +2,10 @@
 id: mont-check
 title: Implement mont check command, and internals
 parent: cli-commands
+complete: true
 validators:
     - test
-    - interview-validator
+    - readme-validator
 ---
 
 We need a command that validates the integrity of the .tasks graph.
@@ -32,3 +33,11 @@ and another for single task validation.
 Validation function for single tasks needs to also validate that the other tasks it references in the yaml also exist and are valid
 
 Simple small collection of tests against these functions.
+
+# Implementation Decisions (from interview)
+
+- **Error handling**: Fail fast on first validation error
+- **Single task validation**: Validates task + checks that referenced tasks (parent, preconditions, validations) exist and are valid
+- **Output**: Simple pass/fail - success message on pass, error message on fail
+- **Exit codes**: Use appropriate exit codes (0 for success, non-zero for errors)
+- **Code organization**: Move existing validation logic from `graph.rs` to `validations.rs`, refactor `form_graph` to use new functions

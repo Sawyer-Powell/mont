@@ -1,9 +1,11 @@
 use std::collections::{HashMap, HashSet};
-use thiserror::Error;
 
 use crate::task::Task;
+use crate::validations::{validate_graph, ValidationError};
 
 pub type TaskGraph = HashMap<String, Task>;
+
+pub use crate::validations::ValidationError as GraphError;
 
 // ============================================================================
 // Graph Query Operations
@@ -289,36 +291,6 @@ pub fn transitive_reduction(graph: &TaskGraph) -> HashMap<&str, Vec<&str>> {
     effective_successors
 }
 
-#[derive(Error, Debug, PartialEq)]
-pub enum GraphError {
-    #[error("task '{task_id}' references invalid parent '{parent_id}'")]
-    InvalidParent { task_id: String, parent_id: String },
-    #[error("task '{task_id}' references invalid precondition '{precondition_id}'")]
-    InvalidPrecondition {
-        task_id: String,
-        precondition_id: String,
-    },
-    #[error("task '{task_id}' has validator '{precondition_id}' as precondition (use validations instead)")]
-    PreconditionIsValidator {
-        task_id: String,
-        precondition_id: String,
-    },
-    #[error("task '{task_id}' references validation '{validation_id}' which is not a validator")]
-    InvalidValidation {
-        task_id: String,
-        validation_id: String,
-    },
-    #[error("task '{task_id}' references validator '{validation_id}' which has parents (must be root validator)")]
-    ValidationNotRootValidator {
-        task_id: String,
-        validation_id: String,
-    },
-    #[error("cycle detected in task graph")]
-    CycleDetected,
-    #[error("duplicate task id '{0}'")]
-    DuplicateTaskId(String),
-}
-
 /// Forms a validated task graph from a list of tasks.
 ///
 /// Validates:
@@ -329,127 +301,8 @@ pub enum GraphError {
 /// - All validation references point to tasks marked as validators
 /// - All validation references point to root validators (no parents)
 /// - The graph forms a DAG (no cycles)
-pub fn form_graph(tasks: Vec<Task>) -> Result<TaskGraph, GraphError> {
-    let mut graph: TaskGraph = HashMap::new();
-
-    // Build the graph and check for duplicates
-    for task in tasks {
-        if graph.contains_key(&task.id) {
-            return Err(GraphError::DuplicateTaskId(task.id));
-        }
-        graph.insert(task.id.clone(), task);
-    }
-
-    // Validate all references
-    for task in graph.values() {
-        // Check parent
-        if let Some(parent_id) = &task.parent {
-            if !graph.contains_key(parent_id) {
-                return Err(GraphError::InvalidParent {
-                    task_id: task.id.clone(),
-                    parent_id: parent_id.clone(),
-                });
-            }
-        }
-
-        // Check preconditions
-        for precondition_id in &task.preconditions {
-            let Some(precondition) = graph.get(precondition_id) else {
-                return Err(GraphError::InvalidPrecondition {
-                    task_id: task.id.clone(),
-                    precondition_id: precondition_id.clone(),
-                });
-            };
-
-            // Non-validator tasks cannot have validators as preconditions
-            if !task.validator && precondition.validator {
-                return Err(GraphError::PreconditionIsValidator {
-                    task_id: task.id.clone(),
-                    precondition_id: precondition_id.clone(),
-                });
-            }
-        }
-
-        // Check validations
-        for validation_id in &task.validations {
-            let Some(validator) = graph.get(validation_id) else {
-                return Err(GraphError::InvalidValidation {
-                    task_id: task.id.clone(),
-                    validation_id: validation_id.clone(),
-                });
-            };
-
-            if !validator.validator {
-                return Err(GraphError::InvalidValidation {
-                    task_id: task.id.clone(),
-                    validation_id: validation_id.clone(),
-                });
-            }
-
-            if validator.parent.is_some() {
-                return Err(GraphError::ValidationNotRootValidator {
-                    task_id: task.id.clone(),
-                    validation_id: validation_id.clone(),
-                });
-            }
-        }
-    }
-
-    // Check for cycles using DFS with 3-color algorithm
-    if has_cycle(&graph) {
-        return Err(GraphError::CycleDetected);
-    }
-
-    Ok(graph)
-}
-
-#[derive(Clone, Copy, PartialEq)]
-enum Color {
-    White, // Unvisited
-    Gray,  // Currently visiting (in stack)
-    Black, // Finished visiting
-}
-
-fn has_cycle(graph: &TaskGraph) -> bool {
-    let mut colors: HashMap<String, Color> = HashMap::new();
-    for id in graph.keys() {
-        colors.insert(id.clone(), Color::White);
-    }
-
-    for id in graph.keys() {
-        if colors[id] == Color::White {
-            if dfs_cycle(graph, id, &mut colors) {
-                return true;
-            }
-        }
-    }
-
-    false
-}
-
-fn dfs_cycle(graph: &TaskGraph, task_id: &str, colors: &mut HashMap<String, Color>) -> bool {
-    colors.insert(task_id.to_string(), Color::Gray);
-
-    let task = &graph[task_id];
-
-    // Check edges: parent and preconditions form the dependency graph
-    let neighbors = task.parent.iter().chain(task.preconditions.iter());
-    for neighbor_id in neighbors {
-        let neighbor_color = colors.get(neighbor_id).copied().unwrap_or(Color::Black);
-
-        match neighbor_color {
-            Color::Gray => return true, // Back edge = cycle
-            Color::White => {
-                if dfs_cycle(graph, neighbor_id, colors) {
-                    return true;
-                }
-            }
-            Color::Black => {} // Already processed, skip
-        }
-    }
-
-    colors.insert(task_id.to_string(), Color::Black);
-    false
+pub fn form_graph(tasks: Vec<Task>) -> Result<TaskGraph, ValidationError> {
+    validate_graph(tasks)
 }
 
 #[cfg(test)]

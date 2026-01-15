@@ -116,5 +116,7 @@ Task description in markdown.
 ```
 mont list                  # show task graph (hides completed)
 mont list --show-completed # include completed tasks
+mont check                 # validate entire task graph
+mont check <task-id>       # validate a single task and its references
 ```
 
