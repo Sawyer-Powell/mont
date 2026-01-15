@@ -1,6 +1,6 @@
 # mont
 
-A vcs friendly task management system with deterministic graph validation.
+A vcs friendly task management system for humans and LLMs.
 
 Built with Rust on top of jj-vcs. Useful to track and plan work in your codebase in a simple,
 version controlled way. Architected from the ground up to eventually serve as the data model
