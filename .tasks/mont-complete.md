@@ -4,6 +4,7 @@ title: Implement mont complete command
 parent: cli-commands
 preconditions:
   - add-complete-field
+  - add-jj-lib
 ---
 
 Implement the `mont complete <task-id>` CLI command to mark a task as complete.

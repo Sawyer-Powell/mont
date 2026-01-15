@@ -10,7 +10,9 @@
       "Bash(./target/release/mont list:*)",
       "Bash(jj describe:*)",
       "Bash(jj new:*)",
-      "Bash(jj commit:*)"
+      "Bash(jj commit:*)",
+      "Bash(ls:*)",
+      "Bash(xargs -I{} sh -c 'echo \"\"\"\"=== {} ===\"\"\"\" && head -10 {}')"
     ]
   }
 }

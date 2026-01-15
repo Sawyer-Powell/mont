@@ -314,6 +314,9 @@ fn render_section(output: &mut String, tasks: &[&Task], graph: &TaskGraph) {
         }
 
         // Start lines to this task's effective successors
+        // Track columns we assign for fork detection
+        let mut assigned_columns: Vec<usize> = Vec::new();
+
         for (i, &successor) in successors.iter().enumerate() {
             let col = if i == 0 {
                 task_column
@@ -331,21 +334,15 @@ fn render_section(output: &mut String, tasks: &[&Task], graph: &TaskGraph) {
                 active_lines.push(None);
             }
             active_lines[col] = Some(successor);
+            assigned_columns.push(col);
         }
 
         render_task_line(output, task, &graph_prefix, graph);
 
-        // If multiple successors, render fork lines
-        if successors.len() > 1 {
-            let fork_columns: Vec<usize> = active_lines
-                .iter()
-                .enumerate()
-                .filter(|(_, target)| successors.contains(&target.unwrap_or("")))
-                .map(|(col, _)| col)
-                .collect();
-            if fork_columns.len() > 1 {
-                render_fork_lines(output, &active_lines, &fork_columns, task_column);
-            }
+        // If multiple successors were assigned to NEW columns, render fork lines
+        // Use the columns we just assigned, not pre-existing ones
+        if assigned_columns.len() > 1 {
+            render_fork_lines(output, &active_lines, &assigned_columns, task_column);
         }
     }
 }
@@ -365,13 +362,26 @@ fn render_fork_lines(
 
     let mut line = String::new();
     for col in 0..=max_col.max(active_lines.len().saturating_sub(1)) {
-        if col == source_column {
-            if fork_columns.contains(&col) {
+        let in_fork = fork_columns.contains(&col);
+        let is_source = col == source_column;
+
+        if is_source && in_fork {
+            // Source column that's also a fork target
+            if col == max_col {
+                // Source is at the rightmost fork column - just continue down
+                line.push_str("│ ");
+            } else {
+                // Source continues and branches right
                 line.push_str("├─");
+            }
+        } else if is_source {
+            // Source column but not a fork target (fork goes around it)
+            if col > min_col && col < max_col {
+                line.push_str("┼─");
             } else {
                 line.push_str("│ ");
             }
-        } else if fork_columns.contains(&col) {
+        } else if in_fork {
             if col == max_col {
                 line.push_str("╮ ");
             } else if col > min_col {
@@ -1174,5 +1184,69 @@ mod tests {
 ◈ test Run tests [validator]
 ";
         assert_eq!(output, expected, "\n--- Got ---\n{}\n--- Expected ---\n{}", output, expected);
+    }
+
+    #[test]
+    fn test_e2e_shared_precondition() {
+        // Mimics: add-jj-lib is precondition for both mont-start and mont-complete
+        let tasks = vec![
+            make_task("parent", Some("Parent"), None),
+            make_task("shared-precond", Some("Shared Precondition"), Some("parent")),
+            make_task_with_preconditions("task-a", Some("Task A"), Some("parent"), vec!["shared-precond"]),
+            make_task_with_preconditions("task-b", Some("Task B"), Some("parent"), vec!["shared-precond"]),
+        ];
+
+        let output = strip_ansi(&render_task_graph(&tasks));
+        println!("\n--- Shared Precondition Output ---\n{}", output);
+
+        // Verify structure is valid (no malformed characters like ├─├─)
+        assert!(!output.contains("├─├"), "Should not have malformed fork: ├─├");
+        assert!(!output.contains("├───"), "Should not have malformed merge: ├───");
+    }
+
+    #[test]
+    fn test_e2e_multiple_preconditions() {
+        // Task with two preconditions (like mont-complete depends on add-complete-field and add-jj-lib)
+        let tasks = vec![
+            make_task("parent", Some("Parent"), None),
+            make_task("precond-a", Some("Precondition A"), Some("parent")),
+            make_task("precond-b", Some("Precondition B"), Some("parent")),
+            make_task_with_preconditions("dependent", Some("Dependent"), Some("parent"), vec!["precond-a", "precond-b"]),
+        ];
+
+        let output = strip_ansi(&render_task_graph(&tasks));
+        println!("\n--- Multiple Preconditions Output ---\n{}", output);
+
+        // Verify no malformed output
+        assert!(!output.contains("├─├"), "Should not have malformed fork: ├─├");
+        assert!(!output.contains("├───"), "Should not have malformed merge: ├───");
+    }
+
+    #[test]
+    fn test_e2e_complex_shared_precondition() {
+        // Mimics actual task structure:
+        // - cli-commands (root parent)
+        // - mont-check (child of cli-commands)
+        // - in-progress-status (standalone)
+        // - add-jj-lib (standalone)
+        // - mont-start (child of cli-commands, preconditions: add-jj-lib, in-progress-status)
+        // - mont-complete (child of cli-commands, preconditions: add-jj-lib)
+        let tasks = vec![
+            make_task("cli-commands", Some("CLI Commands"), None),
+            make_task("mont-check", Some("Mont Check"), Some("cli-commands")),
+            make_task("in-progress-status", Some("In Progress Status"), None),
+            make_task("add-jj-lib", Some("Add JJ Lib"), None),
+            make_task_with_preconditions("mont-start", Some("Mont Start"), Some("cli-commands"), vec!["add-jj-lib", "in-progress-status"]),
+            make_task_with_preconditions("mont-complete", Some("Mont Complete"), Some("cli-commands"), vec!["add-jj-lib"]),
+        ];
+
+        let output = strip_ansi(&render_task_graph(&tasks));
+        println!("\n--- Complex Shared Precondition Output ---\n{}", output);
+
+        // Verify no malformed output - specifically two branch characters adjacent
+        // (├─├ or similar patterns that indicate broken fork/merge logic)
+        assert!(!output.contains("├─├"), "Should not have malformed fork: ├─├");
+        assert!(!output.contains("┬─├"), "Should not have malformed fork: ┬─├");
+        assert!(!output.contains("├─┬─├"), "Should not have malformed fork: ├─┬─├");
     }
 }
