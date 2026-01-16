@@ -472,9 +472,9 @@ fn build_graph_prefix(active_lines: &[Option<&str>], task_column: usize) -> Stri
     prefix
 }
 
-const MAX_TITLE_LEN: usize = 60;
+pub const MAX_TITLE_LEN: usize = 60;
 
-fn truncate_title(title: &str) -> String {
+pub fn truncate_title(title: &str) -> String {
     if title.len() <= MAX_TITLE_LEN {
         title.to_string()
     } else {

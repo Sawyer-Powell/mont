@@ -5,35 +5,23 @@ parent: cli-commands
 preconditions:
   - mont-list
   - in-progress-status
+complete: true
 ---
 
 Implement the `mont ready` CLI command to show tasks ready to work on.
 
 # Behavior
 
-1. Loads all tasks and forms the task graph
-2. Finds tasks where:
-   - Not complete
-   - All preconditions are complete
-   - Not a validator task
-3. Displays ready tasks
+Shows all tasks ready for work in a non-graph output
 
 # Output Format
 
 ```
-Ready tasks:
-  task-id-1: Task Title One
-  task-id-2: Task Title Two
+task-id-1: Task Title One
+task-id-2: Task Title Two
 ```
-
-# Implementation
-
-- Use `form_graph` to validate and build graph
-- Filter for ready tasks based on precondition completion
-- Sort by some criteria (alphabetical or by parent hierarchy)
-
 # Acceptance Criteria
 
-- Shows only tasks with all preconditions met
+- Ready tasks mirror the ready tasks calculated from `mont list`
 - Excludes completed tasks
 - Excludes validator tasks

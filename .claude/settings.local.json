@@ -14,7 +14,11 @@
       "Bash(ls:*)",
       "Bash(xargs -I{} sh -c 'echo \"\"\"\"=== {} ===\"\"\"\" && head -10 {}')",
       "Bash(echo:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(jj diff:*)",
+      "Bash(./target/debug/mont ready:*)",
+      "Bash(./target/debug/mont list:*)",
+      "Bash(./target/debug/mont check:*)"
     ]
   }
 }
