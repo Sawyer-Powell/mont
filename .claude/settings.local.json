@@ -22,7 +22,8 @@
       "Bash(jj config set:*)",
       "Bash(jj metaedit:*)",
       "Bash(jj log:*)",
-      "Bash(cargo check:*)"
+      "Bash(cargo check:*)",
+      "Skill(completing-a-task)"
     ]
   }
 }

@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use mont::error_fmt::{AppError, IoResultExt, ParseResultExt, ValidationResultExt};
 use mont::task::TaskType;
-use mont::{display, graph, task, validations};
+use mont::{display_old as display, graph, task, validations};
 
 #[derive(Parser)]
 #[command(name = "mont")]
