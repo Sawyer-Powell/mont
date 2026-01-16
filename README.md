@@ -7,32 +7,76 @@ version controlled way. Architected from the ground up to eventually serve as th
 for coordinating parallel execution of coding agents. Today it helps you, your team, and your
 agent plan and tackle work in your codebase.
 
+## How to use
+
+Tasks live in `.tasks/*.md` files. Each task declares:
+
+```yaml
+---
+id: my-task
+title: Human readable title
+parent: parent-task        # optional
+preconditions:             # must complete before this task
+  - other-task
+validations:               # validation tasks, maybe a script, maybe a prompt
+  - cargo-tests
+complete: false            # optional, set this to true if you want to track the file as complete
+
+---
+
+Task description in markdown.
+```
+
+## Usage
+
+```
+mont list                  # show task graph (hides completed)
+mont list --show-completed # include completed tasks
+mont check                 # validate entire task graph
+mont check <task-id>       # validate a single task and its references
+```
+
+
 ## Current output of `mont list` for this repo
 
 Items with ◉ icon are ready for work
 
 ```
-◉ actionable-errors Make all error messages actionable
-◉ mont-check Implement mont check command, and internals
-├─╮
-│ ○ mont-show Implement mont show command
-○ mont-new Implement mont new command
-│ │ ◉ in-progress-status Add in-progress status to tasks
-│ │ ├─╮
-│ │ ○ mont-ready Implement mont ready command
-│ │ │ │ ◉ add-jj-lib Add jj-lib integration
-│ │ │ │ ├─╮
-│ │ │ ├───╯
-│ │ │ ○ mont-start Implement mont start command
-│ │ │ │ ○ mont-complete Implement mont complete command
+◉ mont-ready Implement mont ready command
+│ ◉ editor-resolution Resolve which text editor the user wishes to use
+│ ├─╮
+│ │ ○ mont-show Implement mont show command
+│ ○ mont-new Implement mont new command
+│ ├───╮
+○ plan-type
+│ │ │ ◉ add-jj-lib Add jj-lib integration
+│ │ │ ├─╮
+│ │ │ │ ○ mont-start Implement mont start command
+│ │ │ ○ mont-complete Implement mont complete command
 ├─┴─┴─┴─╯
 ○ cli-commands Mont CLI Commands
-◉ track-succeeding-validations
+◉ global-settings Enable a global settings yml file in .tasks file.
+◉ llm-specific-commands Think through support for a set of llm specific commands
+◉ review-error-aesthetics Review error message aesthetics with Claude Code
 
 ◈ interview-validator Conduct interview to confirm changes [validator]
 ◈ readme-validator Ensure the readme is up to date with code [validator]
 ◈ test Run tests [validator]
 ```
+## Status
+
+Early development by one person on their macbook. Core task parsing and graph visualization implemented.
+Beware linux and windows users, this might not be ready for you yet. Bug reports and contributions will be ignored 
+for now, but feel free to ask questions.
+
+### Working
+
+- Task definition via markdown files with YAML frontmatter
+- Graph validation (DAG enforcement, reference checking, cycle detection)
+- CLI: `mont list` with JJ-style graph visualization
+- Task relationships: parent/child, preconditions, validations
+- Validator tasks for defining reusable acceptance criteria
+
 
 ## Core ideas:
 
@@ -76,47 +120,4 @@ task parallelization, which means us, the humans, don't understand our code arch
 My philosophy with `mont` is that this problem should be solved by fixing the tasks that caused the problem.
 So, I the programmer should be able to write simple effective diffs on the task graph. These diffs would then drive
 an update to the jj revision graph to get your code state to a point where parallel agents can be spun up again.
-
-## Status
-
-Early development by one person on their macbook. Core task parsing and graph visualization implemented.
-Beware linux and windows users, this might not be ready for you yet. Bug reports and contributions will be ignored 
-for now, but feel free to ask questions.
-
-### Working
-
-- Task definition via markdown files with YAML frontmatter
-- Graph validation (DAG enforcement, reference checking, cycle detection)
-- CLI: `mont list` with JJ-style graph visualization
-- Task relationships: parent/child, preconditions, validations
-- Validator tasks for defining reusable acceptance criteria
-
-## How to use today
-
-Tasks live in `.tasks/*.md` files. Each task declares:
-
-```yaml
----
-id: my-task
-title: Human readable title
-parent: parent-task        # optional
-preconditions:             # must complete before this task
-  - other-task
-validations:               # validation tasks, maybe a script, maybe a prompt
-  - cargo-tests
-completed: false           # optional, set this to true if you want to track the file as complete
-
----
-
-Task description in markdown.
-```
-
-## Usage
-
-```
-mont list                  # show task graph (hides completed)
-mont list --show-completed # include completed tasks
-mont check                 # validate entire task graph
-mont check <task-id>       # validate a single task and its references
-```
 
