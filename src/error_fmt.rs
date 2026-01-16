@@ -115,11 +115,6 @@ fn format_parse_error(error: &ParseError, file_path: &str) -> String {
             out.push_str(&format!("invalid YAML in {}\n", file_path.cyan()));
             out.push('\n');
             out.push_str(&format!("  {}\n", yaml_err.to_string().dimmed()));
-            out.push('\n');
-            out.push_str(&format!("  {}:\n", "To fix this".bold()));
-            out.push_str("    1. Check for syntax errors (missing colons, incorrect indentation)\n");
-            out.push_str("    2. Ensure strings with special characters are quoted\n");
-            out.push_str(&format!("    3. Validate the YAML at {}\n", file_path.cyan()));
         }
         ParseError::ValidatorWithPreconditions(task_id) => {
             out.push_str(&format!(
