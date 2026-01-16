@@ -3,6 +3,7 @@ id: mont-new
 title: Implement mont new command
 parent: cli-commands
 preconditions:
+   - editor-resolution
    - mont-check
 validators:
     - test
@@ -14,13 +15,17 @@ for creating a new `mont` task.
 # Behavior
 
 1. Arguments should be
-   - id: Required, any string provided by user, must be unique
+   - id: optional, any string provided by user, must be unique
    - title: Optional, a friendly string for the title of the task
    - description: Optional, the markdown content of this task
    - parent: Optional, the id of the parent task for this task
    - precondition: Optional, can repeat this flag multiple times to reference multiple tasks that are preconditions for this one
    - validations: Optional, can repeat flag multiple times, validation tasks to be associated to the task
    - editor: Optional, if flag is set, immediately open md file in $EDITOR after creation
+
+Either an id or a title must be provided. Otherwise, we need to employ an algorithm for generating convenient, easy to read,
+quick to type unique ids. They don't need to be, or should be uuids, just unique to the existing tasks. We'll need to
+think through this.
 
 # Implementation
 

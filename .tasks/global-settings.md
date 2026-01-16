@@ -1,4 +1,7 @@
 ---
 id: global-settings
-name: Enable a global settings yml file in .tasks file
+title: Enable a global settings yml file in .tasks file.
 ---
+
+We need a global settings file that can be configured to set up things
+like validations that always must run.
