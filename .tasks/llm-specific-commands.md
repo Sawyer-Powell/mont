@@ -1,6 +1,6 @@
 ---
 id: llm-specific-commands
-name: Think through support for a set of llm specific commands
+title: Think through support for a set of llm specific commands
 ---
 
 Llms should have access to use mont, but LLMs have different CLI tool requirements
