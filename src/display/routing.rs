@@ -299,4 +299,222 @@ mod tests {
         // Verify expanded structure
         assert_eq!(routed.rows.len(), 3); // 2 task rows + 1 connection row
     }
+
+    /// Criss-cross: edges that conceptually cross
+    ///
+    ///   A   B        <- level 0
+    ///    \ /
+    ///     X          <- level 1 (A→C, B→D but C/D positions swap)
+    ///    / \
+    ///   C   D        <- level 2
+    ///    \ /
+    ///     Z          <- level 3
+    ///
+    /// A is at col 0, B at col 1
+    /// C depends on B (wants col 1), D depends on A (wants col 0)
+    /// This tests whether edges cross cleanly
+    #[test]
+    fn test_criss_cross_routing() {
+        let z = make_task("Z");
+        let mut c = make_task_with_parent("C", "Z");
+        c.preconditions = vec!["B".to_string()];
+        let mut d = make_task_with_parent("D", "Z");
+        d.preconditions = vec!["A".to_string()];
+        let mut a = make_task_with_parent("A", "Z");
+        a.preconditions = vec![];
+        let mut b = make_task_with_parent("B", "Z");
+        b.preconditions = vec![];
+
+        let graph = build_graph(vec![a, b, c, d, z]);
+        let layout = compute_layout(&graph);
+
+        println!("\n=== Criss-Cross ===");
+        println!("Levels: {:?}", layout.levels);
+        println!("Edges: {:?}", layout.edges);
+
+        let grid = build_grid(&layout);
+        let routed = route_edges(&grid, &layout);
+
+        println!("Before:\n{}", debug_render_grid(&grid));
+        println!("After:\n{}", debug_render_grid(&routed));
+    }
+
+    /// Wide fork to narrow merge: 4 children merge to one parent
+    /// All edges route to column 0
+    ///
+    ///   A            <- level 0, col 0
+    ///  /|\\
+    /// B C D E        <- level 1, cols 0,1,2,3
+    ///  \|/|/
+    ///   Z            <- level 2, col 0
+    #[test]
+    fn test_wide_fork_narrow_merge() {
+        let z = make_task("Z");
+        let a = make_task_with_parent("A", "Z");
+        let mut b = make_task_with_parent("B", "Z");
+        b.preconditions = vec!["A".to_string()];
+        let mut c = make_task_with_parent("C", "Z");
+        c.preconditions = vec!["A".to_string()];
+        let mut d = make_task_with_parent("D", "Z");
+        d.preconditions = vec!["A".to_string()];
+        let mut e = make_task_with_parent("E", "Z");
+        e.preconditions = vec!["A".to_string()];
+
+        let graph = build_graph(vec![a, b, c, d, e, z]);
+        let layout = compute_layout(&graph);
+
+        println!("\n=== Wide Fork Narrow Merge ===");
+        println!("Levels: {:?}", layout.levels);
+        println!("Edges: {:?}", layout.edges);
+
+        let grid = build_grid(&layout);
+        let routed = route_edges(&grid, &layout);
+
+        println!("Before:\n{}", debug_render_grid(&grid));
+        println!("After:\n{}", debug_render_grid(&routed));
+    }
+
+    /// Long horizontal route: task with predecessors spread far apart
+    ///
+    /// A B C D E      <- level 0: 5 independent sources
+    /// │ │ │ │ │
+    /// F G H I J      <- level 1: each under its predecessor
+    /// └─┴─┴─┴─┘
+    ///     X          <- level 2: X depends on F and J (cols 0 and 4)
+    ///     │
+    ///     Z          <- level 3
+    ///
+    /// The J→X edge needs to route from col 4 to col 0
+    #[test]
+    fn test_long_horizontal_route() {
+        let z = make_task("Z");
+
+        // X depends on F and J (far apart)
+        let mut x = make_task_with_parent("X", "Z");
+        x.preconditions = vec!["F".to_string(), "J".to_string()];
+
+        // Level 1: F, G, H, I, J - each depends on corresponding source
+        let mut f = make_task_with_parent("F", "Z");
+        f.preconditions = vec!["A".to_string()];
+        let mut g = make_task_with_parent("G", "Z");
+        g.preconditions = vec!["B".to_string()];
+        let mut h = make_task_with_parent("H", "Z");
+        h.preconditions = vec!["C".to_string()];
+        let mut i = make_task_with_parent("I", "Z");
+        i.preconditions = vec!["D".to_string()];
+        let mut j = make_task_with_parent("J", "Z");
+        j.preconditions = vec!["E".to_string()];
+
+        // Level 0: A, B, C, D, E - independent sources
+        let a = make_task_with_parent("A", "Z");
+        let b = make_task_with_parent("B", "Z");
+        let c = make_task_with_parent("C", "Z");
+        let d = make_task_with_parent("D", "Z");
+        let e = make_task_with_parent("E", "Z");
+
+        let graph = build_graph(vec![a, b, c, d, e, f, g, h, i, j, x, z]);
+        let layout = compute_layout(&graph);
+
+        println!("\n=== Long Horizontal Route ===");
+        println!("Levels: {:?}", layout.levels);
+        println!("Edges: {:?}", layout.edges);
+
+        let grid = build_grid(&layout);
+        let routed = route_edges(&grid, &layout);
+
+        println!("Before:\n{}", debug_render_grid(&grid));
+        println!("After:\n{}", debug_render_grid(&routed));
+    }
+
+    /// Two independent components side by side
+    /// Component 1: A → B → C
+    /// Component 2: X → Y → Z
+    #[test]
+    fn test_independent_components() {
+        // Component 1
+        let c = make_task("C");
+        let b = make_task_with_parent("B", "C");
+        let a = make_task_with_parent("A", "B");
+
+        // Component 2
+        let z = make_task("Z");
+        let y = make_task_with_parent("Y", "Z");
+        let x = make_task_with_parent("X", "Y");
+
+        let graph = build_graph(vec![a, b, c, x, y, z]);
+        let layout = compute_layout(&graph);
+
+        println!("\n=== Independent Components ===");
+        println!("Levels: {:?}", layout.levels);
+        println!("Edges: {:?}", layout.edges);
+
+        let grid = build_grid(&layout);
+        let routed = route_edges(&grid, &layout);
+
+        println!("Before:\n{}", debug_render_grid(&grid));
+        println!("After:\n{}", debug_render_grid(&routed));
+    }
+
+    /// Long span with parallel paths and diamond
+    ///
+    ///       A              <- level 0
+    ///      / \
+    ///     P   B            <- level 1
+    ///    /|\   \
+    ///   C D     E          <- level 2
+    ///    \|     |
+    ///     X     |          <- level 3
+    ///      \    |
+    ///       Z<--+          <- level 4 (E→Z spans 2 levels)
+    ///
+    /// Edges: A→P, A→B, P→C, P→D, C→X, D→X, B→E, E→Z, X→Z
+    #[test]
+    fn test_parallel_diamond_routing() {
+        // Z is the root
+        let z = make_task("Z");
+
+        // X depends on C and D (diamond bottom)
+        let mut x = make_task_with_parent("X", "Z");
+        x.preconditions = vec!["C".to_string(), "D".to_string()];
+
+        // C and D depend on P (diamond middle)
+        let mut c = make_task_with_parent("C", "Z");
+        c.preconditions = vec!["P".to_string()];
+        let mut d = make_task_with_parent("D", "Z");
+        d.preconditions = vec!["P".to_string()];
+
+        // P depends on A (diamond tip)
+        let mut p = make_task_with_parent("P", "Z");
+        p.preconditions = vec!["A".to_string()];
+
+        // Parallel path: A → B → E → Z
+        let mut b = make_task_with_parent("B", "Z");
+        b.preconditions = vec!["A".to_string()];
+        let mut e = make_task_with_parent("E", "Z");
+        e.preconditions = vec!["B".to_string()];
+
+        // A is the source
+        let a = make_task_with_parent("A", "Z");
+
+        let graph = build_graph(vec![a, b, c, d, e, p, x, z]);
+        let layout = compute_layout(&graph);
+
+        println!("\n=== Parallel Diamond ===");
+        println!("Levels: {:?}", layout.levels);
+        println!("Edges: {:?}", layout.edges);
+
+        let grid = build_grid(&layout);
+        let routed = route_edges(&grid, &layout);
+
+        println!("Before:\n{}", debug_render_grid(&grid));
+        println!("After:\n{}", debug_render_grid(&routed));
+
+        // Level 0: A
+        // Level 1: B, P
+        // Level 2: C, D, E
+        // Level 3: X
+        // Level 4: Z
+        // 5 task rows + 4 connection rows = 9 rows
+        assert_eq!(routed.rows.len(), 9);
+    }
 }

@@ -6,6 +6,7 @@ preconditions:
   - display-routing
 validations:
   - test
+complete: true
 ---
 
 Convert Connection cells to ASCII symbols based on their flags.

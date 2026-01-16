@@ -120,11 +120,10 @@ pub struct Layout {
 /// Level assignment uses BFS from sources (tasks with no predecessors).
 /// Level = longest path from any source to this task.
 ///
-/// Within each level, tasks are ordered by priority:
-/// 1. In-progress tasks (highest)
-/// 2. Bug tasks
-/// 3. Regular tasks
-/// 4. Alphabetical by ID (tiebreaker)
+/// Column assignment aligns tasks with their predecessors:
+/// - Single predecessor: use predecessor's column (vertical alignment)
+/// - Multiple predecessors: use leftmost predecessor's column
+/// - Conflicts resolved by priority (in-progress > bugs > alphabetical)
 pub fn compute_layout(graph: &TaskGraph) -> Layout {
     if graph.is_empty() {
         return Layout {
@@ -135,8 +134,18 @@ pub fn compute_layout(graph: &TaskGraph) -> Layout {
     }
 
     // Get transitive reduction edges: from -> [to]
-    // These are the edges we'll actually display
     let effective_successors = graph::transitive_reduction(graph);
+
+    // Build predecessor map (reverse of successors)
+    let mut predecessors: HashMap<&str, Vec<&str>> = HashMap::new();
+    for id in graph.keys() {
+        predecessors.insert(id.as_str(), Vec::new());
+    }
+    for (from, successors) in &effective_successors {
+        for &to in successors {
+            predecessors.entry(to).or_default().push(from);
+        }
+    }
 
     // Build in-degree map from the effective edges
     let mut in_degree: HashMap<&str, usize> = HashMap::new();
@@ -157,12 +166,10 @@ pub fn compute_layout(graph: &TaskGraph) -> Layout {
         .map(|(&id, _)| id)
         .collect();
 
-    // Initialize sources at level 0
     for &id in &queue {
         levels_map.insert(id, 0);
     }
 
-    // Track remaining in-degrees for BFS
     let mut remaining_in_degree = in_degree.clone();
 
     while let Some(task_id) = queue.pop_front() {
@@ -170,11 +177,9 @@ pub fn compute_layout(graph: &TaskGraph) -> Layout {
 
         if let Some(successors) = effective_successors.get(task_id) {
             for &succ in successors {
-                // Update level to be at least task_level + 1
                 let succ_level = levels_map.entry(succ).or_insert(0);
                 *succ_level = (*succ_level).max(task_level + 1);
 
-                // Decrement in-degree and add to queue when ready
                 if let Some(deg) = remaining_in_degree.get_mut(succ) {
                     *deg -= 1;
                     if *deg == 0 {
@@ -193,38 +198,80 @@ pub fn compute_layout(graph: &TaskGraph) -> Layout {
         level_tasks[level].push(id);
     }
 
-    // Sort tasks within each level by priority
-    for level in &mut level_tasks {
-        level.sort_by(|a, b| {
-            let task_a = graph.get(*a);
-            let task_b = graph.get(*b);
+    // Assign columns based on predecessor alignment
+    let mut columns: HashMap<&str, usize> = HashMap::new();
 
-            // Priority: in-progress (2) > bug (1) > other (0)
-            let priority_a = match task_a {
-                Some(t) if t.in_progress.is_some() => 2,
-                Some(t) if t.task_type == TaskType::Bug => 1,
-                _ => 0,
-            };
-            let priority_b = match task_b {
-                Some(t) if t.in_progress.is_some() => 2,
-                Some(t) if t.task_type == TaskType::Bug => 1,
-                _ => 0,
-            };
+    // Helper to get task priority for sorting (lower = higher priority)
+    let task_priority = |id: &str| -> i32 {
+        match graph.get(id) {
+            Some(t) if t.in_progress.is_some() => -2,
+            Some(t) if t.task_type == TaskType::Bug => -1,
+            _ => 0,
+        }
+    };
 
-            // Higher priority first, then alphabetical
-            priority_b.cmp(&priority_a).then_with(|| a.cmp(b))
-        });
+    // Level 0: assign columns by priority order
+    level_tasks[0].sort_by(|a, b| {
+        task_priority(a).cmp(&task_priority(b)).then_with(|| a.cmp(b))
+    });
+    for (col, &task_id) in level_tasks[0].iter().enumerate() {
+        columns.insert(task_id, col);
     }
 
-    // Build positions map
-    let mut positions = HashMap::new();
-    for (level, tasks_at_level) in level_tasks.iter().enumerate() {
-        for (index, &task_id) in tasks_at_level.iter().enumerate() {
-            positions.insert(
-                task_id.to_string(),
-                Position { level, index },
-            );
+    // For each subsequent level, assign columns based on predecessors
+    for level_idx in 1..=max_level {
+        let tasks_at_level = &mut level_tasks[level_idx];
+
+        // Compute preferred column for each task
+        let mut preferred: Vec<(&str, usize)> = tasks_at_level
+            .iter()
+            .map(|&task_id| {
+                let preds = predecessors.get(task_id).map(|v| v.as_slice()).unwrap_or(&[]);
+                let preferred_col = if preds.is_empty() {
+                    0
+                } else {
+                    // Use leftmost predecessor's column
+                    preds
+                        .iter()
+                        .filter_map(|p| columns.get(p))
+                        .min()
+                        .copied()
+                        .unwrap_or(0)
+                };
+                (task_id, preferred_col)
+            })
+            .collect();
+
+        // Sort by preferred column, then by priority, then alphabetically
+        preferred.sort_by(|a, b| {
+            a.1.cmp(&b.1)
+                .then_with(|| task_priority(a.0).cmp(&task_priority(b.0)))
+                .then_with(|| a.0.cmp(b.0))
+        });
+
+        // Assign columns, shifting right on conflicts
+        let mut used_columns: std::collections::HashSet<usize> = std::collections::HashSet::new();
+        let mut assigned: Vec<(&str, usize)> = Vec::new();
+
+        for (task_id, mut col) in preferred {
+            while used_columns.contains(&col) {
+                col += 1;
+            }
+            used_columns.insert(col);
+            columns.insert(task_id, col);
+            assigned.push((task_id, col));
         }
+
+        // Reorder level_tasks to match column order
+        assigned.sort_by_key(|(_, col)| *col);
+        *tasks_at_level = assigned.into_iter().map(|(id, _)| id).collect();
+    }
+
+    // Build positions map using computed columns
+    let mut positions = HashMap::new();
+    for (&task_id, &col) in &columns {
+        let level = levels_map[task_id];
+        positions.insert(task_id.to_string(), Position { level, index: col });
     }
 
     // Collect edges as (from, to) pairs
@@ -246,27 +293,24 @@ pub fn compute_layout(graph: &TaskGraph) -> Layout {
 
 /// Build the initial grid with tasks placed.
 ///
-/// Tasks at the same level are placed on the same row, in different columns.
-/// Row = level, Column = index within level.
-/// This will be skewed later during rendering (each task needs its own output line).
+/// Tasks are placed at their computed positions (level, column).
+/// Row = level, Column = computed column from edge-based assignment.
 pub fn build_grid(layout: &Layout) -> Grid {
     let mut grid = Grid::new();
 
-    if layout.levels.is_empty() {
+    if layout.positions.is_empty() {
         return grid;
     }
 
-    // Rows = number of levels, Columns = max tasks at any level
-    let num_rows = layout.levels.len();
-    let max_width = layout.levels.iter().map(|l| l.len()).max().unwrap_or(0);
+    // Find grid dimensions from positions
+    let num_rows = layout.positions.values().map(|p| p.level).max().unwrap_or(0) + 1;
+    let max_col = layout.positions.values().map(|p| p.index).max().unwrap_or(0) + 1;
 
-    grid.ensure_size(num_rows, max_width);
+    grid.ensure_size(num_rows, max_col);
 
-    // Place tasks: row = level, col = index within level
-    for (level_idx, level) in layout.levels.iter().enumerate() {
-        for (col, task_id) in level.iter().enumerate() {
-            grid.rows[level_idx][col] = Cell::Task(task_id.clone());
-        }
+    // Place tasks at their computed positions
+    for (task_id, pos) in &layout.positions {
+        grid.rows[pos.level][pos.index] = Cell::Task(task_id.clone());
     }
 
     grid
