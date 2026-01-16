@@ -293,6 +293,8 @@ pub fn debug_render_grid(grid: &Grid) -> String {
                         (true, false, false, true) => '└',
                         (true, false, true, false) => '┘',
                         (true, true, true, true) => '┼',
+                        (false, true, true, true) => '┬',  // down+left+right (T-junction)
+                        (true, false, true, true) => '┴',  // up+left+right (inverted T)
                         (true, false, false, false) => '╵',
                         (false, true, false, false) => '╷',
                         (false, false, true, false) => '╴',

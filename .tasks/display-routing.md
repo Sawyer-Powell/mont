@@ -4,6 +4,7 @@ title: Edge routing through grid cells
 parent: display-refactor
 preconditions:
   - display-layout
+complete: true
 validations:
   - test
 ---
