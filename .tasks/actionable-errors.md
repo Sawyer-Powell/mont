@@ -1,6 +1,7 @@
 ---
 id: actionable-errors
 title: Make all error messages actionable
+complete: true
 ---
 
 Improve error messages throughout mont to include clear next action steps.
@@ -24,7 +25,7 @@ error: task 'setup-db' references invalid parent 'database'
   The parent task 'database' does not exist in .tasks/
 
   To fix this, either:
-    1. Create the missing task: mont new database
+    1. Create the missing task: .tasks/database.md
     2. Remove the parent field from .tasks/setup-db.md
     3. Change the parent to an existing task
 ```

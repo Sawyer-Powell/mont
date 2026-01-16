@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
+use mont::error_fmt::{AppError, IoResultExt, ParseResultExt, ValidationResultExt};
 use mont::{display, graph, task, validations};
 
 #[derive(Parser)]
@@ -40,42 +41,40 @@ fn main() {
     match cli.command {
         Commands::List { dir, show_completed } => {
             if let Err(e) = list_tasks(&dir, show_completed) {
-                eprintln!("error: {}", e);
+                eprint!("{}", e);
                 std::process::exit(1);
             }
         }
         Commands::Check { dir, id } => {
             if let Err(e) = check_tasks(&dir, id.as_deref()) {
-                eprintln!("error: {}", e);
+                eprint!("{}", e);
                 std::process::exit(1);
             }
         }
     }
 }
 
-fn list_tasks(dir: &PathBuf, show_completed: bool) -> Result<(), Box<dyn std::error::Error>> {
-    // Check if directory exists
+fn list_tasks(dir: &PathBuf, show_completed: bool) -> Result<(), AppError> {
+    let dir_str = dir.display().to_string();
+
     if !dir.exists() {
-        return Err(format!("tasks directory not found: {}", dir.display()).into());
+        return Err(AppError::DirNotFound(dir_str));
     }
 
-    // Find all .md files in the directory (sorted for determinism)
-    let mut paths: Vec<_> = std::fs::read_dir(dir)?
+    let mut paths: Vec<_> = std::fs::read_dir(dir)
+        .with_context(&format!("failed to read directory {}", dir_str))?
         .filter_map(|e| e.ok())
         .map(|e| e.path())
-        .filter(|p| p.extension().map_or(false, |ext| ext == "md"))
+        .filter(|p| p.extension().is_some_and(|ext| ext == "md"))
         .collect();
     paths.sort();
 
     let mut tasks = Vec::new();
-    for path in paths {
-        let content = std::fs::read_to_string(&path)?;
-        match task::parse(&content) {
-            Ok(task) => tasks.push(task),
-            Err(e) => {
-                eprintln!("warning: failed to parse {}: {}", path.display(), e);
-            }
-        }
+    for path in &paths {
+        let path_str = path.display().to_string();
+        let content = std::fs::read_to_string(path).with_context(&format!("failed to read {}", path_str))?;
+        let parsed = task::parse(&content).with_path(&path_str)?;
+        tasks.push(parsed);
     }
 
     if tasks.is_empty() {
@@ -83,46 +82,42 @@ fn list_tasks(dir: &PathBuf, show_completed: bool) -> Result<(), Box<dyn std::er
         return Ok(());
     }
 
-    // Validate the task graph
-    let validated = graph::form_graph(tasks)?;
+    let validated = graph::form_graph(tasks).with_tasks_dir(&dir_str)?;
 
-    // Convert to sorted Vec for deterministic rendering
     let mut task_vec: Vec<_> = validated.into_values().collect();
     task_vec.sort_by(|a, b| a.id.cmp(&b.id));
 
-    // Filter out completed tasks unless --show-completed is passed
     if !show_completed {
         task_vec.retain(|t| !t.complete);
     }
 
-    // Render and print
     let output = display::render_task_graph(&task_vec);
     print!("{}", output);
 
     Ok(())
 }
 
-fn check_tasks(dir: &PathBuf, id: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
+fn check_tasks(dir: &PathBuf, id: Option<&str>) -> Result<(), AppError> {
+    let dir_str = dir.display().to_string();
+
     if !dir.exists() {
-        return Err(format!("tasks directory not found: {}", dir.display()).into());
+        return Err(AppError::DirNotFound(dir_str));
     }
 
-    let mut paths: Vec<_> = std::fs::read_dir(dir)?
+    let mut paths: Vec<_> = std::fs::read_dir(dir)
+        .with_context(&format!("failed to read directory {}", dir_str))?
         .filter_map(|e| e.ok())
         .map(|e| e.path())
-        .filter(|p| p.extension().map_or(false, |ext| ext == "md"))
+        .filter(|p| p.extension().is_some_and(|ext| ext == "md"))
         .collect();
     paths.sort();
 
     let mut tasks = Vec::new();
-    for path in paths {
-        let content = std::fs::read_to_string(&path)?;
-        match task::parse(&content) {
-            Ok(t) => tasks.push(t),
-            Err(e) => {
-                return Err(format!("failed to parse {}: {}", path.display(), e).into());
-            }
-        }
+    for path in &paths {
+        let path_str = path.display().to_string();
+        let content = std::fs::read_to_string(path).with_context(&format!("failed to read {}", path_str))?;
+        let parsed = task::parse(&content).with_path(&path_str)?;
+        tasks.push(parsed);
     }
 
     if tasks.is_empty() {
@@ -131,33 +126,30 @@ fn check_tasks(dir: &PathBuf, id: Option<&str>) -> Result<(), Box<dyn std::error
     }
 
     match id {
-        Some(task_id) => check_single_task(&tasks, task_id),
-        None => check_full_graph(tasks),
+        Some(task_id) => check_single_task(&tasks, task_id, &dir_str),
+        None => check_full_graph(tasks, &dir_str),
     }
 }
 
-fn check_single_task(
-    tasks: &[task::Task],
-    task_id: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let graph: validations::TaskGraph = tasks
-        .iter()
-        .map(|t| (t.id.clone(), t.clone()))
-        .collect();
+fn check_single_task(tasks: &[task::Task], task_id: &str, dir_str: &str) -> Result<(), AppError> {
+    let graph: validations::TaskGraph = tasks.iter().map(|t| (t.id.clone(), t.clone())).collect();
 
     let Some(task) = graph.get(task_id) else {
-        return Err(format!("task '{}' not found", task_id).into());
+        return Err(AppError::TaskNotFound {
+            task_id: task_id.to_string(),
+            tasks_dir: dir_str.to_string(),
+        });
     };
 
-    validations::validate_task(task, &graph)?;
+    validations::validate_task(task, &graph).with_tasks_dir(dir_str)?;
 
     println!("ok: task '{}' is valid", task_id);
     Ok(())
 }
 
-fn check_full_graph(tasks: Vec<task::Task>) -> Result<(), Box<dyn std::error::Error>> {
+fn check_full_graph(tasks: Vec<task::Task>, dir_str: &str) -> Result<(), AppError> {
     let count = tasks.len();
-    validations::validate_graph(tasks)?;
+    validations::validate_graph(tasks).with_tasks_dir(dir_str)?;
     println!("ok: {} tasks validated", count);
     Ok(())
 }
