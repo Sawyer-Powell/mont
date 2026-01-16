@@ -1,6 +1,7 @@
 ---
 id: in-progress-status
 title: Add in-progress status to tasks
+complete: true
 ---
 
 Add support for marking tasks as "in progress" to track active work.

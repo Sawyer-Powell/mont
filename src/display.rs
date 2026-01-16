@@ -108,7 +108,7 @@ fn sort_by_component<'a>(tasks: &[&'a Task], graph: &TaskGraph) -> Vec<&'a Task>
 }
 
 /// Topological sort for a subset of tasks.
-/// Bugs are prioritized to appear first when they have no unsatisfied dependencies.
+/// Priority order: in-progress first, then bugs, then other tasks.
 fn topological_sort_subset<'a>(tasks: &[&'a Task], _graph: &TaskGraph) -> Vec<&'a Task> {
     let task_ids: HashSet<&str> = tasks.iter().map(|t| t.id.as_str()).collect();
     let task_map: HashMap<&str, &Task> = tasks.iter().map(|t| (t.id.as_str(), *t)).collect();
@@ -141,13 +141,15 @@ fn topological_sort_subset<'a>(tasks: &[&'a Task], _graph: &TaskGraph) -> Vec<&'
         }
     }
 
-    // Sort comparator: bugs first, then alphabetically
-    // Returns (priority, id) where priority 0 = bug, 1 = other
-    let is_bug = |id: &str| -> bool {
-        task_map
-            .get(id)
-            .map(|t| t.task_type == TaskType::Bug)
-            .unwrap_or(false)
+    // Sort comparator: in-progress first, then bugs, then other tasks
+    // Higher values = higher display priority (popped last from queue, appear first in output)
+    let priority = |id: &str| -> u8 {
+        let task = task_map.get(id);
+        match task {
+            Some(t) if t.in_progress.is_some() => 2,
+            Some(t) if t.task_type == TaskType::Bug => 1,
+            _ => 0,
+        }
     };
 
     let mut queue: Vec<&str> = in_degree
@@ -155,11 +157,11 @@ fn topological_sort_subset<'a>(tasks: &[&'a Task], _graph: &TaskGraph) -> Vec<&'
         .filter(|(_, deg)| **deg == 0)
         .map(|(&id, _)| id)
         .collect();
-    // Sort: bugs first (false < true when reversed), then alphabetically
-    // We sort ascending by (!is_bug, id), so bugs come first
+    // Sort ascending by (priority, id) - lower priority values come first
+    // Since we pop from the back, higher priority items (lower values) get popped last
     queue.sort_by(|a, b| {
-        let a_priority = (!is_bug(a), *a);
-        let b_priority = (!is_bug(b), *b);
+        let a_priority = (priority(a), *a);
+        let b_priority = (priority(b), *b);
         a_priority.cmp(&b_priority)
     });
 
@@ -176,9 +178,9 @@ fn topological_sort_subset<'a>(tasks: &[&'a Task], _graph: &TaskGraph) -> Vec<&'
                     *deg -= 1;
                     if *deg == 0 {
                         // Insert maintaining sort order
-                        let dep_priority = (!is_bug(dep), dep);
+                        let dep_priority = (priority(dep), dep);
                         let pos = queue.partition_point(|&x| {
-                            let x_priority = (!is_bug(x), x);
+                            let x_priority = (priority(x), x);
                             x_priority < dep_priority
                         });
                         queue.insert(pos, dep);
@@ -482,6 +484,7 @@ fn truncate_title(title: &str) -> String {
 
 fn render_task_line(output: &mut String, task: &Task, graph_prefix: &str, graph: &TaskGraph) {
     let is_available = !task.complete && !task.validator && graph::is_available(task, graph);
+    let is_in_progress = task.in_progress.is_some();
     let is_bug = task.task_type == TaskType::Bug;
     let is_epic = task.task_type == TaskType::Epic;
 
@@ -489,6 +492,8 @@ fn render_task_line(output: &mut String, task: &Task, graph_prefix: &str, graph:
         "◈".purple().to_string()
     } else if task.complete {
         "●".bright_black().to_string()
+    } else if is_in_progress {
+        "◐".yellow().to_string()
     } else if is_available && is_bug {
         "◉".red().to_string()
     } else if is_available && is_epic {
@@ -503,6 +508,8 @@ fn render_task_line(output: &mut String, task: &Task, graph_prefix: &str, graph:
         task.id.bright_black().bold().to_string()
     } else if task.validator {
         task.id.purple().bold().to_string()
+    } else if is_in_progress {
+        task.id.yellow().bold().to_string()
     } else if is_available && is_bug {
         task.id.red().bold().to_string()
     } else if is_available && is_epic {
@@ -538,6 +545,8 @@ fn render_task_line(output: &mut String, task: &Task, graph_prefix: &str, graph:
         format!("{}{}", title_truncated.bright_black(), type_suffix)
     } else if task.validator {
         format!("{} {}{}", title_truncated, "[validator]".purple(), type_suffix)
+    } else if is_in_progress {
+        format!("{}{}", title_truncated.yellow(), type_suffix)
     } else if is_available && is_bug {
         format!("{}{}", title_truncated.red(), type_suffix)
     } else if is_available && is_epic {
@@ -567,6 +576,7 @@ mod tests {
             title: title.map(String::from),
             validator: false,
             complete: false,
+            in_progress: None,
             task_type: TaskType::Feature,
             description: String::new(),
         }
@@ -581,6 +591,7 @@ mod tests {
             title: title.map(String::from),
             validator: true,
             complete: false,
+            in_progress: None,
             task_type: TaskType::Feature,
             description: String::new(),
         }
@@ -595,6 +606,7 @@ mod tests {
             title: title.map(String::from),
             validator: false,
             complete: true,
+            in_progress: None,
             task_type: TaskType::Feature,
             description: String::new(),
         }
@@ -614,6 +626,7 @@ mod tests {
             title: title.map(String::from),
             validator: false,
             complete: false,
+            in_progress: None,
             task_type: TaskType::Feature,
             description: String::new(),
         }
@@ -628,6 +641,7 @@ mod tests {
             title: title.map(String::from),
             validator: true,
             complete: false,
+            in_progress: None,
             task_type: TaskType::Feature,
             description: String::new(),
         }
@@ -642,7 +656,23 @@ mod tests {
             title: title.map(String::from),
             validator: false,
             complete: false,
+            in_progress: None,
             task_type: TaskType::Bug,
+            description: String::new(),
+        }
+    }
+
+    fn make_in_progress(id: &str, title: Option<&str>, parent: Option<&str>) -> Task {
+        Task {
+            id: id.to_string(),
+            parent: parent.map(String::from),
+            preconditions: vec![],
+            validations: vec![],
+            title: title.map(String::from),
+            validator: false,
+            complete: false,
+            in_progress: Some(1),
+            task_type: TaskType::Feature,
             description: String::new(),
         }
     }
@@ -1026,6 +1056,58 @@ mod tests {
         assert!(output.contains("root"));
         assert!(output.contains("blocked-bug"));
         assert!(output.contains("[bug]"));
+    }
+
+    #[test]
+    fn test_in_progress_task_display() {
+        let tasks = vec![
+            make_in_progress("working-on", Some("Currently working"), None),
+            make_task("other", Some("Other task"), None),
+        ];
+
+        let output = render_task_graph(&tasks);
+        println!("\n--- In Progress Task Display ---\n{}", output);
+
+        assert!(output.contains("◐"), "should have in-progress marker");
+        assert!(output.contains("working-on"));
+        assert!(output.contains("Currently working"));
+    }
+
+    #[test]
+    fn test_in_progress_sorted_first_within_component() {
+        // In-progress tasks should appear before bugs and other available tasks
+        // within the same connected component (shared parent/preconditions)
+        let tasks = vec![
+            make_task("parent", Some("Parent"), None),
+            make_bug("fix-bug", Some("Fix a bug"), Some("parent")),
+            make_task("feature", Some("Add feature"), Some("parent")),
+            make_in_progress("in-flight", Some("Working on this"), Some("parent")),
+        ];
+
+        let output = render_task_graph(&tasks);
+        let stripped = strip_ansi(&output);
+        println!("\n--- In Progress Sorted First Within Component ---\n{}", stripped);
+
+        // In-progress should appear before bug and feature (all are siblings)
+        let in_flight_pos = stripped.find("in-flight").unwrap();
+        let fix_bug_pos = stripped.find("fix-bug").unwrap();
+        let feature_pos = stripped.find("feature").unwrap();
+        let parent_pos = stripped.find("parent").unwrap();
+
+        // All children should come before parent
+        assert!(in_flight_pos < parent_pos);
+        assert!(fix_bug_pos < parent_pos);
+        assert!(feature_pos < parent_pos);
+
+        // In-progress should be first among siblings
+        assert!(
+            in_flight_pos < fix_bug_pos,
+            "in-progress task should come before bug within same component"
+        );
+        assert!(
+            in_flight_pos < feature_pos,
+            "in-progress task should come before feature within same component"
+        );
     }
 
     // ========================================================================

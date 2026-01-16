@@ -92,6 +92,8 @@ pub struct Task {
     pub validator: bool,
     #[serde(default)]
     pub complete: bool,
+    #[serde(default)]
+    pub in_progress: Option<u32>,
     #[serde(default, rename = "type")]
     pub task_type: TaskType,
     #[serde(skip)]
@@ -371,6 +373,47 @@ An incomplete task.
         let task = parse(content).unwrap();
         assert_eq!(task.id, "incomplete-task");
         assert!(!task.complete);
+    }
+
+    #[test]
+    fn test_parse_in_progress() {
+        let content = r#"---
+id: in-progress-task
+in_progress: 1
+---
+
+A task in progress.
+"#;
+        let task = parse(content).unwrap();
+        assert_eq!(task.id, "in-progress-task");
+        assert_eq!(task.in_progress, Some(1));
+    }
+
+    #[test]
+    fn test_parse_in_progress_incremented() {
+        let content = r#"---
+id: multi-revision-task
+in_progress: 3
+---
+
+A task worked on across multiple revisions.
+"#;
+        let task = parse(content).unwrap();
+        assert_eq!(task.id, "multi-revision-task");
+        assert_eq!(task.in_progress, Some(3));
+    }
+
+    #[test]
+    fn test_parse_no_in_progress() {
+        let content = r#"---
+id: normal-task
+---
+
+A normal task without in_progress.
+"#;
+        let task = parse(content).unwrap();
+        assert_eq!(task.id, "normal-task");
+        assert!(task.in_progress.is_none());
     }
 
     #[test]

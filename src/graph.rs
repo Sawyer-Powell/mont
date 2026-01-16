@@ -319,6 +319,7 @@ mod tests {
             title: None,
             validator: false,
             complete: false,
+            in_progress: None,
             task_type: TaskType::Feature,
             description: String::new(),
         }
@@ -333,6 +334,7 @@ mod tests {
             title: None,
             validator: true,
             complete: false,
+            in_progress: None,
             task_type: TaskType::Feature,
             description: String::new(),
         }
