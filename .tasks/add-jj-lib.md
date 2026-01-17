@@ -1,6 +1,7 @@
 ---
 id: add-jj-lib
 title: Add jj-lib integration
+complete: true
 ---
 
 Add a module for running and parsing output from the jj command line tool
