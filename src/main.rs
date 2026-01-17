@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use mont::error_fmt::{AppError, IoResultExt, ParseResultExt, ValidationResultExt};
 use mont::task::TaskType;
-use mont::{display_old as display, graph, task, validations};
+use mont::{display, graph, task, validations};
 
 #[derive(Parser)]
 #[command(name = "mont")]
@@ -88,14 +88,7 @@ fn list_tasks(show_completed: bool) -> Result<(), AppError> {
 
     let validated = graph::form_graph(tasks).with_tasks_dir(TASKS_DIR)?;
 
-    let mut task_vec: Vec<_> = validated.into_values().collect();
-    task_vec.sort_by(|a, b| a.id.cmp(&b.id));
-
-    if !show_completed {
-        task_vec.retain(|t| !t.complete);
-    }
-
-    let output = display::render_task_graph(&task_vec);
+    let output = display::render_task_graph(&validated, show_completed);
     print!("{}", output);
 
     Ok(())

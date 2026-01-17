@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use owo_colors::OwoColorize;
 
 use super::layout::{build_grid, compute_layout, prune_rows, Cell, Grid};
@@ -7,6 +9,162 @@ use crate::task::{Task, TaskType};
 
 /// Maximum title length before truncation.
 pub const MAX_TITLE_LEN: usize = 60;
+
+/// Render a task graph to a displayable string with sections.
+///
+/// Sections are rendered in order:
+/// 1. Active tasks (incomplete, non-validators)
+/// 2. Validator tasks
+/// 3. Complete tasks (if show_completed is true)
+///
+/// Each section is separated by a blank line.
+/// Within each section, connected components are rendered separately.
+pub fn render_task_graph(graph: &TaskGraph, show_completed: bool) -> String {
+    if graph.is_empty() {
+        return String::new();
+    }
+
+    // Separate into sections
+    let mut active: TaskGraph = graph
+        .iter()
+        .filter(|(_, t)| !t.validator && !t.complete)
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+
+    let validators: TaskGraph = graph
+        .iter()
+        .filter(|(_, t)| t.validator)
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+
+    let complete: TaskGraph = graph
+        .iter()
+        .filter(|(_, t)| !t.validator && t.complete)
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+
+    // Filter out tasks whose entire subtree is complete (group complete)
+    active.retain(|_, task| !graph::is_group_complete(task, graph));
+
+    let mut output = String::new();
+
+    // Render active section (by components)
+    if !active.is_empty() {
+        output.push_str(&render_section_by_components(&active));
+    }
+
+    // Render validators section (by components)
+    if !validators.is_empty() {
+        if !output.is_empty() {
+            output.push('\n');
+        }
+        output.push_str(&render_section_by_components(&validators));
+    }
+
+    // Render complete section (by components)
+    if show_completed && !complete.is_empty() {
+        if !output.is_empty() {
+            output.push('\n');
+        }
+        output.push_str(&render_section_by_components(&complete));
+    }
+
+    output
+}
+
+/// Render a section by splitting into connected components and rendering each separately.
+fn render_section_by_components(graph: &TaskGraph) -> String {
+    let components = find_connected_components(graph);
+    let mut output = String::new();
+
+    for component in components {
+        if !output.is_empty() {
+            // No blank line between components in same section
+        }
+        output.push_str(&render_grid(&component));
+    }
+
+    output
+}
+
+/// Find connected components in a task graph using union-find.
+fn find_connected_components(graph: &TaskGraph) -> Vec<TaskGraph> {
+    if graph.is_empty() {
+        return Vec::new();
+    }
+
+    let task_ids: Vec<&str> = graph.keys().map(|s| s.as_str()).collect();
+    let id_to_idx: HashMap<&str, usize> = task_ids
+        .iter()
+        .enumerate()
+        .map(|(i, &id)| (id, i))
+        .collect();
+
+    let mut parent: Vec<usize> = (0..task_ids.len()).collect();
+
+    fn find(parent: &mut [usize], i: usize) -> usize {
+        if parent[i] != i {
+            parent[i] = find(parent, parent[i]);
+        }
+        parent[i]
+    }
+
+    fn union(parent: &mut [usize], i: usize, j: usize) {
+        let pi = find(parent, i);
+        let pj = find(parent, j);
+        if pi != pj {
+            parent[pi] = pj;
+        }
+    }
+
+    // Union tasks that are connected via parent or preconditions
+    for task in graph.values() {
+        let task_idx = id_to_idx[task.id.as_str()];
+
+        if let Some(p) = &task.parent {
+            if let Some(&parent_idx) = id_to_idx.get(p.as_str()) {
+                union(&mut parent, task_idx, parent_idx);
+            }
+        }
+
+        for precond in &task.preconditions {
+            if let Some(&precond_idx) = id_to_idx.get(precond.as_str()) {
+                union(&mut parent, task_idx, precond_idx);
+            }
+        }
+
+        for validation in &task.validations {
+            if let Some(&val_idx) = id_to_idx.get(validation.id.as_str()) {
+                union(&mut parent, task_idx, val_idx);
+            }
+        }
+    }
+
+    // Group tasks by their root
+    let mut by_root: HashMap<usize, Vec<&str>> = HashMap::new();
+    for (i, &id) in task_ids.iter().enumerate() {
+        let root = find(&mut parent, i);
+        by_root.entry(root).or_default().push(id);
+    }
+
+    // Sort components for deterministic output (by first task ID alphabetically)
+    let mut components: Vec<Vec<&str>> = by_root.into_values().collect();
+    components.sort_by(|a, b| {
+        let a_min = a.iter().min().unwrap_or(&"");
+        let b_min = b.iter().min().unwrap_or(&"");
+        a_min.cmp(b_min)
+    });
+
+    // Build TaskGraph for each component
+    components
+        .into_iter()
+        .map(|ids| {
+            ids.into_iter()
+                .filter_map(|id| graph.get(id).map(|t| (id.to_string(), t.clone())))
+                .collect()
+        })
+        .collect()
+}
 
 /// Render a task graph to a displayable string.
 ///

@@ -1,6 +1,4 @@
 pub mod display;
-#[path = "display_old.rs"]
-pub mod display_old;
 pub mod error_fmt;
 pub mod graph;
 pub mod task;
