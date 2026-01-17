@@ -32,6 +32,7 @@ Task description in markdown.
 ```
 mont list                  # show task graph (hides completed)
 mont list --show-completed # include completed tasks
+mont ready                 # show tasks ready to work on
 mont check                 # validate entire task graph
 mont check <task-id>       # validate a single task and its references
 ```
@@ -42,26 +43,25 @@ mont check <task-id>       # validate a single task and its references
 Items with ◉ icon are ready for work
 
 ```
-◉ mont-ready Implement mont ready command
-│ ◉ editor-resolution Resolve which text editor the user wishes to use
-│ ├─╮
-│ │ ○ mont-show Implement mont show command
-│ ○ mont-new Implement mont new command
-│ ├───╮
-○ plan-type
-│ │ │ ◉ add-jj-lib Add jj-lib integration
-│ │ │ ├─╮
-│ │ │ │ ○ mont-start Implement mont start command
-│ │ │ ○ mont-complete Implement mont complete command
-├─┴─┴─┴─╯
-○ cli-commands Mont CLI Commands
-◉ global-settings Enable a global settings yml file in .tasks file.
-◉ llm-specific-commands Think through support for a set of llm specific commands
-◉ review-error-aesthetics Review error message aesthetics with Claude Code
+◉  mont-show Implement mont show command
+│ ◉  mont-new Implement mont new command
+╭─┤
+│ │ ◉    add-jj-lib Add jj-lib integration
+│ │ ├─╮
+│ │ ○ │  mont-complete Implement mont complete command
+├───╯ │
+│ │   ○  mont-start Implement mont start command
+├─────╯
+○ │  cli-commands Mont CLI Commands
+  ○  plan-type
+◉  display-refactor Refactor display.rs with level-based grid rendering [epic]
+◉  global-settings Enable a global settings yml file in .tasks file.
+◉  llm-specific-commands Think through support for a set of llm specific commands
+◉  review-error-aesthetics Review error message aesthetics with Claude Code
 
-◈ interview-validator Conduct interview to confirm changes [validator]
-◈ readme-validator Ensure the readme is up to date with code [validator]
-◈ test Run tests [validator]
+◈  interview-validator Conduct interview to confirm changes [validator]
+◈  readme-validator Ensure the readme is up to date with code [validator]
+◈  test Run tests [validator]
 ```
 ## Status
 
@@ -74,6 +74,7 @@ for now, but feel free to ask questions.
 - Task definition via markdown files with YAML frontmatter
 - Graph validation (DAG enforcement, reference checking, cycle detection)
 - CLI: `mont list` with JJ-style graph visualization
+- CLI: `mont ready` to show tasks ready to work on
 - Task relationships: parent/child, preconditions, validations
 - Validator tasks for defining reusable acceptance criteria
 

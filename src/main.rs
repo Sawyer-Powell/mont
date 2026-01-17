@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use mont::error_fmt::{AppError, IoResultExt, ParseResultExt, ValidationResultExt};
 use mont::task::TaskType;
-use mont::{display, graph, task, validations};
+use mont::{graph, render, task, validations};
 
 #[derive(Parser)]
 #[command(name = "mont")]
@@ -88,14 +88,7 @@ fn list_tasks(show_completed: bool) -> Result<(), AppError> {
 
     let validated = graph::form_graph(tasks).with_tasks_dir(TASKS_DIR)?;
 
-    let mut task_vec: Vec<_> = validated.into_values().collect();
-    task_vec.sort_by(|a, b| a.id.cmp(&b.id));
-
-    if !show_completed {
-        task_vec.retain(|t| !t.complete);
-    }
-
-    let output = display::render_task_graph(&task_vec);
+    let output = render::render_task_graph(&validated, show_completed);
     print!("{}", output);
 
     Ok(())
@@ -141,12 +134,12 @@ fn ready_tasks() -> Result<(), AppError> {
     let max_id_len = ready.iter().map(|t| t.id.len()).max().unwrap_or(0);
     let max_title_len = ready
         .iter()
-        .map(|t| display::truncate_title(t.title.as_deref().unwrap_or("")).len())
+        .map(|t| render::truncate_title(t.title.as_deref().unwrap_or("")).len())
         .max()
         .unwrap_or(0);
 
     for task in ready {
-        let title = display::truncate_title(task.title.as_deref().unwrap_or(""));
+        let title = render::truncate_title(task.title.as_deref().unwrap_or(""));
         let type_tag = match task.task_type {
             TaskType::Bug => format!("{}", "[bug]".red().bold()),
             TaskType::Epic => format!("{}", "[epic]".cyan().bold()),
