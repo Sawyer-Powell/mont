@@ -35,6 +35,21 @@ mont list --show-completed # include completed tasks
 mont ready                 # show tasks ready to work on
 mont check                 # validate entire task graph
 mont check <task-id>       # validate a single task and its references
+mont new                   # create a new task
+```
+
+### Creating tasks
+
+```
+mont new --id my-task                           # create task with explicit id
+mont new --title "My Task"                      # create task with generated id
+mont new --id my-task --title "My Task"         # both id and title
+mont new --id my-task --parent parent-task      # set parent
+mont new --id my-task --precondition pre1,pre2  # set preconditions
+mont new --id my-task --validation test         # set validations
+mont new --id my-task --type bug                # set task type (feature, bug, epic)
+mont new --id my-task --editor                  # open in $EDITOR after creation
+mont new --id my-task --editor vim              # open in specific editor
 ```
 
 
@@ -44,7 +59,7 @@ Items with ◉ icon are ready for work
 
 ```
 ◉  mont-show Implement mont show command
-│ ◉  mont-new Implement mont new command
+│ ◐  mont-new Implement mont new command
 ╭─┤
 │ │ ◉    add-jj-lib Add jj-lib integration
 │ │ ├─╮
@@ -75,6 +90,7 @@ for now, but feel free to ask questions.
 - Graph validation (DAG enforcement, reference checking, cycle detection)
 - CLI: `mont list` with JJ-style graph visualization
 - CLI: `mont ready` to show tasks ready to work on
+- CLI: `mont new` for creating new tasks with automatic ID generation
 - Task relationships: parent/child, preconditions, validations
 - Validator tasks for defining reusable acceptance criteria
 

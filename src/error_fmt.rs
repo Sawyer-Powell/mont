@@ -22,6 +22,20 @@ pub enum AppError {
     TaskNotFound { task_id: String, tasks_dir: String },
     /// Editor resolution error
     Editor(EditorError),
+    /// ID or title required
+    IdOrTitleRequired,
+    /// Failed to generate unique ID
+    IdGenerationFailed { attempts: u32 },
+    /// Temp file not found (for --resume)
+    TempFileNotFound(String),
+    /// Task ID already exists
+    IdAlreadyExists(String),
+    /// Temp file validation failed (shows resume command)
+    TempValidationFailed {
+        error: Box<AppError>,
+        temp_path: String,
+        editor_name: Option<String>,
+    },
 }
 
 impl fmt::Display for AppError {
@@ -42,6 +56,21 @@ impl fmt::Display for AppError {
             }
             AppError::Editor(source) => {
                 write!(f, "{}", format_editor_error(source))
+            }
+            AppError::IdOrTitleRequired => {
+                write!(f, "{}", format_id_or_title_required())
+            }
+            AppError::IdGenerationFailed { attempts } => {
+                write!(f, "{}", format_id_generation_failed(*attempts))
+            }
+            AppError::TempFileNotFound(path) => {
+                write!(f, "{}", format_temp_file_not_found(path))
+            }
+            AppError::IdAlreadyExists(id) => {
+                write!(f, "{}", format_id_already_exists(id))
+            }
+            AppError::TempValidationFailed { error, temp_path, editor_name } => {
+                write!(f, "{}", format_temp_validation_failed(error, temp_path, editor_name.as_deref()))
             }
         }
     }
@@ -421,6 +450,100 @@ fn format_editor_error(error: &EditorError) -> String {
             out.push_str("    2. Pass an editor explicitly via command-line argument\n");
         }
     }
+
+    out
+}
+
+fn format_id_or_title_required() -> String {
+    let mut out = String::new();
+
+    out.push_str(&format!("{}: ", "error".red().bold()));
+    out.push_str("either --id or --title is required\n");
+    out.push('\n');
+    out.push_str(&format!("  {}\n", "A task needs an identifier to be created.".dimmed()));
+    out.push('\n');
+    out.push_str(&format!("  {}:\n", "To fix this".bold()));
+    out.push_str(&format!(
+        "    1. Provide an id: {}\n",
+        "mont new --id my-task".cyan()
+    ));
+    out.push_str(&format!(
+        "    2. Provide a title: {}\n",
+        "mont new --title \"My task title\"".cyan()
+    ));
+
+    out
+}
+
+fn format_id_generation_failed(attempts: u32) -> String {
+    let mut out = String::new();
+
+    out.push_str(&format!("{}: ", "error".red().bold()));
+    out.push_str(&format!("failed to generate unique id after {} attempts\n", attempts));
+    out.push('\n');
+    out.push_str(&format!("  {}\n", "All generated IDs collided with existing tasks.".dimmed()));
+    out.push('\n');
+    out.push_str(&format!("  {}:\n", "To fix this".bold()));
+    out.push_str(&format!(
+        "    Provide an explicit id: {}\n",
+        "mont new --id my-unique-id".cyan()
+    ));
+
+    out
+}
+
+fn format_temp_file_not_found(path: &str) -> String {
+    let mut out = String::new();
+
+    out.push_str(&format!("{}: ", "error".red().bold()));
+    out.push_str(&format!("temp file not found: {}\n", path.yellow()));
+    out.push('\n');
+    out.push_str(&format!("  {}\n", "The specified temp file does not exist or was already cleaned up.".dimmed()));
+    out.push('\n');
+    out.push_str(&format!("  {}:\n", "To fix this".bold()));
+    out.push_str(&format!(
+        "    Create a new task instead: {}\n",
+        "mont new --editor".cyan()
+    ));
+
+    out
+}
+
+fn format_id_already_exists(id: &str) -> String {
+    let mut out = String::new();
+
+    out.push_str(&format!("{}: ", "error".red().bold()));
+    out.push_str(&format!("task id '{}' already exists\n", id.yellow()));
+    out.push('\n');
+    out.push_str(&format!("  {}\n", "A task with this ID is already in the task graph.".dimmed()));
+    out.push('\n');
+    out.push_str(&format!("  {}:\n", "To fix this".bold()));
+    out.push_str(&format!(
+        "    Change the {} field in your task file to a unique value.\n",
+        "id".cyan()
+    ));
+
+    out
+}
+
+fn format_temp_validation_failed(error: &AppError, temp_path: &str, editor_name: Option<&str>) -> String {
+    let mut out = String::new();
+
+    // First, display the underlying error
+    out.push_str(&error.to_string());
+    out.push('\n');
+
+    // Then show how to resume
+    out.push_str(&format!("  {}\n", "Your task file has been saved to:".dimmed()));
+    out.push_str(&format!("    {}\n", temp_path.cyan()));
+    out.push('\n');
+    out.push_str(&format!("  {}:\n", "To fix and retry".bold()));
+
+    let resume_cmd = match editor_name {
+        Some(name) => format!("mont new --resume {} --editor {}", temp_path, name),
+        None => format!("mont new --resume {}", temp_path),
+    };
+    out.push_str(&format!("    {}\n", resume_cmd.cyan()));
 
     out
 }

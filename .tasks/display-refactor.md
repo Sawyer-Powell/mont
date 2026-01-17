@@ -2,6 +2,7 @@
 id: display-refactor
 title: Refactor display.rs with level-based grid rendering
 type: epic
+complete: true
 ---
 
 Refactor the task graph display from a stateful "active lines" approach to a clean
