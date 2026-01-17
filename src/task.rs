@@ -7,6 +7,7 @@ pub enum TaskType {
     Bug,
     #[default]
     Feature,
+    Jot,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Default)]
@@ -466,6 +467,22 @@ No type field specified.
         let task = parse(content).unwrap();
         assert_eq!(task.id, "regular-task");
         assert_eq!(task.task_type, TaskType::Feature);
+    }
+
+    #[test]
+    fn test_parse_type_jot() {
+        let content = r#"---
+id: quick-idea
+title: Quick idea for later
+type: jot
+---
+
+Just a quick idea to capture.
+"#;
+        let task = parse(content).unwrap();
+        assert_eq!(task.id, "quick-idea");
+        assert_eq!(task.task_type, TaskType::Jot);
+        assert_eq!(task.title, Some("Quick idea for later".to_string()));
     }
 
     #[test]

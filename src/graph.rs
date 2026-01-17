@@ -29,10 +29,10 @@ pub fn available_tasks(graph: &TaskGraph) -> Vec<&Task> {
 pub fn is_available(task: &Task, graph: &TaskGraph) -> bool {
     // Check all after dependencies are complete
     for after_id in &task.after {
-        if let Some(after_task) = graph.get(after_id) {
-            if !after_task.complete {
-                return false;
-            }
+        if let Some(after_task) = graph.get(after_id)
+            && !after_task.complete
+        {
+            return false;
         }
     }
 
@@ -56,10 +56,10 @@ pub fn is_group_complete(task: &Task, graph: &TaskGraph) -> bool {
     }
 
     for before_id in &task.before {
-        if let Some(before_target) = graph.get(before_id) {
-            if !is_group_complete(before_target, graph) {
-                return false;
-            }
+        if let Some(before_target) = graph.get(before_id)
+            && !is_group_complete(before_target, graph)
+        {
+            return false;
         }
     }
 
@@ -274,7 +274,7 @@ pub fn transitive_reduction(graph: &TaskGraph) -> HashMap<&str, Vec<&str>> {
 
             for &succ in direct_successors {
                 let reachable_via_other = direct_successors.iter().any(|&other| {
-                    other != succ && reachable.get(other).map_or(false, |r| r.contains(succ))
+                    other != succ && reachable.get(other).is_some_and(|r| r.contains(succ))
                 });
 
                 if !reachable_via_other {

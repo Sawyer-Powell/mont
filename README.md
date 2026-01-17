@@ -39,6 +39,9 @@ mont check <task-id>       # validate a single task and its references
 mont new                   # create a new task
 mont edit <task-id>        # edit an existing task
 mont delete <task-id>      # delete a task and remove references
+mont jot                   # quickly jot down an idea
+mont jot "My idea"         # jot with a title
+mont distill <jot-id>      # distill a jot into proper tasks
 ```
 
 ### Creating tasks
@@ -50,7 +53,7 @@ mont new --id my-task --title "My Task"         # both id and title
 mont new --id my-task --before task1,task2      # set before targets
 mont new --id my-task --after pre1,pre2         # set after dependencies
 mont new --id my-task --validation test         # set validations
-mont new --id my-task --type bug                # set task type (feature, bug)
+mont new --id my-task --type bug                # set task type (feature, bug, jot)
 mont new --id my-task --editor                  # open in $EDITOR after creation
 mont new --id my-task --editor vim              # open in specific editor
 ```
@@ -79,15 +82,11 @@ mont delete my-task --force                     # delete without confirmation
 Items with ◉ icon are ready for work
 
 ```
-◉    add-jj-lib Add jj-lib integration
-├─╮
-○ │  mont-complete Implement mont complete command
-  ○  mont-start Implement mont start command
-  ○  mont-llm-start Implement mont llm start
 ◉  global-settings Enable a global settings yml file in .tasks file.
-◉  llm-specific-commands Think through support for a set of llm specific commands
-◉  mont-delete Mont delete
-◉  mont-jot Need to add a new task type called 'jot'
+◉  mont-complete Implement mont complete command
+◐  mont-jot Need to add a new task type called 'jot' and 'distill'
+◉  mont-start Implement mont start command
+○  mont-llm-start Implement mont llm start
 ◉  mont-show Implement mont show command
 ◉  review-error-aesthetics Review error message aesthetics with Claude Code
 
@@ -110,7 +109,10 @@ for now, but feel free to ask questions.
 - CLI: `mont new` for creating new tasks with automatic ID generation
 - CLI: `mont edit` for editing tasks with ID rename and reference propagation
 - CLI: `mont delete` for deleting tasks and cleaning up references
+- CLI: `mont jot` for quickly capturing ideas as jot-type tasks
+- CLI: `mont distill` for converting jots into proper tasks
 - Task relationships: before/after ordering, validations
+- Task types: feature, bug, jot
 - Validator tasks for defining reusable acceptance criteria
 
 

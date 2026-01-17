@@ -1,6 +1,6 @@
 use clap::{Args, Parser, Subcommand};
 use owo_colors::OwoColorize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use mont::error_fmt::{AppError, IoResultExt, ParseResultExt, ValidationResultExt};
 use mont::task::TaskType;
@@ -87,6 +87,35 @@ enum Commands {
         #[arg(long, short)]
         force: bool,
     },
+    /// Quickly jot down an idea (creates a new task with type 'jot')
+    Jot {
+        /// Title for the jot (required unless using --resume)
+        #[arg(required_unless_present = "resume")]
+        title: Option<String>,
+        /// Description (markdown body)
+        #[arg(long, short)]
+        description: Option<String>,
+        /// Before target task IDs (comma-separated)
+        #[arg(long, short, value_delimiter = ',')]
+        before: Vec<String>,
+        /// After dependency task IDs (comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        after: Vec<String>,
+        /// Validation task IDs (comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        validation: Vec<String>,
+        /// Open in editor after creation
+        #[arg(long, short)]
+        editor: Option<Option<String>>,
+        /// Resume editing a temp file from a previous failed validation
+        #[arg(long, conflicts_with_all = ["title", "description", "before", "after", "validation"])]
+        resume: Option<PathBuf>,
+    },
+    /// Distill a jot into one or more proper tasks
+    Distill {
+        /// Jot task ID to distill
+        id: String,
+    },
 }
 
 const TASKS_DIR: &str = ".tasks";
@@ -95,8 +124,9 @@ fn parse_task_type(s: &str) -> Result<TaskType, String> {
     match s.to_lowercase().as_str() {
         "feature" => Ok(TaskType::Feature),
         "bug" => Ok(TaskType::Bug),
+        "jot" => Ok(TaskType::Jot),
         _ => Err(format!(
-            "invalid task type '{}', must be one of: feature, bug",
+            "invalid task type '{}', must be one of: feature, bug, jot",
             s
         )),
     }
@@ -147,6 +177,35 @@ fn main() {
         }
         Commands::Delete { id, force } => {
             if let Err(e) = delete_task(TASKS_DIR, &id, force) {
+                eprint!("{}", e);
+                std::process::exit(1);
+            }
+        }
+        Commands::Jot {
+            title,
+            description,
+            before,
+            after,
+            validation,
+            editor,
+            resume,
+        } => {
+            if let Err(e) = jot_task(
+                TASKS_DIR,
+                title,
+                description,
+                before,
+                after,
+                validation,
+                editor,
+                resume,
+            ) {
+                eprint!("{}", e);
+                std::process::exit(1);
+            }
+        }
+        Commands::Distill { id } => {
+            if let Err(e) = distill_task(TASKS_DIR, &id) {
                 eprint!("{}", e);
                 std::process::exit(1);
             }
@@ -239,6 +298,7 @@ fn ready_tasks() -> Result<(), AppError> {
         let type_tag = match task.task_type {
             TaskType::Bug => format!("{}", "[bug]".red().bold()),
             TaskType::Feature => format!("{}", "[feature]".bright_green().bold()),
+            TaskType::Jot => format!("{}", "[jot]".yellow().bold()),
         };
         println!(
             "{}  {:max_title_len$}  {}",
@@ -555,6 +615,343 @@ fn delete_task(tasks_dir: &str, id: &str, force: bool) -> Result<(), AppError> {
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
+fn jot_task(
+    tasks_dir: &str,
+    title: Option<String>,
+    description: Option<String>,
+    before: Vec<String>,
+    after: Vec<String>,
+    validation: Vec<String>,
+    editor: Option<Option<String>>,
+    resume: Option<PathBuf>,
+) -> Result<(), AppError> {
+    let dir = PathBuf::from(tasks_dir);
+
+    if !dir.exists() {
+        std::fs::create_dir_all(&dir)
+            .with_context(&format!("failed to create directory {}", tasks_dir))?;
+    }
+
+    // Resume mode: re-open a temp file from a previous failed validation
+    if let Some(temp_path) = resume {
+        let editor_name = editor.flatten();
+        return resume_from_temp(tasks_dir, &dir, &temp_path, editor_name.as_deref());
+    }
+
+    // Title is required when not resuming (enforced by clap)
+    let Some(title) = title else {
+        return Err(AppError::IdOrTitleRequired);
+    };
+
+    let existing_tasks = load_existing_tasks(&dir)?;
+    let existing_ids: std::collections::HashSet<_> =
+        existing_tasks.iter().map(|t| t.id.as_str()).collect();
+
+    // Generate a unique ID for the jot
+    let task_id = generate_jot_id(&existing_ids)?;
+
+    // Build content with type: jot
+    let content = build_task_content(
+        &task_id,
+        &Some(title),
+        &description,
+        &before,
+        &after,
+        &validation,
+        &Some(TaskType::Jot),
+    );
+
+    // If --editor flag provided, open editor
+    if let Some(editor_opt) = editor {
+        let editor_name = editor_opt.as_deref();
+        return create_with_editor(tasks_dir, &dir, &task_id, &content, editor_name);
+    }
+
+    // Non-editor mode: validate in memory, then write
+    let new_task = task::parse(&content).with_path(&format!("{}/{}.md", tasks_dir, task_id))?;
+
+    let mut all_tasks = existing_tasks;
+    all_tasks.push(new_task);
+    validations::validate_graph(all_tasks).with_tasks_dir(tasks_dir)?;
+
+    let file_path = dir.join(format!("{}.md", task_id));
+    std::fs::write(&file_path, &content)
+        .with_context(&format!("failed to write {}", file_path.display()))?;
+
+    println!("{} {}", "created:".yellow(), file_path.display().to_string().yellow());
+
+    Ok(())
+}
+
+fn generate_jot_id(existing_ids: &std::collections::HashSet<&str>) -> Result<String, AppError> {
+    const MAX_ATTEMPTS: u32 = 100;
+
+    for _ in 0..MAX_ATTEMPTS {
+        let Some(candidate) = petname::petname(2, "-") else {
+            continue;
+        };
+        let jot_id = format!("jot-{}", candidate);
+        if !existing_ids.contains(jot_id.as_str()) {
+            return Ok(jot_id);
+        }
+    }
+
+    Err(AppError::IdGenerationFailed {
+        attempts: MAX_ATTEMPTS,
+    })
+}
+
+fn distill_task(tasks_dir: &str, id: &str) -> Result<(), AppError> {
+    let dir = PathBuf::from(tasks_dir);
+
+    if !dir.exists() {
+        return Err(AppError::DirNotFound(tasks_dir.to_string()));
+    }
+
+    let file_path = dir.join(format!("{}.md", id));
+    if !file_path.exists() {
+        return Err(AppError::TaskNotFound {
+            task_id: id.to_string(),
+            tasks_dir: tasks_dir.to_string(),
+        });
+    }
+
+    let content = std::fs::read_to_string(&file_path)
+        .with_context(&format!("failed to read {}", file_path.display()))?;
+
+    let jot_task = task::parse(&content).with_path(&file_path.display().to_string())?;
+
+    // Verify this is a jot
+    if jot_task.task_type != TaskType::Jot {
+        return Err(AppError::NotAJot(id.to_string()));
+    }
+
+    // Create temp file with the jot's content as a template for multiple tasks
+    let temp_dir = std::env::temp_dir();
+    let temp_path = temp_dir.join(format!("mont-distill-{}.md", id));
+
+    // Build template content showing expected format
+    let template = format!(
+        r#"# Distill: {}
+#
+# Define one or more tasks below. Each task starts with --- and ends with ---
+# After saving, the jot will be deleted and these tasks will be created.
+#
+# Example format:
+# ---
+# id: first-task
+# title: First Task Title
+# ---
+# Description of the first task
+#
+# ---
+# id: second-task
+# title: Second Task Title
+# after:
+#   - first-task
+# ---
+# Description of the second task
+
+{}
+"#,
+        jot_task.title.as_deref().unwrap_or(id),
+        jot_task.description
+    );
+
+    std::fs::write(&temp_path, &template)
+        .with_context(&format!("failed to write temp file {}", temp_path.display()))?;
+
+    let mut cmd = mont::resolve_editor(None, &temp_path)?;
+    cmd.status().with_context("failed to run editor")?;
+
+    // Parse the edited content to extract tasks
+    let edited_content = std::fs::read_to_string(&temp_path)
+        .with_context(&format!("failed to read temp file {}", temp_path.display()))?;
+
+    // Load existing tasks (excluding the jot we're distilling)
+    let mut existing_tasks = load_existing_tasks(&dir)?;
+    existing_tasks.retain(|t| t.id != id);
+
+    let existing_ids: std::collections::HashSet<_> =
+        existing_tasks.iter().map(|t| t.id.as_str()).collect();
+
+    let new_tasks = parse_distill_content(&edited_content, &existing_ids)?;
+
+    if new_tasks.is_empty() {
+        println!("No tasks defined, aborting distill.");
+        std::fs::remove_file(&temp_path)
+            .with_context(&format!("failed to remove temp file {}", temp_path.display()))?;
+        return Ok(());
+    }
+
+    // Check for ID conflicts (shouldn't happen with auto-generation, but be safe)
+    for (task_id, _) in &new_tasks {
+        if existing_ids.contains(task_id.as_str()) {
+            return Err(AppError::IdAlreadyExists(task_id.clone()));
+        }
+    }
+
+    // Parse and validate new tasks
+    let mut parsed_tasks = Vec::new();
+    for (task_id, task_content) in &new_tasks {
+        let parsed = task::parse(task_content)
+            .with_path(&format!("{}/{}.md", tasks_dir, task_id))?;
+        parsed_tasks.push(parsed);
+    }
+
+    // Validate the entire graph with new tasks
+    let mut all_tasks = existing_tasks.clone();
+    all_tasks.extend(parsed_tasks.clone());
+    validations::validate_graph(all_tasks).with_tasks_dir(tasks_dir)?;
+
+    // Write all new task files
+    for (task_id, task_content) in &new_tasks {
+        let new_file_path = dir.join(format!("{}.md", task_id));
+        std::fs::write(&new_file_path, task_content)
+            .with_context(&format!("failed to write {}", new_file_path.display()))?;
+        println!("created: {}", new_file_path.display().to_string().bright_green());
+    }
+
+    // Delete the original jot
+    std::fs::remove_file(&file_path)
+        .with_context(&format!("failed to remove {}", file_path.display()))?;
+    println!("{} {}", "deleted jot:".yellow(), id.bright_yellow());
+
+    // Clean up temp file
+    std::fs::remove_file(&temp_path)
+        .with_context(&format!("failed to remove temp file {}", temp_path.display()))?;
+
+    // Auto-commit with jj
+    let task_ids: Vec<_> = new_tasks.iter().map(|(id, _)| id.as_str()).collect();
+    let commit_msg = format!(
+        "Distilled jot '{}' into tasks: {}",
+        id,
+        task_ids.join(", ")
+    );
+
+    match mont::jj::commit(&commit_msg) {
+        Ok(_) => println!("{} {}", "committed:".bright_green(), commit_msg),
+        Err(e) => eprintln!("{} {}", "warning: jj commit failed:".yellow(), e),
+    }
+
+    Ok(())
+}
+
+fn parse_distill_content(
+    content: &str,
+    existing_ids: &std::collections::HashSet<&str>,
+) -> Result<Vec<(String, String)>, AppError> {
+    let mut tasks = Vec::new();
+    let mut current_task = String::new();
+    let mut in_task = false;
+    let mut delimiter_count = 0;
+    let mut used_ids: std::collections::HashSet<String> = existing_ids.iter().map(|s| s.to_string()).collect();
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+
+        // Skip comment lines at the top
+        if trimmed.starts_with('#') && !in_task {
+            continue;
+        }
+
+        if trimmed == "---" {
+            delimiter_count += 1;
+
+            if delimiter_count == 1 {
+                // Start of frontmatter
+                in_task = true;
+                current_task.push_str(line);
+                current_task.push('\n');
+            } else if delimiter_count == 2 {
+                // End of frontmatter
+                current_task.push_str(line);
+                current_task.push('\n');
+            } else if delimiter_count > 2 && delimiter_count % 2 == 1 {
+                // Start of a new task - save the previous one
+                if !current_task.is_empty() {
+                    let (task_id, task_content) = ensure_task_id(&current_task, &used_ids)?;
+                    used_ids.insert(task_id.clone());
+                    tasks.push((task_id, task_content));
+                }
+                current_task = String::new();
+                current_task.push_str(line);
+                current_task.push('\n');
+            } else {
+                // End of frontmatter for subsequent tasks
+                current_task.push_str(line);
+                current_task.push('\n');
+            }
+        } else if in_task {
+            current_task.push_str(line);
+            current_task.push('\n');
+        }
+    }
+
+    // Don't forget the last task
+    if !current_task.is_empty() && delimiter_count >= 2 {
+        let (task_id, task_content) = ensure_task_id(&current_task, &used_ids)?;
+        tasks.push((task_id, task_content));
+    }
+
+    Ok(tasks)
+}
+
+fn ensure_task_id(
+    content: &str,
+    existing_ids: &std::collections::HashSet<String>,
+) -> Result<(String, String), AppError> {
+    // Check if content already has an id
+    if let Some(id) = extract_id_from_content(content) {
+        return Ok((id, content.to_string()));
+    }
+
+    // Generate a new id
+    const MAX_ATTEMPTS: u32 = 100;
+    for _ in 0..MAX_ATTEMPTS {
+        let Some(candidate) = petname::petname(2, "-") else {
+            continue;
+        };
+        if !existing_ids.contains(&candidate) {
+            // Insert the id into the content after the first ---
+            let new_content = insert_id_into_content(content, &candidate);
+            return Ok((candidate, new_content));
+        }
+    }
+
+    Err(AppError::IdGenerationFailed {
+        attempts: MAX_ATTEMPTS,
+    })
+}
+
+fn extract_id_from_content(content: &str) -> Option<String> {
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if let Some(id) = trimmed.strip_prefix("id:") {
+            return Some(id.trim().to_string());
+        }
+    }
+    None
+}
+
+fn insert_id_into_content(content: &str, id: &str) -> String {
+    let mut result = String::new();
+    let mut found_first_delimiter = false;
+
+    for line in content.lines() {
+        result.push_str(line);
+        result.push('\n');
+
+        if !found_first_delimiter && line.trim() == "---" {
+            found_first_delimiter = true;
+            result.push_str(&format!("id: {}\n", id));
+        }
+    }
+
+    result
+}
+
 fn remove_reference_from_content(content: &str, id_to_remove: &str) -> String {
     let mut result = String::new();
     let mut in_frontmatter = false;
@@ -575,11 +972,10 @@ fn remove_reference_from_content(content: &str, id_to_remove: &str) -> String {
 
         if in_frontmatter && delimiter_count < 2 {
             // Handle before: id_to_remove - remove the entire line
-            if trimmed.starts_with("before:") {
-                let value = trimmed.strip_prefix("before:").unwrap().trim();
-                if value == id_to_remove {
-                    continue; // Skip this line entirely
-                }
+            if let Some(value) = trimmed.strip_prefix("before:")
+                && value.trim() == id_to_remove
+            {
+                continue; // Skip this line entirely
             }
 
             // Track if we're in a list section (after:, validations:)
@@ -588,11 +984,11 @@ fn remove_reference_from_content(content: &str, id_to_remove: &str) -> String {
             }
 
             // Handle list items: - id_to_remove
-            if in_list_section && trimmed.starts_with("- ") {
-                let value = trimmed.strip_prefix("- ").unwrap().trim();
-                if value == id_to_remove {
-                    continue; // Skip this line entirely
-                }
+            if in_list_section
+                && let Some(value) = trimmed.strip_prefix("- ")
+                && value.trim() == id_to_remove
+            {
+                continue; // Skip this line entirely
             }
         }
 
@@ -761,7 +1157,7 @@ fn merge_task_content(
     };
 
     let validations_list: Vec<String> = if !fields.validation.is_empty() {
-        fields.validation.iter().map(|v| v.clone()).collect()
+        fields.validation.to_vec()
     } else {
         original.validations.iter().map(|v| v.id.clone()).collect()
     };
@@ -812,10 +1208,10 @@ fn extract_body(content: &str) -> Option<String> {
 }
 
 fn update_task_references(
-    tasks_dir: &PathBuf,
+    tasks_dir: &Path,
     old_id: &str,
     new_id: &str,
-    all_tasks: &mut Vec<task::Task>,
+    all_tasks: &mut [task::Task],
 ) -> Result<(), AppError> {
     for task in all_tasks.iter_mut() {
         let mut changed = false;
@@ -883,25 +1279,23 @@ fn update_references_in_content(content: &str, old_id: &str, new_id: &str) -> St
 
         if in_frontmatter && delimiter_count < 2 {
             // Handle before: old_id
-            if trimmed.starts_with("before:") {
-                let value = trimmed.strip_prefix("before:").unwrap().trim();
-                if value == old_id {
-                    let indent = line.len() - line.trim_start().len();
-                    result.push_str(&" ".repeat(indent));
-                    result.push_str(&format!("before: {}\n", new_id));
-                    continue;
-                }
+            if let Some(value) = trimmed.strip_prefix("before:")
+                && value.trim() == old_id
+            {
+                let indent = line.len() - line.trim_start().len();
+                result.push_str(&" ".repeat(indent));
+                result.push_str(&format!("before: {new_id}\n"));
+                continue;
             }
 
             // Handle list items: - old_id
-            if trimmed.starts_with("- ") {
-                let value = trimmed.strip_prefix("- ").unwrap().trim();
-                if value == old_id {
-                    let indent = line.len() - line.trim_start().len();
-                    result.push_str(&" ".repeat(indent));
-                    result.push_str(&format!("- {}\n", new_id));
-                    continue;
-                }
+            if let Some(value) = trimmed.strip_prefix("- ")
+                && value.trim() == old_id
+            {
+                let indent = line.len() - line.trim_start().len();
+                result.push_str(&" ".repeat(indent));
+                result.push_str(&format!("- {new_id}\n"));
+                continue;
             }
         }
 
@@ -1081,6 +1475,7 @@ fn build_task_content(
         let type_str = match tt {
             TaskType::Feature => "feature",
             TaskType::Bug => "bug",
+            TaskType::Jot => "jot",
         };
         content.push_str(&format!("type: {}\n", type_str));
     }

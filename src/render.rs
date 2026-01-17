@@ -236,6 +236,7 @@ fn task_marker(task: &Task, graph: &TaskGraph) -> String {
     let is_available = !task.complete && !task.validator && graph::is_available(task, graph);
     let is_in_progress = task.in_progress.is_some();
     let is_bug = task.task_type == TaskType::Bug;
+    let is_jot = task.task_type == TaskType::Jot;
 
     if task.validator {
         "◈".purple().to_string()
@@ -243,6 +244,8 @@ fn task_marker(task: &Task, graph: &TaskGraph) -> String {
         "●".bright_black().to_string()
     } else if is_in_progress {
         "◐".yellow().to_string()
+    } else if is_jot {
+        "◇".yellow().to_string()
     } else if is_available && is_bug {
         "◉".red().to_string()
     } else if is_available {
@@ -256,12 +259,13 @@ fn format_task_line(task: &Task, graph: &TaskGraph) -> String {
     let is_available = !task.complete && !task.validator && graph::is_available(task, graph);
     let is_in_progress = task.in_progress.is_some();
     let is_bug = task.task_type == TaskType::Bug;
+    let is_jot = task.task_type == TaskType::Jot;
 
     let id_display = if task.complete {
         task.id.bright_black().bold().to_string()
     } else if task.validator {
         task.id.purple().bold().to_string()
-    } else if is_in_progress {
+    } else if is_jot || is_in_progress {
         task.id.yellow().bold().to_string()
     } else if is_available && is_bug {
         task.id.red().bold().to_string()
@@ -282,6 +286,7 @@ fn format_task_line(task: &Task, graph: &TaskGraph) -> String {
                 format!(" {}", "[bug]".bright_black())
             }
         }
+        TaskType::Jot => format!(" {}", "[jot]".yellow()),
         TaskType::Feature => String::new(),
     };
 
@@ -289,7 +294,7 @@ fn format_task_line(task: &Task, graph: &TaskGraph) -> String {
         format!("{}{}", title_truncated.bright_black(), type_suffix)
     } else if task.validator {
         format!("{} {}{}", title_truncated, "[validator]".purple(), type_suffix)
-    } else if is_in_progress {
+    } else if is_jot || is_in_progress {
         format!("{}{}", title_truncated.yellow(), type_suffix)
     } else if is_available && is_bug {
         format!("{}{}", title_truncated.red(), type_suffix)

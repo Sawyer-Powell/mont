@@ -45,6 +45,8 @@ pub enum AppError {
         temp_path: String,
         editor_name: Option<String>,
     },
+    /// Task is not a jot (for distill command)
+    NotAJot(String),
 }
 
 impl fmt::Display for AppError {
@@ -86,6 +88,9 @@ impl fmt::Display for AppError {
             }
             AppError::EditTempValidationFailed { error, original_id, temp_path, editor_name } => {
                 write!(f, "{}", format_edit_temp_validation_failed(error, original_id, temp_path, editor_name.as_deref()))
+            }
+            AppError::NotAJot(id) => {
+                write!(f, "{}", format_not_a_jot(id))
             }
         }
     }
@@ -636,6 +641,24 @@ fn format_edit_temp_validation_failed(error: &AppError, original_id: &str, temp_
         None => format!("mont edit {} --resume {}", original_id, temp_path),
     };
     out.push_str(&format!("    {}\n", resume_cmd.cyan()));
+
+    out
+}
+
+fn format_not_a_jot(id: &str) -> String {
+    let mut out = String::new();
+
+    out.push_str(&format!("{}: ", "error".red().bold()));
+    out.push_str(&format!("task '{}' is not a jot\n", id.yellow()));
+    out.push('\n');
+    out.push_str(&format!("  {}\n", "The distill command can only be used on jot-type tasks.".dimmed()));
+    out.push('\n');
+    out.push_str(&format!("  {}:\n", "To fix this".bold()));
+    out.push_str(&format!(
+        "    1. Use {} to create a jot first\n",
+        "mont jot".cyan()
+    ));
+    out.push_str("    2. Check that the task has 'type: jot' in its frontmatter\n");
 
     out
 }
