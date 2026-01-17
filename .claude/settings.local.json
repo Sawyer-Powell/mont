@@ -18,7 +18,11 @@
       "Bash(jj diff:*)",
       "Bash(./target/debug/mont ready:*)",
       "Bash(./target/debug/mont list:*)",
-      "Bash(./target/debug/mont check:*)"
+      "Bash(./target/debug/mont check:*)",
+      "Bash(jj config set:*)",
+      "Bash(jj metaedit:*)",
+      "Bash(jj log:*)",
+      "Bash(cargo check:*)"
     ]
   }
 }

@@ -1,6 +1,7 @@
 ---
 id: editor-resolution
 title: Resolve which text editor the user wishes to use
+complete: true
 validators:
   - interview-validator
 ---

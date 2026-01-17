@@ -5,6 +5,7 @@ use owo_colors::OwoColorize;
 
 use crate::task::ParseError;
 use crate::validations::ValidationError;
+use crate::EditorError;
 
 /// Application error with context for actionable error messages.
 #[derive(Debug)]
@@ -19,6 +20,8 @@ pub enum AppError {
     Validation { tasks_dir: String, source: ValidationError },
     /// Task not found
     TaskNotFound { task_id: String, tasks_dir: String },
+    /// Editor resolution error
+    Editor(EditorError),
 }
 
 impl fmt::Display for AppError {
@@ -36,6 +39,9 @@ impl fmt::Display for AppError {
             }
             AppError::TaskNotFound { task_id, tasks_dir } => {
                 write!(f, "{}", format_task_not_found(task_id, tasks_dir))
+            }
+            AppError::Editor(source) => {
+                write!(f, "{}", format_editor_error(source))
             }
         }
     }
@@ -393,6 +399,36 @@ fn format_dir_not_found(dir: &str) -> String {
     out.push_str("    3. Run from a directory that contains a .tasks folder\n");
 
     out
+}
+
+fn format_editor_error(error: &EditorError) -> String {
+    let mut out = String::new();
+
+    out.push_str(&format!("{}: ", "error".red().bold()));
+
+    match error {
+        EditorError::NotFound(msg) => {
+            out.push_str(&format!("{}\n", msg));
+            out.push('\n');
+            out.push_str(&format!("  {}\n", "No text editor could be resolved.".dimmed()));
+            out.push('\n');
+            out.push_str(&format!("  {}:\n", "To fix this".bold()));
+            out.push_str(&format!(
+                "    1. Set the {} environment variable: {}\n",
+                "$EDITOR".cyan(),
+                "export EDITOR=vim".cyan()
+            ));
+            out.push_str("    2. Pass an editor explicitly via command-line argument\n");
+        }
+    }
+
+    out
+}
+
+impl From<EditorError> for AppError {
+    fn from(e: EditorError) -> Self {
+        AppError::Editor(e)
+    }
 }
 
 #[cfg(test)]
