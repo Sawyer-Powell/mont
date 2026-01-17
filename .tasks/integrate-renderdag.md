@@ -1,8 +1,9 @@
 ---
 id: integrate-renderdag
 title: Integrate sapling-renderdag for DAG visualization
-parent: display-refactor
-preconditions:
+before:
+  - display-refactor
+after:
   - display-render
 validations:
   - test

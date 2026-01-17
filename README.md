@@ -15,8 +15,9 @@ Tasks live in `.tasks/*.md` files. Each task declares:
 ---
 id: my-task
 title: Human readable title
-parent: parent-task        # optional
-preconditions:             # must complete before this task
+before:                    # optional - this task must complete before these tasks
+  - parent-task
+after:                     # this task runs after these dependencies complete
   - other-task
 validations:               # validation tasks, maybe a script, maybe a prompt
   - cargo-tests
@@ -37,6 +38,7 @@ mont check                 # validate entire task graph
 mont check <task-id>       # validate a single task and its references
 mont new                   # create a new task
 mont edit <task-id>        # edit an existing task
+mont delete <task-id>      # delete a task and remove references
 ```
 
 ### Creating tasks
@@ -45,10 +47,10 @@ mont edit <task-id>        # edit an existing task
 mont new --id my-task                           # create task with explicit id
 mont new --title "My Task"                      # create task with generated id
 mont new --id my-task --title "My Task"         # both id and title
-mont new --id my-task --parent parent-task      # set parent
-mont new --id my-task --precondition pre1,pre2  # set preconditions
+mont new --id my-task --before task1,task2      # set before targets
+mont new --id my-task --after pre1,pre2         # set after dependencies
 mont new --id my-task --validation test         # set validations
-mont new --id my-task --type bug                # set task type (feature, bug, epic)
+mont new --id my-task --type bug                # set task type (feature, bug)
 mont new --id my-task --editor                  # open in $EDITOR after creation
 mont new --id my-task --editor vim              # open in specific editor
 ```
@@ -58,11 +60,18 @@ mont new --id my-task --editor vim              # open in specific editor
 ```
 mont edit my-task --title "New Title"           # update title
 mont edit my-task --new-id new-id               # rename task (updates references)
-mont edit my-task --parent new-parent           # change parent
-mont edit my-task --precondition pre1,pre2      # replace preconditions
+mont edit my-task --before task1,task2          # replace before targets
+mont edit my-task --after pre1,pre2             # replace after dependencies
 mont edit my-task --validation test             # replace validations
 mont edit my-task --editor                      # open in $EDITOR
 mont edit my-task --resume /path/to/temp        # resume failed edit
+```
+
+### Deleting tasks
+
+```
+mont delete my-task                             # delete with confirmation prompt
+mont delete my-task --force                     # delete without confirmation
 ```
 
 ## Current output of `mont list` for this repo
@@ -70,18 +79,16 @@ mont edit my-task --resume /path/to/temp        # resume failed edit
 Items with ◉ icon are ready for work
 
 ```
-◉  mont-show Implement mont show command
-│ ◉    add-jj-lib Add jj-lib integration
-│ ├─╮
-│ ○ │  mont-complete Implement mont complete command
-├─╯ │
-│   ○  mont-start Implement mont start command
-├───╯
-○  cli-commands Mont CLI Commands
+◉    add-jj-lib Add jj-lib integration
+├─╮
+○ │  mont-complete Implement mont complete command
+  ○  mont-start Implement mont start command
+  ○  mont-llm-start Implement mont llm start
 ◉  global-settings Enable a global settings yml file in .tasks file.
 ◉  llm-specific-commands Think through support for a set of llm specific commands
-◉  mont-edit Add a mont edit command
-◉  plan-type
+◉  mont-delete Mont delete
+◉  mont-jot Need to add a new task type called 'jot'
+◉  mont-show Implement mont show command
 ◉  review-error-aesthetics Review error message aesthetics with Claude Code
 
 ◈  interview-validator Conduct interview to confirm changes [validator]
@@ -102,7 +109,8 @@ for now, but feel free to ask questions.
 - CLI: `mont ready` to show tasks ready to work on
 - CLI: `mont new` for creating new tasks with automatic ID generation
 - CLI: `mont edit` for editing tasks with ID rename and reference propagation
-- Task relationships: parent/child, preconditions, validations
+- CLI: `mont delete` for deleting tasks and cleaning up references
+- Task relationships: before/after ordering, validations
 - Validator tasks for defining reusable acceptance criteria
 
 
@@ -121,8 +129,7 @@ first, and optimized for agents later.
 I don't want `mont` to have some convoluted database it has to maintain, `mont` state should be
 entirely (or as much as possible) defined in the markdown files.
 
-In the yaml frontmatter of those files, you can set up dependencies between tasks, 
-parent-child relationships,
+In the yaml frontmatter of those files, you can set up dependencies between tasks
 and even designate certain tasks as "validators". Validators are just tasks that describe how to run
 some sort of validation on the codebase. Right now, for humans, they might be just helpful reminders, 
 but this is extremely helpful for your coding agent. Instead of having to string together a 

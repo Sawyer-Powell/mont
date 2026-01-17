@@ -101,13 +101,13 @@ fn find_connected_components(graph: &TaskGraph) -> Vec<TaskGraph> {
     for task in graph.values() {
         let task_idx = id_to_idx[task.id.as_str()];
 
-        if let Some(p) = &task.parent {
+        for p in &task.before {
             if let Some(&parent_idx) = id_to_idx.get(p.as_str()) {
                 union(&mut parent, task_idx, parent_idx);
             }
         }
 
-        for precond in &task.preconditions {
+        for precond in &task.after {
             if let Some(&precond_idx) = id_to_idx.get(precond.as_str()) {
                 union(&mut parent, task_idx, precond_idx);
             }
@@ -236,7 +236,6 @@ fn task_marker(task: &Task, graph: &TaskGraph) -> String {
     let is_available = !task.complete && !task.validator && graph::is_available(task, graph);
     let is_in_progress = task.in_progress.is_some();
     let is_bug = task.task_type == TaskType::Bug;
-    let is_epic = task.task_type == TaskType::Epic;
 
     if task.validator {
         "◈".purple().to_string()
@@ -246,8 +245,6 @@ fn task_marker(task: &Task, graph: &TaskGraph) -> String {
         "◐".yellow().to_string()
     } else if is_available && is_bug {
         "◉".red().to_string()
-    } else if is_available && is_epic {
-        "◉".cyan().to_string()
     } else if is_available {
         "◉".bright_green().to_string()
     } else {
@@ -259,7 +256,6 @@ fn format_task_line(task: &Task, graph: &TaskGraph) -> String {
     let is_available = !task.complete && !task.validator && graph::is_available(task, graph);
     let is_in_progress = task.in_progress.is_some();
     let is_bug = task.task_type == TaskType::Bug;
-    let is_epic = task.task_type == TaskType::Epic;
 
     let id_display = if task.complete {
         task.id.bright_black().bold().to_string()
@@ -269,8 +265,6 @@ fn format_task_line(task: &Task, graph: &TaskGraph) -> String {
         task.id.yellow().bold().to_string()
     } else if is_available && is_bug {
         task.id.red().bold().to_string()
-    } else if is_available && is_epic {
-        task.id.cyan().bold().to_string()
     } else if is_available {
         task.id.bright_green().bold().to_string()
     } else {
@@ -288,13 +282,6 @@ fn format_task_line(task: &Task, graph: &TaskGraph) -> String {
                 format!(" {}", "[bug]".bright_black())
             }
         }
-        TaskType::Epic => {
-            if is_available {
-                format!(" {}", "[epic]".cyan())
-            } else {
-                format!(" {}", "[epic]".bright_black())
-            }
-        }
         TaskType::Feature => String::new(),
     };
 
@@ -306,8 +293,6 @@ fn format_task_line(task: &Task, graph: &TaskGraph) -> String {
         format!("{}{}", title_truncated.yellow(), type_suffix)
     } else if is_available && is_bug {
         format!("{}{}", title_truncated.red(), type_suffix)
-    } else if is_available && is_epic {
-        format!("{}{}", title_truncated.cyan(), type_suffix)
     } else if is_available {
         format!("{}{}", title_truncated.bright_green(), type_suffix)
     } else {
@@ -333,8 +318,8 @@ mod tests {
     fn make_task(id: &str) -> Task {
         Task {
             id: id.to_string(),
-            parent: None,
-            preconditions: vec![],
+            before: vec![],
+            after: vec![],
             validations: vec![],
             title: Some(format!("{} title", id)),
             validator: false,
@@ -345,11 +330,11 @@ mod tests {
         }
     }
 
-    fn make_task_with_parent(id: &str, parent: &str) -> Task {
+    fn make_task_with_before(id: &str, before_id: &str) -> Task {
         Task {
             id: id.to_string(),
-            parent: Some(parent.to_string()),
-            preconditions: vec![],
+            before: vec![before_id.to_string()],
+            after: vec![],
             validations: vec![],
             title: Some(format!("{} title", id)),
             validator: false,
@@ -372,8 +357,8 @@ mod tests {
     #[test]
     fn test_render_chain() {
         let c = make_task("C");
-        let b = make_task_with_parent("B", "C");
-        let a = make_task_with_parent("A", "B");
+        let b = make_task_with_before("B", "C");
+        let a = make_task_with_before("A", "B");
 
         let graph = build_graph(vec![a, b, c]);
         let output = render_component(&graph);
@@ -389,11 +374,11 @@ mod tests {
     #[test]
     fn test_render_diamond() {
         let r = make_task("R");
-        let p = make_task_with_parent("P", "R");
-        let mut a = make_task_with_parent("A", "R");
-        a.preconditions = vec!["P".to_string()];
-        let mut b = make_task_with_parent("B", "R");
-        b.preconditions = vec!["P".to_string()];
+        let p = make_task_with_before("P", "R");
+        let mut a = make_task_with_before("A", "R");
+        a.after = vec!["P".to_string()];
+        let mut b = make_task_with_before("B", "R");
+        b.after = vec!["P".to_string()];
 
         let graph = build_graph(vec![r, p, a, b]);
         let output = render_component(&graph);
@@ -411,23 +396,23 @@ mod tests {
     fn test_render_parallel_diamond() {
         let z = make_task("Z");
 
-        let mut x = make_task_with_parent("X", "Z");
-        x.preconditions = vec!["C".to_string(), "D".to_string()];
+        let mut x = make_task_with_before("X", "Z");
+        x.after = vec!["C".to_string(), "D".to_string()];
 
-        let mut c = make_task_with_parent("C", "Z");
-        c.preconditions = vec!["P".to_string()];
-        let mut d = make_task_with_parent("D", "Z");
-        d.preconditions = vec!["P".to_string()];
+        let mut c = make_task_with_before("C", "Z");
+        c.after = vec!["P".to_string()];
+        let mut d = make_task_with_before("D", "Z");
+        d.after = vec!["P".to_string()];
 
-        let mut p = make_task_with_parent("P", "Z");
-        p.preconditions = vec!["A".to_string()];
+        let mut p = make_task_with_before("P", "Z");
+        p.after = vec!["A".to_string()];
 
-        let mut b = make_task_with_parent("B", "Z");
-        b.preconditions = vec!["A".to_string()];
-        let mut e = make_task_with_parent("E", "Z");
-        e.preconditions = vec!["B".to_string()];
+        let mut b = make_task_with_before("B", "Z");
+        b.after = vec!["A".to_string()];
+        let mut e = make_task_with_before("E", "Z");
+        e.after = vec!["B".to_string()];
 
-        let a = make_task_with_parent("A", "Z");
+        let a = make_task_with_before("A", "Z");
 
         let graph = build_graph(vec![a, b, c, d, e, p, x, z]);
         let output = render_component(&graph);
@@ -447,31 +432,26 @@ mod tests {
 
     #[test]
     fn test_render_with_task_types_and_states() {
-        let mut root = make_task("root");
-        root.parent = None;
+        let root = make_task("root");
 
-        let mut bug_task = make_task_with_parent("bug-task", "root");
+        let mut bug_task = make_task_with_before("bug-task", "root");
         bug_task.task_type = TaskType::Bug;
 
-        let mut epic_task = make_task_with_parent("epic-task", "root");
-        epic_task.task_type = TaskType::Epic;
-
-        let mut in_progress = make_task_with_parent("in-progress", "root");
+        let mut in_progress = make_task_with_before("in-progress", "root");
         in_progress.in_progress = Some(1);
 
-        let mut completed = make_task_with_parent("completed", "root");
+        let mut completed = make_task_with_before("completed", "root");
         completed.complete = true;
 
         let mut validator = make_task("validator-task");
         validator.validator = true;
 
-        let graph = build_graph(vec![root, bug_task, epic_task, in_progress, completed, validator]);
+        let graph = build_graph(vec![root, bug_task, in_progress, completed, validator]);
         let output = render_component(&graph);
         let stripped = strip_ansi(&output);
 
         println!("\n=== Task Types and States ===\n{}", stripped);
 
         assert!(stripped.contains("[bug]"));
-        assert!(stripped.contains("[epic]"));
     }
 }

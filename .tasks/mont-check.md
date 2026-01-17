@@ -1,7 +1,6 @@
 ---
 id: mont-check
 title: Implement mont check command, and internals
-parent: cli-commands
 complete: true
 validators:
     - test

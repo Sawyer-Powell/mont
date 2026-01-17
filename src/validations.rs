@@ -7,17 +7,17 @@ pub type TaskGraph = HashMap<String, Task>;
 
 #[derive(Error, Debug, PartialEq)]
 pub enum ValidationError {
-    #[error("task '{task_id}' references invalid parent '{parent_id}'")]
-    InvalidParent { task_id: String, parent_id: String },
-    #[error("task '{task_id}' references invalid precondition '{precondition_id}'")]
-    InvalidPrecondition {
+    #[error("task '{task_id}' references invalid before target '{before_id}'")]
+    InvalidBefore { task_id: String, before_id: String },
+    #[error("task '{task_id}' references invalid after dependency '{after_id}'")]
+    InvalidAfter {
         task_id: String,
-        precondition_id: String,
+        after_id: String,
     },
-    #[error("task '{task_id}' has validator '{precondition_id}' as precondition (use validations instead)")]
-    PreconditionIsValidator {
+    #[error("task '{task_id}' has validator '{after_id}' as after dependency (use validations instead)")]
+    AfterIsValidator {
         task_id: String,
-        precondition_id: String,
+        after_id: String,
     },
     #[error("task '{task_id}' references non-existent validation '{validation_id}'")]
     ValidationNotFound {
@@ -29,7 +29,7 @@ pub enum ValidationError {
         task_id: String,
         validation_id: String,
     },
-    #[error("task '{task_id}' references validator '{validation_id}' which has parents (must be root validator)")]
+    #[error("task '{task_id}' references validator '{validation_id}' which has a before target (must be root validator)")]
     ValidationNotRootValidator {
         task_id: String,
         validation_id: String,
@@ -43,33 +43,33 @@ pub enum ValidationError {
 /// Validates a single task's references against a graph.
 ///
 /// Checks that:
-/// - Parent reference points to an existing task
-/// - All precondition references point to existing tasks
-/// - Non-validator tasks cannot have validators as preconditions
+/// - Before reference points to an existing task
+/// - All after references point to existing tasks
+/// - Non-validator tasks cannot have validators as after dependencies
 /// - All validation references point to tasks marked as validators
-/// - All validation references point to root validators (no parents)
+/// - All validation references point to root validators (no before target)
 pub fn validate_task(task: &Task, graph: &TaskGraph) -> Result<(), ValidationError> {
-    if let Some(parent_id) = &task.parent {
-        if !graph.contains_key(parent_id) {
-            return Err(ValidationError::InvalidParent {
+    for before_id in &task.before {
+        if !graph.contains_key(before_id) {
+            return Err(ValidationError::InvalidBefore {
                 task_id: task.id.clone(),
-                parent_id: parent_id.clone(),
+                before_id: before_id.clone(),
             });
         }
     }
 
-    for precondition_id in &task.preconditions {
-        let Some(precondition) = graph.get(precondition_id) else {
-            return Err(ValidationError::InvalidPrecondition {
+    for after_id in &task.after {
+        let Some(after_task) = graph.get(after_id) else {
+            return Err(ValidationError::InvalidAfter {
                 task_id: task.id.clone(),
-                precondition_id: precondition_id.clone(),
+                after_id: after_id.clone(),
             });
         };
 
-        if !task.validator && precondition.validator {
-            return Err(ValidationError::PreconditionIsValidator {
+        if !task.validator && after_task.validator {
+            return Err(ValidationError::AfterIsValidator {
                 task_id: task.id.clone(),
-                precondition_id: precondition_id.clone(),
+                after_id: after_id.clone(),
             });
         }
     }
@@ -89,7 +89,7 @@ pub fn validate_task(task: &Task, graph: &TaskGraph) -> Result<(), ValidationErr
             });
         }
 
-        if validator.parent.is_some() {
+        if !validator.before.is_empty() {
             return Err(ValidationError::ValidationNotRootValidator {
                 task_id: task.id.clone(),
                 validation_id: validation.id.clone(),
@@ -154,7 +154,7 @@ fn dfs_cycle(graph: &TaskGraph, task_id: &str, colors: &mut HashMap<String, Colo
 
     let task = &graph[task_id];
 
-    let neighbors = task.parent.iter().chain(task.preconditions.iter());
+    let neighbors = task.before.iter().chain(task.after.iter());
     for neighbor_id in neighbors {
         let neighbor_color = colors.get(neighbor_id).copied().unwrap_or(Color::Black);
 
@@ -181,8 +181,8 @@ mod tests {
     fn make_task(id: &str) -> Task {
         Task {
             id: id.to_string(),
-            parent: None,
-            preconditions: vec![],
+            before: vec![],
+            after: vec![],
             validations: vec![],
             title: None,
             validator: false,
@@ -196,8 +196,8 @@ mod tests {
     fn make_validator(id: &str) -> Task {
         Task {
             id: id.to_string(),
-            parent: None,
-            preconditions: vec![],
+            before: vec![],
+            after: vec![],
             validations: vec![],
             title: None,
             validator: true,
@@ -210,17 +210,17 @@ mod tests {
 
     #[test]
     fn test_validate_task_valid() {
-        let parent = make_task("parent");
+        let before_target = make_task("before-target");
         let validator = make_validator("validator");
         let mut task = make_task("task");
-        task.parent = Some("parent".to_string());
+        task.before = vec!["before-target".to_string()];
         task.validations = vec![ValidationItem {
             id: "validator".to_string(),
             status: ValidationStatus::Pending,
         }];
 
         let mut graph = TaskGraph::new();
-        graph.insert("parent".to_string(), parent);
+        graph.insert("before-target".to_string(), before_target);
         graph.insert("validator".to_string(), validator);
         graph.insert("task".to_string(), task.clone());
 
@@ -228,44 +228,44 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_task_invalid_parent() {
+    fn test_validate_task_invalid_before() {
         let mut task = make_task("task");
-        task.parent = Some("nonexistent".to_string());
+        task.before = vec!["nonexistent".to_string()];
 
         let mut graph = TaskGraph::new();
         graph.insert("task".to_string(), task.clone());
 
         assert_eq!(
             validate_task(&task, &graph),
-            Err(ValidationError::InvalidParent {
+            Err(ValidationError::InvalidBefore {
                 task_id: "task".to_string(),
-                parent_id: "nonexistent".to_string(),
+                before_id: "nonexistent".to_string(),
             })
         );
     }
 
     #[test]
-    fn test_validate_task_invalid_precondition() {
+    fn test_validate_task_invalid_after() {
         let mut task = make_task("task");
-        task.preconditions = vec!["nonexistent".to_string()];
+        task.after = vec!["nonexistent".to_string()];
 
         let mut graph = TaskGraph::new();
         graph.insert("task".to_string(), task.clone());
 
         assert_eq!(
             validate_task(&task, &graph),
-            Err(ValidationError::InvalidPrecondition {
+            Err(ValidationError::InvalidAfter {
                 task_id: "task".to_string(),
-                precondition_id: "nonexistent".to_string(),
+                after_id: "nonexistent".to_string(),
             })
         );
     }
 
     #[test]
-    fn test_validate_task_precondition_is_validator() {
+    fn test_validate_task_after_is_validator() {
         let validator = make_validator("validator");
         let mut task = make_task("task");
-        task.preconditions = vec!["validator".to_string()];
+        task.after = vec!["validator".to_string()];
 
         let mut graph = TaskGraph::new();
         graph.insert("validator".to_string(), validator);
@@ -273,9 +273,9 @@ mod tests {
 
         assert_eq!(
             validate_task(&task, &graph),
-            Err(ValidationError::PreconditionIsValidator {
+            Err(ValidationError::AfterIsValidator {
                 task_id: "task".to_string(),
-                precondition_id: "validator".to_string(),
+                after_id: "validator".to_string(),
             })
         );
     }
@@ -296,8 +296,8 @@ mod tests {
     fn test_validate_graph_cycle() {
         let mut a = make_task("a");
         let mut b = make_task("b");
-        a.parent = Some("b".to_string());
-        b.parent = Some("a".to_string());
+        a.before = vec!["b".to_string()];
+        b.before = vec!["a".to_string()];
 
         let result = validate_graph(vec![a, b]);
         assert_eq!(result, Err(ValidationError::CycleDetected));
@@ -305,11 +305,11 @@ mod tests {
 
     #[test]
     fn test_validate_graph_valid() {
-        let parent = make_task("parent");
+        let before_target = make_task("before-target");
         let mut child = make_task("child");
-        child.parent = Some("parent".to_string());
+        child.before = vec!["before-target".to_string()];
 
-        let result = validate_graph(vec![parent, child]);
+        let result = validate_graph(vec![before_target, child]);
         assert!(result.is_ok());
         assert_eq!(result.unwrap().len(), 2);
     }

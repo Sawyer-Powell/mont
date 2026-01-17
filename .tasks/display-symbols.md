@@ -1,8 +1,9 @@
 ---
 id: display-symbols
 title: Cell-to-ASCII symbol conversion
-parent: display-refactor
-preconditions:
+before:
+  - display-refactor
+after:
   - display-routing
 validations:
   - test

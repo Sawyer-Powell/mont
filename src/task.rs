@@ -5,7 +5,6 @@ use thiserror::Error;
 #[serde(rename_all = "lowercase")]
 pub enum TaskType {
     Bug,
-    Epic,
     #[default]
     Feature,
 }
@@ -73,8 +72,8 @@ pub enum ParseError {
     MissingFrontmatter,
     #[error("invalid yaml: {0}")]
     InvalidYaml(#[from] serde_yaml::Error),
-    #[error("validator task '{0}' must not have preconditions")]
-    ValidatorWithPreconditions(String),
+    #[error("validator task '{0}' must not have after dependencies")]
+    ValidatorWithAfter(String),
     #[error("validator task '{0}' cannot be marked complete")]
     ValidatorMarkedComplete(String),
 }
@@ -82,9 +81,12 @@ pub enum ParseError {
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct Task {
     pub id: String,
-    pub parent: Option<String>,
+    /// This task must complete before these referenced tasks
     #[serde(default)]
-    pub preconditions: Vec<String>,
+    pub before: Vec<String>,
+    /// This task can only start after these tasks complete
+    #[serde(default)]
+    pub after: Vec<String>,
     #[serde(default)]
     pub validations: Vec<ValidationItem>,
     pub title: Option<String>,
@@ -116,8 +118,9 @@ impl Task {
 ///
 /// let content = r#"---
 /// id: test-task
-/// parent: parent1
-/// preconditions:
+/// before:
+///   - parent1
+/// after:
 ///   - pre1
 /// validations:
 ///   - val1
@@ -129,8 +132,8 @@ impl Task {
 ///
 /// let task = parse(content).unwrap();
 /// assert_eq!(task.id, "test-task");
-/// assert_eq!(task.parent, Some("parent1".to_string()));
-/// assert_eq!(task.preconditions, vec!["pre1"]);
+/// assert_eq!(task.before, vec!["parent1".to_string()]);
+/// assert_eq!(task.after, vec!["pre1"]);
 /// assert_eq!(task.validations.len(), 1);
 /// assert_eq!(task.validations[0].id, "val1");
 /// assert_eq!(task.validations[0].status, ValidationStatus::Pending);
@@ -139,14 +142,15 @@ impl Task {
 /// assert_eq!(task.description, "This is the task description.");
 /// ```
 ///
-/// Parsing a validator task (no preconditions allowed):
+/// Parsing a validator task (no after dependencies allowed):
 /// ```
 /// use mont::task::{parse, ParseError};
 ///
 /// let content = r#"---
 /// id: test-validator
 /// validator: true
-/// parent: parent1
+/// before:
+///   - parent1
 /// ---
 ///
 /// Validator description.
@@ -154,7 +158,7 @@ impl Task {
 ///
 /// let task = parse(content).unwrap();
 /// assert!(task.validator);
-/// assert_eq!(task.parent, Some("parent1".to_string()));
+/// assert_eq!(task.before, vec!["parent1".to_string()]);
 /// ```
 ///
 /// Missing frontmatter returns an error:
@@ -180,14 +184,14 @@ impl Task {
 /// assert!(matches!(result, Err(ParseError::InvalidYaml(_))));
 /// ```
 ///
-/// Validator with preconditions returns an error:
+/// Validator with after dependencies returns an error:
 /// ```
 /// use mont::task::{parse, ParseError};
 ///
 /// let content = r#"---
 /// id: bad-validator
 /// validator: true
-/// preconditions:
+/// after:
 ///   - some-task
 /// ---
 ///
@@ -195,7 +199,7 @@ impl Task {
 /// "#;
 ///
 /// let result = parse(content);
-/// assert!(matches!(result, Err(ParseError::ValidatorWithPreconditions(_))));
+/// assert!(matches!(result, Err(ParseError::ValidatorWithAfter(_))));
 /// ```
 pub fn parse(content: &str) -> Result<Task, ParseError> {
     let Some(start) = content.find("---") else {
@@ -211,8 +215,8 @@ pub fn parse(content: &str) -> Result<Task, ParseError> {
     let mut task: Task = serde_yaml::from_str(yaml)?;
     task.description = description;
 
-    if task.validator && !task.preconditions.is_empty() {
-        return Err(ParseError::ValidatorWithPreconditions(task.id));
+    if task.validator && !task.after.is_empty() {
+        return Err(ParseError::ValidatorWithAfter(task.id));
     }
 
     if task.validator && task.complete {
@@ -230,9 +234,10 @@ mod tests {
     fn test_parse_valid_task() {
         let content = r#"---
 id: test-task
-parent: parent1
-preconditions:
-  - pre1
+before:
+  - task1
+after:
+  - dep1
 validations:
   - val1
 title: Test Task
@@ -242,8 +247,8 @@ Task description here.
 "#;
         let task = parse(content).unwrap();
         assert_eq!(task.id, "test-task");
-        assert_eq!(task.parent, Some("parent1".to_string()));
-        assert_eq!(task.preconditions, vec!["pre1"]);
+        assert_eq!(task.before, vec!["task1".to_string()]);
+        assert_eq!(task.after, vec!["dep1"]);
         assert_eq!(task.validations.len(), 1);
         assert_eq!(task.validations[0].id, "val1");
         assert_eq!(task.validations[0].status, ValidationStatus::Pending);
@@ -253,11 +258,12 @@ Task description here.
     }
 
     #[test]
-    fn test_parse_validator_without_preconditions() {
+    fn test_parse_validator_without_after() {
         let content = r#"---
 id: my-validator
 validator: true
-parent: parent1
+before:
+  - task1
 ---
 
 Validator description.
@@ -265,16 +271,16 @@ Validator description.
         let task = parse(content).unwrap();
         assert_eq!(task.id, "my-validator");
         assert!(task.validator);
-        assert_eq!(task.parent, Some("parent1".to_string()));
-        assert!(task.preconditions.is_empty());
+        assert_eq!(task.before, vec!["task1".to_string()]);
+        assert!(task.after.is_empty());
     }
 
     #[test]
-    fn test_parse_validator_with_preconditions_fails() {
+    fn test_parse_validator_with_after_fails() {
         let content = r#"---
 id: bad-validator
 validator: true
-preconditions:
+after:
   - some-task
 ---
 
@@ -283,7 +289,7 @@ Should fail.
         let result = parse(content);
         assert!(matches!(
             result,
-            Err(ParseError::ValidatorWithPreconditions(id)) if id == "bad-validator"
+            Err(ParseError::ValidatorWithAfter(id)) if id == "bad-validator"
         ));
     }
 
@@ -339,8 +345,8 @@ Minimal task.
 "#;
         let task = parse(content).unwrap();
         assert_eq!(task.id, "minimal");
-        assert!(task.parent.is_none());
-        assert!(task.preconditions.is_empty());
+        assert!(task.before.is_empty());
+        assert!(task.after.is_empty());
         assert!(task.validations.is_empty());
         assert!(task.title.is_none());
         assert!(!task.validator);
@@ -433,21 +439,6 @@ App crashes when user submits login form with empty password field.
             task.title,
             Some("Fix crash on login with empty password".to_string())
         );
-    }
-
-    #[test]
-    fn test_parse_type_epic() {
-        let content = r#"---
-id: user-auth
-title: User Authentication
-type: epic
----
-
-Epic for all authentication features.
-"#;
-        let task = parse(content).unwrap();
-        assert_eq!(task.id, "user-auth");
-        assert_eq!(task.task_type, TaskType::Epic);
     }
 
     #[test]

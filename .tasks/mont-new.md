@@ -2,8 +2,7 @@
 id: mont-new
 complete: true
 title: Implement mont new command
-parent: cli-commands
-preconditions:
+after:
    - editor-resolution
    - mont-check
 validators:

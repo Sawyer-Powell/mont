@@ -23,16 +23,16 @@ struct TaskFields {
     /// Description (markdown body)
     #[arg(long, short)]
     description: Option<String>,
-    /// Parent task ID
-    #[arg(long, short)]
-    parent: Option<String>,
-    /// Precondition task IDs (comma-separated or repeat flag)
+    /// Before target task IDs (comma-separated or repeat flag)
+    #[arg(long, short, value_delimiter = ',')]
+    before: Vec<String>,
+    /// After dependency task IDs (comma-separated or repeat flag)
     #[arg(long, value_delimiter = ',')]
-    precondition: Vec<String>,
+    after: Vec<String>,
     /// Validation task IDs (comma-separated or repeat flag)
     #[arg(long, value_delimiter = ',')]
     validation: Vec<String>,
-    /// Task type (feature, bug, epic)
+    /// Task type (feature, bug)
     #[arg(long, short = 'T', value_parser = parse_task_type)]
     r#type: Option<TaskType>,
     /// Open in editor after creation/editing (optionally specify editor name)
@@ -63,7 +63,7 @@ enum Commands {
         #[command(flatten)]
         fields: TaskFields,
         /// Resume editing a temp file from a previous failed validation
-        #[arg(long, conflicts_with_all = ["id", "title", "description", "parent", "precondition", "validation", "type"])]
+        #[arg(long, conflicts_with_all = ["id", "title", "description", "before", "after", "validation", "type"])]
         resume: Option<PathBuf>,
     },
     /// Edit an existing task
@@ -76,8 +76,16 @@ enum Commands {
         #[command(flatten)]
         fields: TaskFields,
         /// Resume editing a temp file from a previous failed validation
-        #[arg(long, conflicts_with_all = ["new_id", "title", "description", "parent", "precondition", "validation", "type"])]
+        #[arg(long, conflicts_with_all = ["new_id", "title", "description", "before", "after", "validation", "type"])]
         resume: Option<PathBuf>,
+    },
+    /// Delete a task and remove all references to it
+    Delete {
+        /// Task ID to delete
+        id: String,
+        /// Force deletion without confirmation prompt
+        #[arg(long, short)]
+        force: bool,
     },
 }
 
@@ -87,9 +95,8 @@ fn parse_task_type(s: &str) -> Result<TaskType, String> {
     match s.to_lowercase().as_str() {
         "feature" => Ok(TaskType::Feature),
         "bug" => Ok(TaskType::Bug),
-        "epic" => Ok(TaskType::Epic),
         _ => Err(format!(
-            "invalid task type '{}', must be one of: feature, bug, epic",
+            "invalid task type '{}', must be one of: feature, bug",
             s
         )),
     }
@@ -134,6 +141,12 @@ fn main() {
             resume,
         } => {
             if let Err(e) = edit_task(TASKS_DIR, &id, new_id, fields, resume) {
+                eprint!("{}", e);
+                std::process::exit(1);
+            }
+        }
+        Commands::Delete { id, force } => {
+            if let Err(e) = delete_task(TASKS_DIR, &id, force) {
                 eprint!("{}", e);
                 std::process::exit(1);
             }
@@ -225,7 +238,6 @@ fn ready_tasks() -> Result<(), AppError> {
         let title = render::truncate_title(task.title.as_deref().unwrap_or(""));
         let type_tag = match task.task_type {
             TaskType::Bug => format!("{}", "[bug]".red().bold()),
-            TaskType::Epic => format!("{}", "[epic]".cyan().bold()),
             TaskType::Feature => format!("{}", "[feature]".bright_green().bold()),
         };
         println!(
@@ -325,8 +337,8 @@ fn new_task(
         &task_id,
         &fields.title,
         &fields.description,
-        &fields.parent,
-        &fields.precondition,
+        &fields.before,
+        &fields.after,
         &fields.validation,
         &fields.r#type,
     );
@@ -398,8 +410,8 @@ fn edit_task(
     let has_changes = new_id.is_some()
         || fields.title.is_some()
         || fields.description.is_some()
-        || fields.parent.is_some()
-        || !fields.precondition.is_empty()
+        || !fields.before.is_empty()
+        || !fields.after.is_empty()
         || !fields.validation.is_empty()
         || fields.r#type.is_some();
 
@@ -447,6 +459,153 @@ fn edit_task(
     }
 
     Ok(())
+}
+
+fn delete_task(tasks_dir: &str, id: &str, force: bool) -> Result<(), AppError> {
+    let dir = PathBuf::from(tasks_dir);
+
+    if !dir.exists() {
+        return Err(AppError::DirNotFound(tasks_dir.to_string()));
+    }
+
+    let file_path = dir.join(format!("{}.md", id));
+    if !file_path.exists() {
+        return Err(AppError::TaskNotFound {
+            task_id: id.to_string(),
+            tasks_dir: tasks_dir.to_string(),
+        });
+    }
+
+    let all_tasks = load_existing_tasks(&dir)?;
+
+    // Find all references to this task
+    let mut references: Vec<(String, String)> = Vec::new(); // (task_id, reference_type)
+
+    for task in &all_tasks {
+        if task.id == id {
+            continue;
+        }
+
+        if task.before.contains(&id.to_string()) {
+            references.push((task.id.clone(), "before".to_string()));
+        }
+
+        for dep in &task.after {
+            if dep == id {
+                references.push((task.id.clone(), "after".to_string()));
+            }
+        }
+
+        for val in &task.validations {
+            if val.id == id {
+                references.push((task.id.clone(), "validation".to_string()));
+            }
+        }
+    }
+
+    // Show summary and ask for confirmation
+    if !force {
+        println!("{} {}", "Deleting task:".bold(), id.bright_yellow());
+
+        if references.is_empty() {
+            println!("  No other tasks reference this task.");
+        } else {
+            println!("\n{}:", "References to remove".bold());
+            for (task_id, ref_type) in &references {
+                println!("  {} {} reference in {}", "•".red(), ref_type, task_id.cyan());
+            }
+        }
+
+        println!();
+        print!("Continue? [y/N] ");
+        std::io::Write::flush(&mut std::io::stdout())
+            .with_context("failed to flush stdout")?;
+
+        let mut input = String::new();
+        std::io::stdin()
+            .read_line(&mut input)
+            .with_context("failed to read input")?;
+
+        if !input.trim().eq_ignore_ascii_case("y") {
+            println!("Aborted.");
+            return Ok(());
+        }
+    }
+
+    // Remove references from other tasks
+    for (task_id, _) in &references {
+        let task_path = dir.join(format!("{}.md", task_id));
+        let content = std::fs::read_to_string(&task_path)
+            .with_context(&format!("failed to read {}", task_path.display()))?;
+
+        let updated = remove_reference_from_content(&content, id);
+
+        std::fs::write(&task_path, &updated)
+            .with_context(&format!("failed to write {}", task_path.display()))?;
+
+        println!("  updated: {}", task_id.cyan());
+    }
+
+    // Delete the task file
+    std::fs::remove_file(&file_path)
+        .with_context(&format!("failed to remove {}", file_path.display()))?;
+
+    println!("{} {}", "deleted:".red(), id.bright_yellow());
+
+    Ok(())
+}
+
+fn remove_reference_from_content(content: &str, id_to_remove: &str) -> String {
+    let mut result = String::new();
+    let mut in_frontmatter = false;
+    let mut delimiter_count = 0;
+    let mut in_list_section = false;
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+
+        if trimmed == "---" {
+            delimiter_count += 1;
+            in_frontmatter = delimiter_count == 1;
+            result.push_str(line);
+            result.push('\n');
+            in_list_section = false;
+            continue;
+        }
+
+        if in_frontmatter && delimiter_count < 2 {
+            // Handle before: id_to_remove - remove the entire line
+            if trimmed.starts_with("before:") {
+                let value = trimmed.strip_prefix("before:").unwrap().trim();
+                if value == id_to_remove {
+                    continue; // Skip this line entirely
+                }
+            }
+
+            // Track if we're in a list section (after:, validations:)
+            if trimmed.ends_with(':') && !trimmed.contains(' ') {
+                in_list_section = trimmed == "after:" || trimmed == "validations:";
+            }
+
+            // Handle list items: - id_to_remove
+            if in_list_section && trimmed.starts_with("- ") {
+                let value = trimmed.strip_prefix("- ").unwrap().trim();
+                if value == id_to_remove {
+                    continue; // Skip this line entirely
+                }
+            }
+        }
+
+        result.push_str(line);
+        result.push('\n');
+    }
+
+    // Remove trailing newline if original didn't have one
+    if !content.ends_with('\n') && result.ends_with('\n') {
+        result.pop();
+    }
+
+    result
 }
 
 fn edit_with_editor(
@@ -586,14 +745,19 @@ fn merge_task_content(
 ) -> String {
     // Use provided fields or fall back to original values
     let title = fields.title.as_ref().or(original.title.as_ref());
-    let parent = fields.parent.as_ref().or(original.parent.as_ref());
     let task_type = fields.r#type.as_ref().or(Some(&original.task_type));
 
     // For lists, use provided if non-empty, otherwise keep original
-    let preconditions: Vec<String> = if !fields.precondition.is_empty() {
-        fields.precondition.clone()
+    let before_targets: Vec<String> = if !fields.before.is_empty() {
+        fields.before.clone()
     } else {
-        original.preconditions.clone()
+        original.before.clone()
+    };
+
+    let after_deps: Vec<String> = if !fields.after.is_empty() {
+        fields.after.clone()
+    } else {
+        original.after.clone()
     };
 
     let validations_list: Vec<String> = if !fields.validation.is_empty() {
@@ -613,8 +777,8 @@ fn merge_task_content(
         new_id,
         &title.cloned(),
         &body,
-        &parent.cloned(),
-        &preconditions,
+        &before_targets,
+        &after_deps,
         &validations_list,
         &task_type.cloned(),
     )
@@ -656,16 +820,18 @@ fn update_task_references(
     for task in all_tasks.iter_mut() {
         let mut changed = false;
 
-        // Update parent reference
-        if task.parent.as_deref() == Some(old_id) {
-            task.parent = Some(new_id.to_string());
-            changed = true;
+        // Update before references
+        for target in task.before.iter_mut() {
+            if target == old_id {
+                *target = new_id.to_string();
+                changed = true;
+            }
         }
 
-        // Update preconditions
-        for pre in task.preconditions.iter_mut() {
-            if pre == old_id {
-                *pre = new_id.to_string();
+        // Update after dependencies
+        for dep in task.after.iter_mut() {
+            if dep == old_id {
+                *dep = new_id.to_string();
                 changed = true;
             }
         }
@@ -699,7 +865,7 @@ fn update_task_references(
 
 fn update_references_in_content(content: &str, old_id: &str, new_id: &str) -> String {
     // Update references in YAML frontmatter
-    // This handles: parent: old_id, - old_id in lists
+    // This handles: before: old_id, - old_id in lists
     let mut result = String::new();
     let mut in_frontmatter = false;
     let mut delimiter_count = 0;
@@ -716,13 +882,13 @@ fn update_references_in_content(content: &str, old_id: &str, new_id: &str) -> St
         }
 
         if in_frontmatter && delimiter_count < 2 {
-            // Handle parent: old_id
-            if trimmed.starts_with("parent:") {
-                let value = trimmed.strip_prefix("parent:").unwrap().trim();
+            // Handle before: old_id
+            if trimmed.starts_with("before:") {
+                let value = trimmed.strip_prefix("before:").unwrap().trim();
                 if value == old_id {
                     let indent = line.len() - line.trim_start().len();
                     result.push_str(&" ".repeat(indent));
-                    result.push_str(&format!("parent: {}\n", new_id));
+                    result.push_str(&format!("before: {}\n", new_id));
                     continue;
                 }
             }
@@ -898,8 +1064,8 @@ fn build_task_content(
     id: &str,
     title: &Option<String>,
     description: &Option<String>,
-    parent: &Option<String>,
-    preconditions: &[String],
+    before: &[String],
+    after: &[String],
     validations_list: &[String],
     task_type: &Option<TaskType>,
 ) -> String {
@@ -911,23 +1077,25 @@ fn build_task_content(
         content.push_str(&format!("title: {}\n", t));
     }
 
-    if let Some(p) = parent {
-        content.push_str(&format!("parent: {}\n", p));
-    }
-
     if let Some(tt) = task_type {
         let type_str = match tt {
             TaskType::Feature => "feature",
             TaskType::Bug => "bug",
-            TaskType::Epic => "epic",
         };
         content.push_str(&format!("type: {}\n", type_str));
     }
 
-    if !preconditions.is_empty() {
-        content.push_str("preconditions:\n");
-        for pre in preconditions {
-            content.push_str(&format!("  - {}\n", pre));
+    if !before.is_empty() {
+        content.push_str("before:\n");
+        for target in before {
+            content.push_str(&format!("  - {}\n", target));
+        }
+    }
+
+    if !after.is_empty() {
+        content.push_str("after:\n");
+        for dep in after {
+            content.push_str(&format!("  - {}\n", dep));
         }
     }
 
@@ -961,8 +1129,8 @@ mod tests {
         TaskFields {
             title: None,
             description: None,
-            parent: None,
-            precondition: vec![],
+            before: vec![],
+            after: vec![],
             validation: vec![],
             r#type: None,
             editor: None,
@@ -1049,10 +1217,10 @@ mod tests {
         };
         new_task(tasks_dir, Some("parent-task".to_string()), parent_fields, None).unwrap();
 
-        // Create child task with parent reference
+        // Create child task with before reference
         let child_fields = TaskFields {
             title: Some("Child".to_string()),
-            parent: Some("parent-task".to_string()),
+            before: vec!["parent-task".to_string()],
             ..empty_fields()
         };
         new_task(tasks_dir, Some("child-task".to_string()), child_fields, None).unwrap();
@@ -1071,9 +1239,9 @@ mod tests {
         assert!(!temp_dir.path().join("parent-task.md").exists());
         assert!(temp_dir.path().join("renamed-parent.md").exists());
 
-        // Verify child's parent reference was updated
+        // Verify child's before reference was updated
         let child_content = std::fs::read_to_string(temp_dir.path().join("child-task.md")).unwrap();
-        assert!(child_content.contains("parent: renamed-parent"));
-        assert!(!child_content.contains("parent: parent-task"));
+        assert!(child_content.contains("- renamed-parent"));
+        assert!(!child_content.contains("- parent-task"));
     }
 }

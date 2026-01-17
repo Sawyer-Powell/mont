@@ -1,7 +1,6 @@
 ---
 id: mont-list
 title: Implement mont list command
-parent: cli-commands
 complete: true
 validations:
   - test

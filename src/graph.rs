@@ -16,8 +16,8 @@ pub use crate::validations::ValidationError as GraphError;
 /// A task is available if:
 /// - It is not complete
 /// - It is not a validator
-/// - All preconditions are complete
-/// - All children are complete
+/// - All after dependencies are complete
+/// - All subtasks are complete (tasks that have this task as before target)
 pub fn available_tasks(graph: &TaskGraph) -> Vec<&Task> {
     graph
         .values()
@@ -27,19 +27,19 @@ pub fn available_tasks(graph: &TaskGraph) -> Vec<&Task> {
 
 /// Check if a specific task is available to work on.
 pub fn is_available(task: &Task, graph: &TaskGraph) -> bool {
-    // Check all preconditions are complete
-    for precond_id in &task.preconditions {
-        if let Some(precond) = graph.get(precond_id) {
-            if !precond.complete {
+    // Check all after dependencies are complete
+    for after_id in &task.after {
+        if let Some(after_task) = graph.get(after_id) {
+            if !after_task.complete {
                 return false;
             }
         }
     }
 
-    // Check all children are complete (tasks that have this task as parent)
+    // Check all subtasks are complete (tasks that have this task as before target)
     for other_task in graph.values() {
-        if let Some(parent_id) = &other_task.parent {
-            if parent_id == &task.id && !other_task.complete {
+        for before_id in &other_task.before {
+            if before_id == &task.id && !other_task.complete {
                 return false;
             }
         }
@@ -55,9 +55,11 @@ pub fn is_group_complete(task: &Task, graph: &TaskGraph) -> bool {
         return false;
     }
 
-    if let Some(parent_id) = &task.parent {
-        if let Some(parent) = graph.get(parent_id) {
-            return is_group_complete(parent, graph);
+    for before_id in &task.before {
+        if let Some(before_target) = graph.get(before_id) {
+            if !is_group_complete(before_target, graph) {
+                return false;
+            }
         }
     }
 
@@ -65,7 +67,7 @@ pub fn is_group_complete(task: &Task, graph: &TaskGraph) -> bool {
 }
 
 /// Returns connected components of tasks using union-find.
-/// Tasks are connected if they share parent, precondition, or validation relationships.
+/// Tasks are connected if they share before, after, or validation relationships.
 pub fn connected_components(graph: &TaskGraph) -> Vec<Vec<&str>> {
     let task_ids: Vec<&str> = graph.keys().map(|s| s.as_str()).collect();
     if task_ids.is_empty() {
@@ -100,15 +102,15 @@ pub fn connected_components(graph: &TaskGraph) -> Vec<Vec<&str>> {
     for task in graph.values() {
         let task_idx = id_to_idx[task.id.as_str()];
 
-        if let Some(p) = &task.parent {
-            if let Some(&parent_idx) = id_to_idx.get(p.as_str()) {
-                union(&mut parent, task_idx, parent_idx);
+        for before_id in &task.before {
+            if let Some(&before_idx) = id_to_idx.get(before_id.as_str()) {
+                union(&mut parent, task_idx, before_idx);
             }
         }
 
-        for precond in &task.preconditions {
-            if let Some(&precond_idx) = id_to_idx.get(precond.as_str()) {
-                union(&mut parent, task_idx, precond_idx);
+        for after_id in &task.after {
+            if let Some(&after_idx) = id_to_idx.get(after_id.as_str()) {
+                union(&mut parent, task_idx, after_idx);
             }
         }
 
@@ -130,7 +132,7 @@ pub fn connected_components(graph: &TaskGraph) -> Vec<Vec<&str>> {
 }
 
 /// Returns tasks in topological order (dependencies before dependents).
-/// Children come before parents, preconditions come before tasks that depend on them.
+/// Subtasks come before their before targets, after dependencies come before tasks that depend on them.
 pub fn topological_sort(graph: &TaskGraph) -> Vec<&Task> {
     if graph.is_empty() {
         return Vec::new();
@@ -145,25 +147,25 @@ pub fn topological_sort(graph: &TaskGraph) -> Vec<&Task> {
         in_degree.entry(task.id.as_str()).or_insert(0);
         dependents.entry(task.id.as_str()).or_default();
 
-        // Preconditions: this task depends on precondition completing
-        for precond in &task.preconditions {
-            if task_ids.contains(precond.as_str()) {
+        // After: this task depends on after dependency completing
+        for after_id in &task.after {
+            if task_ids.contains(after_id.as_str()) {
                 dependents
-                    .entry(precond.as_str())
+                    .entry(after_id.as_str())
                     .or_default()
                     .push(&task.id);
                 *in_degree.entry(task.id.as_str()).or_insert(0) += 1;
             }
         }
 
-        // Parent: parent depends on this task completing (child before parent)
-        if let Some(parent) = &task.parent {
-            if task_ids.contains(parent.as_str()) {
+        // Before: before targets depend on this task completing (subtask before target)
+        for before_id in &task.before {
+            if task_ids.contains(before_id.as_str()) {
                 dependents
                     .entry(task.id.as_str())
                     .or_default()
-                    .push(parent.as_str());
-                *in_degree.entry(parent.as_str()).or_insert(0) += 1;
+                    .push(before_id.as_str());
+                *in_degree.entry(before_id.as_str()).or_insert(0) += 1;
             }
         }
     }
@@ -213,21 +215,21 @@ pub fn transitive_reduction(graph: &TaskGraph) -> HashMap<&str, Vec<&str>> {
     for task in graph.values() {
         edges.entry(task.id.as_str()).or_default();
 
-        // Parent relationship: parent depends on this task
-        if let Some(parent) = &task.parent {
-            if task_ids.contains(parent.as_str()) {
+        // Before relationship: before targets depend on this task
+        for before_id in &task.before {
+            if task_ids.contains(before_id.as_str()) {
                 edges
                     .entry(task.id.as_str())
                     .or_default()
-                    .insert(parent.as_str());
+                    .insert(before_id.as_str());
             }
         }
 
-        // Precondition relationship: this task depends on precondition
-        for precond in &task.preconditions {
-            if task_ids.contains(precond.as_str()) {
+        // After relationship: this task depends on after dependency
+        for after_id in &task.after {
+            if task_ids.contains(after_id.as_str()) {
                 edges
-                    .entry(precond.as_str())
+                    .entry(after_id.as_str())
                     .or_default()
                     .insert(task.id.as_str());
             }
@@ -295,11 +297,11 @@ pub fn transitive_reduction(graph: &TaskGraph) -> HashMap<&str, Vec<&str>> {
 ///
 /// Validates:
 /// - No duplicate task IDs
-/// - All parent references point to valid tasks
-/// - All precondition references point to valid tasks
-/// - Non-validator tasks cannot have validators as preconditions
+/// - All before references point to valid tasks
+/// - All after references point to valid tasks
+/// - Non-validator tasks cannot have validators as after dependencies
 /// - All validation references point to tasks marked as validators
-/// - All validation references point to root validators (no parents)
+/// - All validation references point to root validators (no before target)
 /// - The graph forms a DAG (no cycles)
 pub fn form_graph(tasks: Vec<Task>) -> Result<TaskGraph, ValidationError> {
     validate_graph(tasks)
@@ -313,8 +315,8 @@ mod tests {
     fn make_task(id: &str) -> Task {
         Task {
             id: id.to_string(),
-            parent: None,
-            preconditions: vec![],
+            before: vec![],
+            after: vec![],
             validations: vec![],
             title: None,
             validator: false,
@@ -328,8 +330,8 @@ mod tests {
     fn make_validator(id: &str) -> Task {
         Task {
             id: id.to_string(),
-            parent: None,
-            preconditions: vec![],
+            before: vec![],
+            after: vec![],
             validations: vec![],
             title: None,
             validator: true,
@@ -374,67 +376,67 @@ mod tests {
     }
 
     #[test]
-    fn test_valid_parent() {
-        let parent = make_task("parent");
-        let mut child = make_task("child");
-        child.parent = Some("parent".to_string());
+    fn test_valid_before() {
+        let before_target = make_task("before-target");
+        let mut subtask = make_task("subtask");
+        subtask.before = vec!["before-target".to_string()];
 
-        let result = form_graph(vec![parent, child]);
+        let result = form_graph(vec![before_target, subtask]);
         assert!(result.is_ok());
     }
 
     #[test]
-    fn test_invalid_parent() {
+    fn test_invalid_before() {
         let mut task = make_task("task-1");
-        task.parent = Some("nonexistent".to_string());
+        task.before = vec!["nonexistent".to_string()];
 
         let result = form_graph(vec![task]);
         assert_eq!(
             result,
-            Err(GraphError::InvalidParent {
+            Err(GraphError::InvalidBefore {
                 task_id: "task-1".to_string(),
-                parent_id: "nonexistent".to_string(),
+                before_id: "nonexistent".to_string(),
             })
         );
     }
 
     #[test]
-    fn test_valid_precondition() {
-        let precond = make_task("precond");
+    fn test_valid_after() {
+        let dep = make_task("dep");
         let mut task = make_task("task");
-        task.preconditions = vec!["precond".to_string()];
+        task.after = vec!["dep".to_string()];
 
-        let result = form_graph(vec![precond, task]);
+        let result = form_graph(vec![dep, task]);
         assert!(result.is_ok());
     }
 
     #[test]
-    fn test_invalid_precondition() {
+    fn test_invalid_after() {
         let mut task = make_task("task-1");
-        task.preconditions = vec!["nonexistent".to_string()];
+        task.after = vec!["nonexistent".to_string()];
 
         let result = form_graph(vec![task]);
         assert_eq!(
             result,
-            Err(GraphError::InvalidPrecondition {
+            Err(GraphError::InvalidAfter {
                 task_id: "task-1".to_string(),
-                precondition_id: "nonexistent".to_string(),
+                after_id: "nonexistent".to_string(),
             })
         );
     }
 
     #[test]
-    fn test_precondition_is_validator() {
+    fn test_after_is_validator() {
         let validator = make_validator("validator");
         let mut task = make_task("task");
-        task.preconditions = vec!["validator".to_string()];
+        task.after = vec!["validator".to_string()];
 
         let result = form_graph(vec![validator, task]);
         assert_eq!(
             result,
-            Err(GraphError::PreconditionIsValidator {
+            Err(GraphError::AfterIsValidator {
                 task_id: "task".to_string(),
-                precondition_id: "validator".to_string(),
+                after_id: "validator".to_string(),
             })
         );
     }
@@ -482,13 +484,13 @@ mod tests {
 
     #[test]
     fn test_validation_not_root_validator() {
-        let parent = make_task("parent");
+        let before_target = make_task("before-target");
         let mut validator = make_validator("validator");
-        validator.parent = Some("parent".to_string());
+        validator.before = vec!["before-target".to_string()];
         let mut task = make_task("task");
         task.validations = vec![validation("validator")];
 
-        let result = form_graph(vec![parent, validator, task]);
+        let result = form_graph(vec![before_target, validator, task]);
         assert_eq!(
             result,
             Err(GraphError::ValidationNotRootValidator {
@@ -500,12 +502,12 @@ mod tests {
 
     #[test]
     fn test_valid_dag() {
-        // A -> B -> C (each child has one parent)
+        // A -> B -> C (each subtask has one before target)
         let mut a = make_task("a");
         let mut b = make_task("b");
         let c = make_task("c");
-        b.parent = Some("c".to_string());
-        a.parent = Some("b".to_string());
+        b.before = vec!["c".to_string()];
+        a.before = vec!["b".to_string()];
 
         let result = form_graph(vec![a, b, c]);
         assert!(result.is_ok());
@@ -514,7 +516,7 @@ mod tests {
     #[test]
     fn test_cycle_self_loop() {
         let mut task = make_task("task");
-        task.parent = Some("task".to_string());
+        task.before = vec!["task".to_string()];
 
         let result = form_graph(vec![task]);
         assert_eq!(result, Err(GraphError::CycleDetected));
@@ -524,8 +526,8 @@ mod tests {
     fn test_cycle_two_nodes() {
         let mut a = make_task("a");
         let mut b = make_task("b");
-        a.parent = Some("b".to_string());
-        b.parent = Some("a".to_string());
+        a.before = vec!["b".to_string()];
+        b.before = vec!["a".to_string()];
 
         let result = form_graph(vec![a, b]);
         assert_eq!(result, Err(GraphError::CycleDetected));
@@ -536,33 +538,33 @@ mod tests {
         let mut a = make_task("a");
         let mut b = make_task("b");
         let mut c = make_task("c");
-        a.parent = Some("b".to_string());
-        b.parent = Some("c".to_string());
-        c.parent = Some("a".to_string());
+        a.before = vec!["b".to_string()];
+        b.before = vec!["c".to_string()];
+        c.before = vec!["a".to_string()];
 
         let result = form_graph(vec![a, b, c]);
         assert_eq!(result, Err(GraphError::CycleDetected));
     }
 
     #[test]
-    fn test_cycle_via_preconditions() {
+    fn test_cycle_via_after() {
         let mut a = make_task("a");
         let mut b = make_task("b");
-        a.preconditions = vec!["b".to_string()];
-        b.preconditions = vec!["a".to_string()];
+        a.after = vec!["b".to_string()];
+        b.after = vec!["a".to_string()];
 
         let result = form_graph(vec![a, b]);
         assert_eq!(result, Err(GraphError::CycleDetected));
     }
 
     #[test]
-    fn test_cycle_mixed_parent_and_preconditions() {
+    fn test_cycle_mixed_before_and_after() {
         let mut a = make_task("a");
         let mut b = make_task("b");
         let mut c = make_task("c");
-        a.parent = Some("b".to_string());
-        b.preconditions = vec!["c".to_string()];
-        c.parent = Some("a".to_string());
+        a.before = vec!["b".to_string()];
+        b.after = vec!["c".to_string()];
+        c.before = vec!["a".to_string()];
 
         let result = form_graph(vec![a, b, c]);
         assert_eq!(result, Err(GraphError::CycleDetected));
@@ -571,16 +573,16 @@ mod tests {
     #[test]
     fn test_complex_valid_graph() {
         // validator1, validator2 (root validators)
-        // task1 has parent task2
-        // task1 has precondition on task3
+        // task1 has before target task2
+        // task1 has after dependency on task3
         // task1 validates against validator1 and validator2
         let validator1 = make_validator("validator1");
         let validator2 = make_validator("validator2");
         let task2 = make_task("task2");
         let task3 = make_task("task3");
         let mut task1 = make_task("task1");
-        task1.parent = Some("task2".to_string());
-        task1.preconditions = vec!["task3".to_string()];
+        task1.before = vec!["task2".to_string()];
+        task1.after = vec!["task3".to_string()];
         task1.validations = vec![validation("validator1"), validation("validator2")];
 
         let result = form_graph(vec![validator1, validator2, task2, task3, task1]);

@@ -1,8 +1,7 @@
 ---
 id: mont-ready
 title: Implement mont ready command
-parent: cli-commands
-preconditions:
+after:
   - mont-list
   - in-progress-status
 complete: true

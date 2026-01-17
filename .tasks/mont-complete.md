@@ -1,8 +1,7 @@
 ---
 id: mont-complete
 title: Implement mont complete command
-parent: cli-commands
-preconditions:
+after:
   - add-complete-field
   - add-jj-lib
 ---

@@ -31,7 +31,10 @@
       "WebFetch(domain:crates.io)",
       "WebFetch(domain:docs.rs)",
       "WebFetch(domain:raw.githubusercontent.com)",
-      "Bash(EDITOR=true cargo run:*)"
+      "Bash(EDITOR=true cargo run:*)",
+      "Bash(for f in *.md)",
+      "Bash(do sed -i '' 's/^parent:/before:/g; s/^preconditions:/after:/g; s/^type: epic$/type: feature/g' \"$f\")",
+      "Bash(done)"
     ]
   }
 }

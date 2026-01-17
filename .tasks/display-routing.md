@@ -1,8 +1,9 @@
 ---
 id: display-routing
 title: Edge routing through grid cells
-parent: display-refactor
-preconditions:
+before:
+  - display-refactor
+after:
   - display-layout
 complete: true
 validations:

@@ -1,7 +1,7 @@
 ---
 id: review-error-aesthetics
 title: Review error message aesthetics with Claude Code
-preconditions:
+after:
   - actionable-errors
 ---
 

@@ -1,8 +1,7 @@
 ---
 id: mont-start
 title: Implement mont start command
-parent: cli-commands
-preconditions:
+after:
   - add-jj-lib
   - in-progress-status
 ---

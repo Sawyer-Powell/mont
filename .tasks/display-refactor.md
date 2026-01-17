@@ -1,7 +1,7 @@
 ---
 id: display-refactor
 title: Refactor display.rs with level-based grid rendering
-type: epic
+type: feature
 complete: true
 ---
 

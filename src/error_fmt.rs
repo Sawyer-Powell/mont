@@ -166,19 +166,19 @@ fn format_parse_error(error: &ParseError, file_path: &str) -> String {
             out.push('\n');
             out.push_str(&format!("  {}\n", yaml_err.to_string().dimmed()));
         }
-        ParseError::ValidatorWithPreconditions(task_id) => {
+        ParseError::ValidatorWithAfter(task_id) => {
             out.push_str(&format!(
-                "validator task '{}' has preconditions\n",
+                "validator task '{}' has after dependencies\n",
                 task_id.yellow()
             ));
             out.push('\n');
-            out.push_str(&format!("  {}\n", "Validator tasks cannot have preconditions because they are".dimmed()));
+            out.push_str(&format!("  {}\n", "Validator tasks cannot have after dependencies because they are".dimmed()));
             out.push_str(&format!("  {}\n", "reusable validation criteria, not work items in the task graph.".dimmed()));
             out.push('\n');
             out.push_str(&format!("  {}:\n", "To fix this".bold()));
             out.push_str(&format!(
                 "    1. Remove the {} field from {}\n",
-                "preconditions".cyan(),
+                "after".cyan(),
                 file_path.cyan()
             ));
             out.push_str(&format!(
@@ -217,89 +217,89 @@ fn format_validation_error(error: &ValidationError, tasks_dir: &str) -> String {
     out.push_str(&format!("{}: ", "error".red().bold()));
 
     match error {
-        ValidationError::InvalidParent { task_id, parent_id } => {
+        ValidationError::InvalidBefore { task_id, before_id } => {
             out.push_str(&format!(
-                "task '{}' references invalid parent '{}'\n",
+                "task '{}' references invalid before target '{}'\n",
                 task_id.yellow(),
-                parent_id.yellow()
+                before_id.yellow()
             ));
             out.push('\n');
             out.push_str(&format!(
                 "  {}\n",
-                format!("The parent task '{}' does not exist in {}/", parent_id, tasks_dir).dimmed()
+                format!("The before target '{}' does not exist in {}/", before_id, tasks_dir).dimmed()
             ));
             out.push('\n');
             out.push_str(&format!("  {}:\n", "To fix this".bold()));
             out.push_str(&format!(
                 "    1. Create the missing task: {}/{}.md\n",
                 tasks_dir.cyan(),
-                parent_id.cyan()
+                before_id.cyan()
             ));
             out.push_str(&format!(
                 "    2. Remove the {} field from {}/{}.md\n",
-                "parent".cyan(),
+                "before".cyan(),
                 tasks_dir.cyan(),
                 task_id.cyan()
             ));
-            out.push_str("    3. Change the parent to an existing task\n");
+            out.push_str("    3. Change the before target to an existing task\n");
         }
-        ValidationError::InvalidPrecondition {
+        ValidationError::InvalidAfter {
             task_id,
-            precondition_id,
+            after_id,
         } => {
             out.push_str(&format!(
-                "task '{}' references invalid precondition '{}'\n",
+                "task '{}' references invalid after dependency '{}'\n",
                 task_id.yellow(),
-                precondition_id.yellow()
+                after_id.yellow()
             ));
             out.push('\n');
             out.push_str(&format!(
                 "  {}\n",
-                format!("The precondition task '{}' does not exist in {}/", precondition_id, tasks_dir).dimmed()
+                format!("The after dependency '{}' does not exist in {}/", after_id, tasks_dir).dimmed()
             ));
             out.push('\n');
             out.push_str(&format!("  {}:\n", "To fix this".bold()));
             out.push_str(&format!(
                 "    1. Create the missing task: {}/{}.md\n",
                 tasks_dir.cyan(),
-                precondition_id.cyan()
+                after_id.cyan()
             ));
             out.push_str(&format!(
-                "    2. Remove '{}' from preconditions in {}/{}.md\n",
-                precondition_id.cyan(),
+                "    2. Remove '{}' from after in {}/{}.md\n",
+                after_id.cyan(),
                 tasks_dir.cyan(),
                 task_id.cyan()
             ));
-            out.push_str("    3. Change the precondition to an existing task\n");
+            out.push_str("    3. Change the after dependency to an existing task\n");
         }
-        ValidationError::PreconditionIsValidator {
+        ValidationError::AfterIsValidator {
             task_id,
-            precondition_id,
+            after_id,
         } => {
             out.push_str(&format!(
-                "task '{}' has validator '{}' as a precondition\n",
+                "task '{}' has validator '{}' as an after dependency\n",
                 task_id.yellow(),
-                precondition_id.yellow()
+                after_id.yellow()
             ));
             out.push('\n');
             out.push_str(&format!("  {}\n", "Validators define validation criteria, not work dependencies.".dimmed()));
-            out.push_str(&format!("  {}\n", "Use the 'validations' field instead of 'preconditions'.".dimmed()));
+            out.push_str(&format!("  {}\n", "Use the 'validations' field instead of 'after'.".dimmed()));
             out.push('\n');
             out.push_str(&format!("  {}:\n", "To fix this".bold()));
             out.push_str(&format!(
-                "    In {}/{}.md, move '{}' from preconditions to validations:\n",
+                "    In {}/{}.md, move '{}' from after to validations:\n",
                 tasks_dir.cyan(),
                 task_id.cyan(),
-                precondition_id.cyan()
+                after_id.cyan()
             ));
             out.push('\n');
             out.push_str(&format!("      {}\n", "# Before:".dimmed()));
-            out.push_str(&format!("      {}:\n", "preconditions".dimmed()));
-            out.push_str(&format!("      {}  - {}\n", "".dimmed(), precondition_id.dimmed()));
+            out.push_str(&format!("      {}:\n", "after".dimmed()));
+            out.push_str(&format!("      {}  - {}\n", "".dimmed(), after_id.dimmed()));
             out.push('\n');
             out.push_str(&format!("      {}\n", "# After:".dimmed()));
             out.push_str(&format!("      {}:\n", "validations".dimmed()));
-            out.push_str(&format!("      {}  - {}\n", "".dimmed(), precondition_id.dimmed()));
+            out.push_str(&format!("      {}  - {}\n", "".dimmed(), after_id.dimmed()));
         }
         ValidationError::ValidationNotFound {
             task_id,
@@ -366,18 +366,18 @@ fn format_validation_error(error: &ValidationError, tasks_dir: &str) -> String {
             validation_id,
         } => {
             out.push_str(&format!(
-                "task '{}' references validator '{}' which has a parent\n",
+                "task '{}' references validator '{}' which has a before target\n",
                 task_id.yellow(),
                 validation_id.yellow()
             ));
             out.push('\n');
             out.push_str(&format!("  {}\n", "Validators used in the 'validations' field must be root validators".dimmed()));
-            out.push_str(&format!("  {}\n", "(they cannot have a parent task).".dimmed()));
+            out.push_str(&format!("  {}\n", "(they cannot have a before target).".dimmed()));
             out.push('\n');
             out.push_str(&format!("  {}:\n", "To fix this".bold()));
             out.push_str(&format!(
                 "    1. Remove the {} field from {}/{}.md\n",
-                "parent".cyan(),
+                "before".cyan(),
                 tasks_dir.cyan(),
                 validation_id.cyan()
             ));
@@ -394,7 +394,7 @@ fn format_validation_error(error: &ValidationError, tasks_dir: &str) -> String {
             out.push_str(&format!("  {}\n", "Tasks cannot depend on themselves directly or indirectly.".dimmed()));
             out.push('\n');
             out.push_str(&format!("  {}:\n", "To fix this".bold()));
-            out.push_str("    1. Review parent and precondition relationships\n");
+            out.push_str("    1. Review before and after relationships\n");
             out.push_str("    2. Look for chains like: A → B → C → A\n");
             out.push_str(&format!(
                 "    3. Run {} to see task relationships\n",
@@ -672,12 +672,12 @@ mod tests {
     }
 
     #[test]
-    fn test_format_invalid_parent() {
+    fn test_format_invalid_before() {
         let err = AppError::Validation {
             tasks_dir: ".tasks".to_string(),
-            source: ValidationError::InvalidParent {
+            source: ValidationError::InvalidBefore {
                 task_id: "setup-db".to_string(),
-                parent_id: "database".to_string(),
+                before_id: "database".to_string(),
             },
         };
         let output = err.to_string();

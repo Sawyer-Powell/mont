@@ -1,8 +1,7 @@
 ---
 id: mont-show
 title: Implement mont show command
-parent: cli-commands
-preconditions:
+after:
   - editor-resolution
   - mont-check
 validations:

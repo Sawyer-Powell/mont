@@ -1,7 +1,8 @@
 ---
 id: display-layout
 title: Types + level assignment + positioning + grid construction
-parent: display-refactor
+before:
+  - display-refactor
 complete: true
 validations:
   - test

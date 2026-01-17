@@ -1,8 +1,9 @@
 ---
 id: display-render
 title: Wiring + final output
-parent: display-refactor
-preconditions:
+before:
+  - display-refactor
+after:
   - display-symbols
 validations:
   - test
