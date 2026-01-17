@@ -23,7 +23,14 @@
       "Bash(jj metaedit:*)",
       "Bash(jj log:*)",
       "Bash(cargo check:*)",
-      "Skill(completing-a-task)"
+      "Skill(completing-a-task)",
+      "Bash(grep:*)",
+      "Bash(xargs -I {} sh -c 'echo \"\"\"\"=== {} ===\"\"\"\" && head -20 {}')",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:pvigier.github.io)",
+      "WebFetch(domain:crates.io)",
+      "WebFetch(domain:docs.rs)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ]
   }
 }

@@ -198,7 +198,7 @@ pub fn compute_layout(graph: &TaskGraph) -> Layout {
         level_tasks[level].push(id);
     }
 
-    // Assign columns based on successor alignment (work backwards from last level)
+    // Assign columns using barycenter heuristic for crossing minimization
     let mut columns: HashMap<&str, usize> = HashMap::new();
 
     // Helper to get task priority for sorting (lower = higher priority)
@@ -210,68 +210,102 @@ pub fn compute_layout(graph: &TaskGraph) -> Layout {
         }
     };
 
-    // Last level (roots/sinks): assign columns by priority order
-    let last_level = max_level;
-    level_tasks[last_level].sort_by(|a, b| {
-        task_priority(a).cmp(&task_priority(b)).then_with(|| a.cmp(b))
-    });
-    for (col, &task_id) in level_tasks[last_level].iter().enumerate() {
-        columns.insert(task_id, col);
+    // Initial placement: sort each level by priority, then alphabetically
+    for level in &mut level_tasks {
+        level.sort_by(|a, b| {
+            task_priority(a)
+                .cmp(&task_priority(b))
+                .then_with(|| a.cmp(b))
+        });
     }
 
-    // Work backwards from second-to-last level to level 0
-    // Each task gets the column of its successor (if it has only one)
-    for level_idx in (0..last_level).rev() {
-        let tasks_at_level = &mut level_tasks[level_idx];
-
-        // Compute preferred column for each task based on successors
-        let mut preferred: Vec<(&str, usize)> = tasks_at_level
-            .iter()
-            .map(|&task_id| {
-                let succs = effective_successors
-                    .get(task_id)
-                    .map(|v| v.as_slice())
-                    .unwrap_or(&[]);
-                let preferred_col = if succs.is_empty() {
-                    // No successors - independent task, use column 0
-                    0
-                } else {
-                    // Use leftmost successor's column
-                    succs
-                        .iter()
-                        .filter_map(|s| columns.get(s))
-                        .min()
-                        .copied()
-                        .unwrap_or(0)
-                };
-                (task_id, preferred_col)
-            })
-            .collect();
-
-        // Sort by preferred column, then by priority, then alphabetically
-        preferred.sort_by(|a, b| {
-            a.1.cmp(&b.1)
-                .then_with(|| task_priority(a.0).cmp(&task_priority(b.0)))
-                .then_with(|| a.0.cmp(b.0))
-        });
-
-        // Assign columns, shifting to resolve conflicts within this level
-        let mut used_cols: std::collections::HashSet<usize> = std::collections::HashSet::new();
-        let mut assigned: Vec<(&str, usize)> = Vec::new();
-
-        for (task_id, preferred_col) in preferred {
-            let mut col = preferred_col;
-            while used_cols.contains(&col) {
-                col += 1;
-            }
-            used_cols.insert(col);
+    // Assign initial columns (0, 1, 2, ... for each level)
+    for level in &level_tasks {
+        for (col, &task_id) in level.iter().enumerate() {
             columns.insert(task_id, col);
-            assigned.push((task_id, col));
+        }
+    }
+
+    // Barycenter iterations: sweep down then up to minimize crossings
+    let iterations = 4;
+    for _ in 0..iterations {
+        // Sweep down: use predecessors (nodes pointing TO this node)
+        for level_idx in 1..=max_level {
+            let mut barycenters: Vec<(&str, f64)> = level_tasks[level_idx]
+                .iter()
+                .map(|&task_id| {
+                    // Find predecessors: nodes in earlier levels that point to this task
+                    let pred_cols: Vec<f64> = predecessors
+                        .get(task_id)
+                        .map(|preds| {
+                            preds
+                                .iter()
+                                .filter_map(|&p| columns.get(p).map(|&c| c as f64))
+                                .collect()
+                        })
+                        .unwrap_or_default();
+
+                    let barycenter = if pred_cols.is_empty() {
+                        // No predecessors in graph, keep current position
+                        columns.get(task_id).map(|&c| c as f64).unwrap_or(0.0)
+                    } else {
+                        pred_cols.iter().sum::<f64>() / pred_cols.len() as f64
+                    };
+                    (task_id, barycenter)
+                })
+                .collect();
+
+            // Sort by barycenter, then priority, then alphabetically for ties
+            barycenters.sort_by(|a, b| {
+                a.1.partial_cmp(&b.1)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then_with(|| task_priority(a.0).cmp(&task_priority(b.0)))
+                    .then_with(|| a.0.cmp(b.0))
+            });
+
+            // Reassign columns sequentially
+            level_tasks[level_idx] = barycenters.iter().map(|(id, _)| *id).collect();
+            for (col, &task_id) in level_tasks[level_idx].iter().enumerate() {
+                columns.insert(task_id, col);
+            }
         }
 
-        // Reorder level_tasks to match final column order
-        assigned.sort_by_key(|(_, col)| *col);
-        *tasks_at_level = assigned.into_iter().map(|(id, _)| id).collect();
+        // Sweep up: use successors (nodes this node points TO)
+        for level_idx in (0..max_level).rev() {
+            let mut barycenters: Vec<(&str, f64)> = level_tasks[level_idx]
+                .iter()
+                .map(|&task_id| {
+                    let succ_cols: Vec<f64> = effective_successors
+                        .get(task_id)
+                        .map(|succs| {
+                            succs
+                                .iter()
+                                .filter_map(|&s| columns.get(s).map(|&c| c as f64))
+                                .collect()
+                        })
+                        .unwrap_or_default();
+
+                    let barycenter = if succ_cols.is_empty() {
+                        columns.get(task_id).map(|&c| c as f64).unwrap_or(0.0)
+                    } else {
+                        succ_cols.iter().sum::<f64>() / succ_cols.len() as f64
+                    };
+                    (task_id, barycenter)
+                })
+                .collect();
+
+            barycenters.sort_by(|a, b| {
+                a.1.partial_cmp(&b.1)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then_with(|| task_priority(a.0).cmp(&task_priority(b.0)))
+                    .then_with(|| a.0.cmp(b.0))
+            });
+
+            level_tasks[level_idx] = barycenters.iter().map(|(id, _)| *id).collect();
+            for (col, &task_id) in level_tasks[level_idx].iter().enumerate() {
+                columns.insert(task_id, col);
+            }
+        }
     }
 
     // Build positions map using computed columns
