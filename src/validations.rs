@@ -19,6 +19,11 @@ pub enum ValidationError {
         task_id: String,
         precondition_id: String,
     },
+    #[error("task '{task_id}' references non-existent validation '{validation_id}'")]
+    ValidationNotFound {
+        task_id: String,
+        validation_id: String,
+    },
     #[error("task '{task_id}' references validation '{validation_id}' which is not a validator")]
     InvalidValidation {
         task_id: String,
@@ -71,7 +76,7 @@ pub fn validate_task(task: &Task, graph: &TaskGraph) -> Result<(), ValidationErr
 
     for validation in &task.validations {
         let Some(validator) = graph.get(&validation.id) else {
-            return Err(ValidationError::InvalidValidation {
+            return Err(ValidationError::ValidationNotFound {
                 task_id: task.id.clone(),
                 validation_id: validation.id.clone(),
             });

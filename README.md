@@ -36,6 +36,7 @@ mont ready                 # show tasks ready to work on
 mont check                 # validate entire task graph
 mont check <task-id>       # validate a single task and its references
 mont new                   # create a new task
+mont edit <task-id>        # edit an existing task
 ```
 
 ### Creating tasks
@@ -52,6 +53,17 @@ mont new --id my-task --editor                  # open in $EDITOR after creation
 mont new --id my-task --editor vim              # open in specific editor
 ```
 
+### Editing tasks
+
+```
+mont edit my-task --title "New Title"           # update title
+mont edit my-task --new-id new-id               # rename task (updates references)
+mont edit my-task --parent new-parent           # change parent
+mont edit my-task --precondition pre1,pre2      # replace preconditions
+mont edit my-task --validation test             # replace validations
+mont edit my-task --editor                      # open in $EDITOR
+mont edit my-task --resume /path/to/temp        # resume failed edit
+```
 
 ## Current output of `mont list` for this repo
 
@@ -59,19 +71,17 @@ Items with ◉ icon are ready for work
 
 ```
 ◉  mont-show Implement mont show command
-│ ◐  mont-new Implement mont new command
-╭─┤
-│ │ ◉    add-jj-lib Add jj-lib integration
-│ │ ├─╮
-│ │ ○ │  mont-complete Implement mont complete command
-├───╯ │
-│ │   ○  mont-start Implement mont start command
-├─────╯
-○ │  cli-commands Mont CLI Commands
-  ○  plan-type
-◉  display-refactor Refactor display.rs with level-based grid rendering [epic]
+│ ◉    add-jj-lib Add jj-lib integration
+│ ├─╮
+│ ○ │  mont-complete Implement mont complete command
+├─╯ │
+│   ○  mont-start Implement mont start command
+├───╯
+○  cli-commands Mont CLI Commands
 ◉  global-settings Enable a global settings yml file in .tasks file.
 ◉  llm-specific-commands Think through support for a set of llm specific commands
+◉  mont-edit Add a mont edit command
+◉  plan-type
 ◉  review-error-aesthetics Review error message aesthetics with Claude Code
 
 ◈  interview-validator Conduct interview to confirm changes [validator]
@@ -91,6 +101,7 @@ for now, but feel free to ask questions.
 - CLI: `mont list` with JJ-style graph visualization
 - CLI: `mont ready` to show tasks ready to work on
 - CLI: `mont new` for creating new tasks with automatic ID generation
+- CLI: `mont edit` for editing tasks with ID rename and reference propagation
 - Task relationships: parent/child, preconditions, validations
 - Validator tasks for defining reusable acceptance criteria
 

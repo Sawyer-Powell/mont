@@ -457,7 +457,7 @@ mod tests {
         let result = form_graph(vec![task]);
         assert_eq!(
             result,
-            Err(GraphError::InvalidValidation {
+            Err(GraphError::ValidationNotFound {
                 task_id: "task".to_string(),
                 validation_id: "nonexistent".to_string(),
             })

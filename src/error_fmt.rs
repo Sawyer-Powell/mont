@@ -36,6 +36,15 @@ pub enum AppError {
         temp_path: String,
         editor_name: Option<String>,
     },
+    /// No changes provided to edit command
+    NoChangesProvided,
+    /// Edit temp file validation failed (shows resume command)
+    EditTempValidationFailed {
+        error: Box<AppError>,
+        original_id: String,
+        temp_path: String,
+        editor_name: Option<String>,
+    },
 }
 
 impl fmt::Display for AppError {
@@ -71,6 +80,12 @@ impl fmt::Display for AppError {
             }
             AppError::TempValidationFailed { error, temp_path, editor_name } => {
                 write!(f, "{}", format_temp_validation_failed(error, temp_path, editor_name.as_deref()))
+            }
+            AppError::NoChangesProvided => {
+                write!(f, "{}", format_no_changes_provided())
+            }
+            AppError::EditTempValidationFailed { error, original_id, temp_path, editor_name } => {
+                write!(f, "{}", format_edit_temp_validation_failed(error, original_id, temp_path, editor_name.as_deref()))
             }
         }
     }
@@ -285,6 +300,36 @@ fn format_validation_error(error: &ValidationError, tasks_dir: &str) -> String {
             out.push_str(&format!("      {}\n", "# After:".dimmed()));
             out.push_str(&format!("      {}:\n", "validations".dimmed()));
             out.push_str(&format!("      {}  - {}\n", "".dimmed(), precondition_id.dimmed()));
+        }
+        ValidationError::ValidationNotFound {
+            task_id,
+            validation_id,
+        } => {
+            out.push_str(&format!(
+                "task '{}' references non-existent validation '{}'\n",
+                task_id.yellow(),
+                validation_id.yellow()
+            ));
+            out.push('\n');
+            out.push_str(&format!(
+                "  {}\n",
+                format!("The validation task '{}' does not exist in {}/", validation_id, tasks_dir).dimmed()
+            ));
+            out.push('\n');
+            out.push_str(&format!("  {}:\n", "To fix this".bold()));
+            out.push_str(&format!(
+                "    1. Create the validator task: {}/{}.md with {}\n",
+                tasks_dir.cyan(),
+                validation_id.cyan(),
+                "validator: true".cyan()
+            ));
+            out.push_str(&format!(
+                "    2. Remove '{}' from validations in {}/{}.md\n",
+                validation_id.cyan(),
+                tasks_dir.cyan(),
+                task_id.cyan()
+            ));
+            out.push_str("    3. Change the validation to reference an existing validator\n");
         }
         ValidationError::InvalidValidation {
             task_id,
@@ -542,6 +587,53 @@ fn format_temp_validation_failed(error: &AppError, temp_path: &str, editor_name:
     let resume_cmd = match editor_name {
         Some(name) => format!("mont new --resume {} --editor {}", temp_path, name),
         None => format!("mont new --resume {}", temp_path),
+    };
+    out.push_str(&format!("    {}\n", resume_cmd.cyan()));
+
+    out
+}
+
+fn format_no_changes_provided() -> String {
+    let mut out = String::new();
+
+    out.push_str(&format!("{}: ", "error".red().bold()));
+    out.push_str("no changes provided\n");
+    out.push('\n');
+    out.push_str(&format!("  {}\n", "The edit command requires at least one change.".dimmed()));
+    out.push('\n');
+    out.push_str(&format!("  {}:\n", "To fix this".bold()));
+    out.push_str(&format!(
+        "    1. Provide field flags: {}\n",
+        "mont edit <task-id> --title \"New title\"".cyan()
+    ));
+    out.push_str(&format!(
+        "    2. Use editor mode: {}\n",
+        "mont edit <task-id> --editor".cyan()
+    ));
+    out.push_str(&format!(
+        "    3. Rename the task: {}\n",
+        "mont edit <task-id> --new-id new-id".cyan()
+    ));
+
+    out
+}
+
+fn format_edit_temp_validation_failed(error: &AppError, original_id: &str, temp_path: &str, editor_name: Option<&str>) -> String {
+    let mut out = String::new();
+
+    // First, display the underlying error
+    out.push_str(&error.to_string());
+    out.push('\n');
+
+    // Then show how to resume editing
+    out.push_str(&format!("  {}\n", "Your task file has been saved to:".dimmed()));
+    out.push_str(&format!("    {}\n", temp_path.cyan()));
+    out.push('\n');
+    out.push_str(&format!("  {}:\n", "To fix and retry".bold()));
+
+    let resume_cmd = match editor_name {
+        Some(name) => format!("mont edit {} --resume {} --editor {}", original_id, temp_path, name),
+        None => format!("mont edit {} --resume {}", original_id, temp_path),
     };
     out.push_str(&format!("    {}\n", resume_cmd.cyan()));
 
