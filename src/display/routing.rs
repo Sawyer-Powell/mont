@@ -197,7 +197,7 @@ fn set_connection_flag(grid: &mut Grid, row: usize, col: usize, dir: Direction) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::display::layout::{build_grid, compute_layout, debug_render_grid};
+    use crate::display::layout::{build_grid, compute_layout, debug_render_grid, prune_rows, skew_grid};
     use crate::graph::TaskGraph;
     use crate::task::{Task, TaskType};
 
@@ -275,7 +275,8 @@ mod tests {
         println!("After:\n{}", debug_render_grid(&routed));
 
         // Verify expanded structure
-        assert_eq!(routed.rows.len(), 5); // 3 task rows + 2 connection rows
+        // build_grid creates 4 task rows (P, A, B, R), routing adds connection rows
+        assert_eq!(routed.rows.len(), 7);
     }
 
     #[test]
@@ -297,7 +298,8 @@ mod tests {
         println!("After:\n{}", debug_render_grid(&routed));
 
         // Verify expanded structure
-        assert_eq!(routed.rows.len(), 3); // 2 task rows + 1 connection row
+        // build_grid creates 5 task rows (A, B, C, D, R), routing adds connection rows
+        assert_eq!(routed.rows.len(), 9);
     }
 
     /// Criss-cross: edges that conceptually cross
@@ -455,6 +457,51 @@ mod tests {
         println!("After:\n{}", debug_render_grid(&routed));
     }
 
+    /// Long span with parallel paths and diamond - SKEWED version
+    ///
+    /// Same structure as test_parallel_diamond_routing but with skewing applied first
+    #[test]
+    fn test_parallel_diamond_skewed_routing() {
+        // Z is the root
+        let z = make_task("Z");
+
+        // X depends on C and D (diamond bottom)
+        let mut x = make_task_with_parent("X", "Z");
+        x.preconditions = vec!["C".to_string(), "D".to_string()];
+
+        // C and D depend on P (diamond middle)
+        let mut c = make_task_with_parent("C", "Z");
+        c.preconditions = vec!["P".to_string()];
+        let mut d = make_task_with_parent("D", "Z");
+        d.preconditions = vec!["P".to_string()];
+
+        // P depends on A (diamond tip)
+        let mut p = make_task_with_parent("P", "Z");
+        p.preconditions = vec!["A".to_string()];
+
+        // Parallel path: A → B → E → Z
+        let mut b = make_task_with_parent("B", "Z");
+        b.preconditions = vec!["A".to_string()];
+        let mut e = make_task_with_parent("E", "Z");
+        e.preconditions = vec!["B".to_string()];
+
+        // A is the source
+        let a = make_task_with_parent("A", "Z");
+
+        let graph = build_graph(vec![a, b, c, d, e, p, x, z]);
+        let layout = compute_layout(&graph);
+        let grid = build_grid(&layout);
+        let skewed = skew_grid(&grid);
+        let routed = route_edges(&skewed, &layout);
+        let pruned = prune_rows(&routed);
+
+        println!("\n=== Parallel Diamond SKEWED Routing ===");
+        println!("Original grid:\n{}", debug_render_grid(&grid));
+        println!("Skewed grid:\n{}", debug_render_grid(&skewed));
+        println!("Routed:\n{}", debug_render_grid(&routed));
+        println!("Pruned:\n{}", debug_render_grid(&pruned));
+    }
+
     /// Long span with parallel paths and diamond
     ///
     ///       A              <- level 0
@@ -509,12 +556,13 @@ mod tests {
         println!("Before:\n{}", debug_render_grid(&grid));
         println!("After:\n{}", debug_render_grid(&routed));
 
-        // Level 0: A
-        // Level 1: B, P
-        // Level 2: C, D, E
-        // Level 3: X
-        // Level 4: Z
-        // 5 task rows + 4 connection rows = 9 rows
-        assert_eq!(routed.rows.len(), 9);
+        // build_grid creates 8 task rows (one per task), routing adds connection rows
+        // Level 0: A (1)
+        // Level 1: P, B (2)
+        // Level 2: C, D, E (3)
+        // Level 3: X (1)
+        // Level 4: Z (1)
+        // 8 task rows + 7 connection rows = 15 rows
+        assert_eq!(routed.rows.len(), 15);
     }
 }

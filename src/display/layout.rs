@@ -198,7 +198,7 @@ pub fn compute_layout(graph: &TaskGraph) -> Layout {
         level_tasks[level].push(id);
     }
 
-    // Assign columns based on predecessor alignment
+    // Assign columns based on successor alignment (work backwards from last level)
     let mut columns: HashMap<&str, usize> = HashMap::new();
 
     // Helper to get task priority for sorting (lower = higher priority)
@@ -210,30 +210,36 @@ pub fn compute_layout(graph: &TaskGraph) -> Layout {
         }
     };
 
-    // Level 0: assign columns by priority order
-    level_tasks[0].sort_by(|a, b| {
+    // Last level (roots/sinks): assign columns by priority order
+    let last_level = max_level;
+    level_tasks[last_level].sort_by(|a, b| {
         task_priority(a).cmp(&task_priority(b)).then_with(|| a.cmp(b))
     });
-    for (col, &task_id) in level_tasks[0].iter().enumerate() {
+    for (col, &task_id) in level_tasks[last_level].iter().enumerate() {
         columns.insert(task_id, col);
     }
 
-    // For each subsequent level, assign columns based on predecessors
-    for level_idx in 1..=max_level {
+    // Work backwards from second-to-last level to level 0
+    // Each task gets the column of its successor (if it has only one)
+    for level_idx in (0..last_level).rev() {
         let tasks_at_level = &mut level_tasks[level_idx];
 
-        // Compute preferred column for each task
+        // Compute preferred column for each task based on successors
         let mut preferred: Vec<(&str, usize)> = tasks_at_level
             .iter()
             .map(|&task_id| {
-                let preds = predecessors.get(task_id).map(|v| v.as_slice()).unwrap_or(&[]);
-                let preferred_col = if preds.is_empty() {
+                let succs = effective_successors
+                    .get(task_id)
+                    .map(|v| v.as_slice())
+                    .unwrap_or(&[]);
+                let preferred_col = if succs.is_empty() {
+                    // No successors - independent task, use column 0
                     0
                 } else {
-                    // Use leftmost predecessor's column
-                    preds
+                    // Use leftmost successor's column
+                    succs
                         .iter()
-                        .filter_map(|p| columns.get(p))
+                        .filter_map(|s| columns.get(s))
                         .min()
                         .copied()
                         .unwrap_or(0)
@@ -249,20 +255,21 @@ pub fn compute_layout(graph: &TaskGraph) -> Layout {
                 .then_with(|| a.0.cmp(b.0))
         });
 
-        // Assign columns, shifting right on conflicts
-        let mut used_columns: std::collections::HashSet<usize> = std::collections::HashSet::new();
+        // Assign columns, shifting to resolve conflicts within this level
+        let mut used_cols: std::collections::HashSet<usize> = std::collections::HashSet::new();
         let mut assigned: Vec<(&str, usize)> = Vec::new();
 
-        for (task_id, mut col) in preferred {
-            while used_columns.contains(&col) {
+        for (task_id, preferred_col) in preferred {
+            let mut col = preferred_col;
+            while used_cols.contains(&col) {
                 col += 1;
             }
-            used_columns.insert(col);
+            used_cols.insert(col);
             columns.insert(task_id, col);
             assigned.push((task_id, col));
         }
 
-        // Reorder level_tasks to match column order
+        // Reorder level_tasks to match final column order
         assigned.sort_by_key(|(_, col)| *col);
         *tasks_at_level = assigned.into_iter().map(|(id, _)| id).collect();
     }
@@ -291,29 +298,127 @@ pub fn compute_layout(graph: &TaskGraph) -> Layout {
     Layout { positions, levels, edges }
 }
 
-/// Build the initial grid with tasks placed.
+/// Build a skewed grid with one task per row.
 ///
-/// Tasks are placed at their computed positions (level, column).
-/// Row = level, Column = computed column from edge-based assignment.
+/// Tasks are placed in level order (from layout.levels), with each task
+/// getting its own row. Column comes from the position's index.
+/// This produces a grid ready for routing without needing a separate skew step.
 pub fn build_grid(layout: &Layout) -> Grid {
     let mut grid = Grid::new();
 
-    if layout.positions.is_empty() {
+    if layout.levels.is_empty() {
         return grid;
     }
 
-    // Find grid dimensions from positions
-    let num_rows = layout.positions.values().map(|p| p.level).max().unwrap_or(0) + 1;
+    // Find max column for grid width
     let max_col = layout.positions.values().map(|p| p.index).max().unwrap_or(0) + 1;
 
-    grid.ensure_size(num_rows, max_col);
-
-    // Place tasks at their computed positions
-    for (task_id, pos) in &layout.positions {
-        grid.rows[pos.level][pos.index] = Cell::Task(task_id.clone());
+    // Create one row per task, in level order
+    for level in &layout.levels {
+        for task_id in level {
+            if let Some(pos) = layout.positions.get(task_id) {
+                let mut row = vec![Cell::Empty; max_col];
+                row[pos.index] = Cell::Task(task_id.clone());
+                grid.rows.push(row);
+            }
+        }
     }
 
     grid
+}
+
+/// Skew a grid so each task gets its own row.
+///
+/// Takes a grid where multiple tasks may share a row (same level)
+/// and expands it so each task is on a separate row.
+/// Column positions are preserved.
+///
+/// Example:
+/// ```text
+/// Before:          After:
+/// A . .            A . .
+/// P B .            P . .
+/// C D E    ->      . B .
+/// X . .            C . .
+/// Z . .            . D .
+///                  . . E
+///                  X . .
+///                  Z . .
+/// ```
+pub fn skew_grid(grid: &Grid) -> Grid {
+    let mut skewed = Grid::new();
+    let width = grid.width();
+
+    for row in &grid.rows {
+        // Collect tasks from this row with their column positions
+        let tasks: Vec<(usize, &Cell)> = row
+            .iter()
+            .enumerate()
+            .filter(|(_, cell)| matches!(cell, Cell::Task(_)))
+            .collect();
+
+        if tasks.is_empty() {
+            // Empty row - preserve it
+            skewed.rows.push(vec![Cell::Empty; width]);
+        } else {
+            // Create a separate row for each task
+            for (col, cell) in tasks {
+                let mut new_row = vec![Cell::Empty; width];
+                new_row[col] = cell.clone();
+                skewed.rows.push(new_row);
+            }
+        }
+    }
+
+    skewed
+}
+
+/// Prune rows that only contain pure vertical connections.
+///
+/// A row is pruneable if:
+/// - It has no Task cells
+/// - All Connection cells are pure vertical (up && down && !left && !right)
+/// - Empty cells are allowed
+///
+/// This reduces visual noise without losing information.
+pub fn prune_rows(grid: &Grid) -> Grid {
+    let mut pruned = Grid::new();
+
+    for row in &grid.rows {
+        if is_pruneable_row(row) {
+            continue;
+        }
+        pruned.rows.push(row.clone());
+    }
+
+    pruned
+}
+
+/// Check if a row contains only pure vertical connections (and empty cells).
+fn is_pruneable_row(row: &[Cell]) -> bool {
+    let mut has_any_connection = false;
+
+    for cell in row {
+        match cell {
+            Cell::Task(_) => return false,
+            Cell::Empty => {}
+            Cell::Connection { up, down, left, right } => {
+                // Pure vertical: up and down only, no horizontal
+                if *left || *right {
+                    return false;
+                }
+                if *up && *down {
+                    has_any_connection = true;
+                } else if *up || *down {
+                    // Partial vertical (endpoint) - not pruneable
+                    return false;
+                }
+            }
+        }
+    }
+
+    // Only prune if there's at least one vertical connection
+    has_any_connection
 }
 
 /// Debug render a grid to ASCII for visual inspection.
@@ -459,5 +564,61 @@ mod tests {
         println!("{}", debug_render_grid(&grid));
 
         assert_eq!(layout.levels, vec![vec!["A"], vec!["B"], vec!["C"]]);
+    }
+
+    /// Test build_grid creates skewed output (one task per row) with parallel diamond
+    ///
+    ///       A              <- level 0
+    ///      / \
+    ///     P   B            <- level 1
+    ///    /|\   \
+    ///   C D     E          <- level 2
+    ///    \|     |
+    ///     X     |          <- level 3
+    ///      \    |
+    ///       Z<--+          <- level 4 (E→Z spans 2 levels)
+    #[test]
+    fn test_skew_parallel_diamond() {
+        // Z is the root
+        let z = make_task("Z");
+
+        // X depends on C and D (diamond bottom)
+        let mut x = make_task_with_parent("X", "Z");
+        x.preconditions = vec!["C".to_string(), "D".to_string()];
+
+        // C and D depend on P (diamond middle)
+        let mut c = make_task_with_parent("C", "Z");
+        c.preconditions = vec!["P".to_string()];
+        let mut d = make_task_with_parent("D", "Z");
+        d.preconditions = vec!["P".to_string()];
+
+        // P depends on A (diamond tip)
+        let mut p = make_task_with_parent("P", "Z");
+        p.preconditions = vec!["A".to_string()];
+
+        // Parallel path: A → B → E → Z
+        let mut b = make_task_with_parent("B", "Z");
+        b.preconditions = vec!["A".to_string()];
+        let mut e = make_task_with_parent("E", "Z");
+        e.preconditions = vec!["B".to_string()];
+
+        // A is the source
+        let a = make_task_with_parent("A", "Z");
+
+        let graph = build_graph(vec![a, b, c, d, e, p, x, z]);
+        let layout = compute_layout(&graph);
+        let grid = build_grid(&layout);
+
+        println!("\n=== Parallel Diamond (build_grid creates skewed) ===");
+        println!("{}", debug_render_grid(&grid));
+
+        // build_grid now creates skewed grid directly: 8 rows (one per task)
+        assert_eq!(grid.rows.len(), 8);
+
+        // Each row should have exactly one task
+        for row in &grid.rows {
+            let task_count = row.iter().filter(|c| matches!(c, Cell::Task(_))).count();
+            assert_eq!(task_count, 1);
+        }
     }
 }

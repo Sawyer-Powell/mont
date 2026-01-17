@@ -6,6 +6,7 @@ preconditions:
   - display-symbols
 validations:
   - test
+complete: true
 ---
 
 Wire up the full pipeline and produce final output.
