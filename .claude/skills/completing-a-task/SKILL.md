@@ -17,3 +17,4 @@ When given a task to work on by task id first:
 - If user gives green light 
     - Mark the task as complete in the frontmatter of the task using `complete: true`
     - Use `jj commit -m ...` to record what you worked on, and move to a new jj revision
+    - NEVERY mention co-authored by CLAUDE in commits

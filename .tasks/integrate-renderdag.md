@@ -6,6 +6,7 @@ preconditions:
   - display-render
 validations:
   - test
+complete: true
 ---
 
 Replace our custom layout/routing code with Facebook's sapling-renderdag crate, which is battle-tested (used by jj and Sapling).
