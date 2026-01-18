@@ -21,7 +21,7 @@ pub use crate::validations::ValidationError as GraphError;
 pub fn available_tasks(graph: &TaskGraph) -> Vec<&Task> {
     graph
         .values()
-        .filter(|task| !task.complete && !task.is_gate() && is_available(task, graph))
+        .filter(|task| !task.is_complete() && !task.is_gate() && is_available(task, graph))
         .collect()
 }
 
@@ -30,7 +30,7 @@ pub fn is_available(task: &Task, graph: &TaskGraph) -> bool {
     // Check all after dependencies are complete
     for after_id in &task.after {
         if let Some(after_task) = graph.get(after_id)
-            && !after_task.complete
+            && !after_task.is_complete()
         {
             return false;
         }
@@ -39,7 +39,7 @@ pub fn is_available(task: &Task, graph: &TaskGraph) -> bool {
     // Check all subtasks are complete (tasks that have this task as before target)
     for other_task in graph.values() {
         for before_id in &other_task.before {
-            if before_id == &task.id && !other_task.complete {
+            if before_id == &task.id && !other_task.is_complete() {
                 return false;
             }
         }
@@ -51,7 +51,7 @@ pub fn is_available(task: &Task, graph: &TaskGraph) -> bool {
 /// Check if a task belongs to a fully complete group.
 /// A task is in a complete group if it and all its ancestors are complete.
 pub fn is_group_complete(task: &Task, graph: &TaskGraph) -> bool {
-    if !task.complete {
+    if !task.is_complete() {
         return false;
     }
 
@@ -319,8 +319,7 @@ mod tests {
             after: vec![],
             validations: vec![],
             title: None,
-            complete: false,
-            in_progress: None,
+            status: None,
             task_type: TaskType::Task,
             description: String::new(),
         }
@@ -333,8 +332,7 @@ mod tests {
             after: vec![],
             validations: vec![],
             title: None,
-            complete: false,
-            in_progress: None,
+            status: None,
             task_type: TaskType::Gate,
             description: String::new(),
         }

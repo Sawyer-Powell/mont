@@ -1,7 +1,7 @@
 ---
 id: track-succeeding-validations
 description: Add a mechanism in the yaml frontmatter to record when validations pass
-complete: true
+status: complete
 ---
 
 Force the LLM to mark validations as having passed inside the task markdown.

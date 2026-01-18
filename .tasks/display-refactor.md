@@ -2,7 +2,7 @@
 id: display-refactor
 title: Refactor display.rs with level-based grid rendering
 type: task
-complete: true
+status: complete
 ---
 
 Refactor the task graph display from a stateful "active lines" approach to a clean

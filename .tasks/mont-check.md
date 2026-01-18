@@ -1,7 +1,7 @@
 ---
 id: mont-check
 title: Implement mont check command, and internals
-complete: true
+status: complete
 validators:
     - test
     - readme-validator

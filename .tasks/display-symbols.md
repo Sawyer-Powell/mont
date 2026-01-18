@@ -7,7 +7,7 @@ after:
   - display-routing
 validations:
   - test
-complete: true
+status: complete
 ---
 
 Convert Connection cells to ASCII symbols based on their flags.

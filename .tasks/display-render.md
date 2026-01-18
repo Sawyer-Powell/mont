@@ -7,7 +7,7 @@ after:
   - display-symbols
 validations:
   - test
-complete: true
+status: complete
 ---
 
 Wire up the full pipeline and produce final output.

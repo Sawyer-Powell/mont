@@ -2,7 +2,7 @@
 id: list-tweaks
 title: A number of tweaks to mont list
 type: task
-complete: true
+status: complete
 validators:
   - test
   - interview-validator

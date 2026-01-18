@@ -2,7 +2,7 @@
 id: bug-list-error
 title: Display is not correct when running mont-list
 type: task
-complete: true
+status: complete
 ---
 
 # Replication steps

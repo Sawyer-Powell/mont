@@ -1,6 +1,6 @@
 ---
 id: mont-new
-complete: true
+status: complete
 title: Implement mont new command
 after:
    - editor-resolution

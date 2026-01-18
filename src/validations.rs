@@ -185,8 +185,7 @@ mod tests {
             after: vec![],
             validations: vec![],
             title: None,
-            complete: false,
-            in_progress: None,
+            status: None,
             task_type: TaskType::Task,
             description: String::new(),
         }
@@ -199,8 +198,7 @@ mod tests {
             after: vec![],
             validations: vec![],
             title: None,
-            complete: false,
-            in_progress: None,
+            status: None,
             task_type: TaskType::Gate,
             description: String::new(),
         }

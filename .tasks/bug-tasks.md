@@ -1,7 +1,7 @@
 ---
 id: bug-tasks
 title: Allow tasks to be marked as bugs, features, or epics
-complete: true
+status: complete
 ---
 
 Add support for marking tasks as bugs to distinguish defect fixes from feature work.

@@ -7,7 +7,7 @@ after:
   - display-render
 validations:
   - test
-complete: true
+status: complete
 ---
 
 Replace our custom layout/routing code with Facebook's sapling-renderdag crate, which is battle-tested (used by jj and Sapling).

@@ -1,7 +1,7 @@
 ---
 id: actionable-errors
 title: Make all error messages actionable
-complete: true
+status: complete
 ---
 
 Improve error messages throughout mont to include clear next action steps.

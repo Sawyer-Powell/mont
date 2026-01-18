@@ -17,7 +17,7 @@ pub fn render_task_graph(graph: &TaskGraph, show_completed: bool) -> String {
 
     let mut active: TaskGraph = graph
         .iter()
-        .filter(|(_, t)| !t.is_gate() && !t.complete)
+        .filter(|(_, t)| !t.is_gate() && !t.is_complete())
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
 
@@ -29,7 +29,7 @@ pub fn render_task_graph(graph: &TaskGraph, show_completed: bool) -> String {
 
     let complete: TaskGraph = graph
         .iter()
-        .filter(|(_, t)| !t.is_gate() && t.complete)
+        .filter(|(_, t)| !t.is_gate() && t.is_complete())
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
 
@@ -233,13 +233,13 @@ fn build_ancestors(task_id: &str, effective_successors: &HashMap<&str, Vec<&str>
 }
 
 pub fn task_marker(task: &Task, graph: &TaskGraph) -> String {
-    let is_available = !task.complete && !task.is_gate() && graph::is_available(task, graph);
-    let is_in_progress = task.in_progress.is_some();
+    let is_available = !task.is_complete() && !task.is_gate() && graph::is_available(task, graph);
+    let is_in_progress = task.is_in_progress();
     let is_jot = task.is_jot();
 
     if task.is_gate() {
         "◈".purple().to_string()
-    } else if task.complete {
+    } else if task.is_complete() {
         "●".bright_black().to_string()
     } else if is_in_progress {
         "◐".yellow().to_string()
@@ -261,11 +261,11 @@ pub fn format_task_line_short(task: &Task, graph: &TaskGraph) -> String {
 }
 
 fn format_task_line_impl(task: &Task, graph: &TaskGraph, show_gate_suffix: bool) -> String {
-    let is_available = !task.complete && !task.is_gate() && graph::is_available(task, graph);
-    let is_in_progress = task.in_progress.is_some();
+    let is_available = !task.is_complete() && !task.is_gate() && graph::is_available(task, graph);
+    let is_in_progress = task.is_in_progress();
     let is_jot = task.is_jot();
 
-    let id_display = if task.complete {
+    let id_display = if task.is_complete() {
         task.id.bright_black().bold().to_string()
     } else if task.is_gate() {
         task.id.purple().bold().to_string()
@@ -286,7 +286,7 @@ fn format_task_line_impl(task: &Task, graph: &TaskGraph, show_gate_suffix: bool)
         TaskType::Gate => String::new(),
     };
 
-    let title_formatted = if task.complete {
+    let title_formatted = if task.is_complete() {
         format!("{}{}", title_truncated.bright_black(), type_suffix)
     } else if task.is_gate() {
         if show_gate_suffix {
@@ -325,8 +325,7 @@ mod tests {
             after: vec![],
             validations: vec![],
             title: Some(format!("{} title", id)),
-            complete: false,
-            in_progress: None,
+            status: None,
             task_type: TaskType::Task,
             description: String::new(),
         }
@@ -339,8 +338,7 @@ mod tests {
             after: vec![],
             validations: vec![],
             title: Some(format!("{} title", id)),
-            complete: false,
-            in_progress: None,
+            status: None,
             task_type: TaskType::Task,
             description: String::new(),
         }
@@ -433,16 +431,18 @@ mod tests {
 
     #[test]
     fn test_render_with_task_types_and_states() {
+        use crate::task::Status;
+
         let root = make_task("root");
 
         let mut jot_task = make_task_with_before("jot-task", "root");
         jot_task.task_type = TaskType::Jot;
 
         let mut in_progress = make_task_with_before("in-progress", "root");
-        in_progress.in_progress = Some(1);
+        in_progress.status = Some(Status::InProgress);
 
         let mut completed = make_task_with_before("completed", "root");
-        completed.complete = true;
+        completed.status = Some(Status::Complete);
 
         let mut gate = make_task("gate-task");
         gate.task_type = TaskType::Gate;

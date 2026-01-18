@@ -1,7 +1,7 @@
 ---
 id: mont-show
 title: Implement mont show command
-complete: true
+status: complete
 after:
   - editor-resolution
   - mont-check

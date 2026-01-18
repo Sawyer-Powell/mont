@@ -1,7 +1,7 @@
 ---
 id: mont-jot
 title: Need to add a new task type called 'jot' and 'distill'
-complete: true
+status: complete
 after:
   - add-jj-lib
   - mont-new

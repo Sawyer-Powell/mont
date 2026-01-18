@@ -4,7 +4,7 @@ title: Implement mont ready command
 after:
   - mont-list
   - in-progress-status
-complete: true
+status: complete
 ---
 
 Implement the `mont ready` CLI command to show tasks ready to work on.

@@ -5,7 +5,7 @@ before:
   - display-refactor
 after:
   - display-layout
-complete: true
+status: complete
 validations:
   - test
 ---

@@ -1,7 +1,7 @@
 ---
 id: in-progress-status
 title: Add in-progress status to tasks
-complete: true
+status: complete
 ---
 
 Add support for marking tasks as "in progress" to track active work.
@@ -29,7 +29,7 @@ Currently tasks are either complete or not. We need an intermediate state to ind
 ---
 id: my-task
 title: Some task
-in_progress: 1
+status: inprogress
 ---
 
 Currently working on this.

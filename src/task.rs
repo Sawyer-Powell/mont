@@ -10,6 +10,15 @@ pub enum TaskType {
     Gate,
 }
 
+/// Task status - only stored statuses. "Ready" is computed from the graph.
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum Status {
+    InProgress,
+    Stopped,
+    Complete,
+}
+
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum ValidationStatus {
@@ -91,10 +100,9 @@ pub struct Task {
     #[serde(default)]
     pub validations: Vec<ValidationItem>,
     pub title: Option<String>,
+    /// Task status: None means pending (ready if no blockers), Some(status) for explicit state
     #[serde(default)]
-    pub complete: bool,
-    #[serde(default)]
-    pub in_progress: Option<u32>,
+    pub status: Option<Status>,
     #[serde(default, rename = "type")]
     pub task_type: TaskType,
     #[serde(skip)]
@@ -114,6 +122,21 @@ impl Task {
     /// Returns true if this task is a jot
     pub fn is_jot(&self) -> bool {
         self.task_type == TaskType::Jot
+    }
+
+    /// Returns true if this task is marked complete
+    pub fn is_complete(&self) -> bool {
+        self.status == Some(Status::Complete)
+    }
+
+    /// Returns true if this task is marked in progress
+    pub fn is_in_progress(&self) -> bool {
+        self.status == Some(Status::InProgress)
+    }
+
+    /// Returns true if this task is marked stopped
+    pub fn is_stopped(&self) -> bool {
+        self.status == Some(Status::Stopped)
     }
 }
 
@@ -228,7 +251,7 @@ pub fn parse(content: &str) -> Result<Task, ParseError> {
         return Err(ParseError::GateWithAfter(task.id));
     }
 
-    if task.is_gate() && task.complete {
+    if task.is_gate() && task.is_complete() {
         return Err(ParseError::GateMarkedComplete(task.id));
     }
 
@@ -307,7 +330,7 @@ Should fail.
         let content = r#"---
 id: complete-gate
 type: gate
-complete: true
+status: complete
 ---
 
 Should fail.
@@ -359,76 +382,64 @@ Minimal task.
         assert!(task.validations.is_empty());
         assert!(task.title.is_none());
         assert!(!task.is_gate());
-        assert!(!task.complete);
+        assert!(!task.is_complete());
     }
 
     #[test]
-    fn test_parse_complete_true() {
+    fn test_parse_status_complete() {
         let content = r#"---
 id: done-task
-complete: true
+status: complete
 ---
 
 A completed task.
 "#;
         let task = parse(content).unwrap();
         assert_eq!(task.id, "done-task");
-        assert!(task.complete);
+        assert!(task.is_complete());
     }
 
     #[test]
-    fn test_parse_complete_false() {
+    fn test_parse_no_status() {
         let content = r#"---
-id: incomplete-task
-complete: false
+id: pending-task
 ---
 
-An incomplete task.
+A pending task.
 "#;
         let task = parse(content).unwrap();
-        assert_eq!(task.id, "incomplete-task");
-        assert!(!task.complete);
+        assert_eq!(task.id, "pending-task");
+        assert!(!task.is_complete());
+        assert!(!task.is_in_progress());
+        assert!(!task.is_stopped());
     }
 
     #[test]
-    fn test_parse_in_progress() {
+    fn test_parse_status_in_progress() {
         let content = r#"---
 id: in-progress-task
-in_progress: 1
+status: inprogress
 ---
 
 A task in progress.
 "#;
         let task = parse(content).unwrap();
         assert_eq!(task.id, "in-progress-task");
-        assert_eq!(task.in_progress, Some(1));
+        assert!(task.is_in_progress());
     }
 
     #[test]
-    fn test_parse_in_progress_incremented() {
+    fn test_parse_status_stopped() {
         let content = r#"---
-id: multi-revision-task
-in_progress: 3
+id: stopped-task
+status: stopped
 ---
 
-A task worked on across multiple revisions.
+A stopped task.
 "#;
         let task = parse(content).unwrap();
-        assert_eq!(task.id, "multi-revision-task");
-        assert_eq!(task.in_progress, Some(3));
-    }
-
-    #[test]
-    fn test_parse_no_in_progress() {
-        let content = r#"---
-id: normal-task
----
-
-A normal task without in_progress.
-"#;
-        let task = parse(content).unwrap();
-        assert_eq!(task.id, "normal-task");
-        assert!(task.in_progress.is_none());
+        assert_eq!(task.id, "stopped-task");
+        assert!(task.is_stopped());
     }
 
     #[test]

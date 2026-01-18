@@ -3,7 +3,7 @@ id: display-layout
 title: Types + level assignment + positioning + grid construction
 before:
   - display-refactor
-complete: true
+status: complete
 validations:
   - test
 ---

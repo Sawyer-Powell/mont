@@ -898,15 +898,16 @@ fn show_task(
 }
 
 fn print_task_details(task: &task::Task, graph: &graph::TaskGraph, short: bool) {
-    let is_in_progress = task.in_progress.is_some();
+    let is_in_progress = task.is_in_progress();
     let is_jot = task.is_jot();
     let is_gate = task.is_gate();
+    let is_complete = task.is_complete();
 
     // Determine label width for table alignment
     const LABEL_WIDTH: usize = 14;
 
     // Task ID
-    let id_display = if task.complete {
+    let id_display = if is_complete {
         task.id.bright_black().bold().to_string()
     } else if is_gate {
         task.id.purple().bold().to_string()
@@ -919,7 +920,7 @@ fn print_task_details(task: &task::Task, graph: &graph::TaskGraph, short: bool) 
 
     // Title
     if let Some(ref title) = task.title {
-        let title_display = if task.complete {
+        let title_display = if is_complete {
             title.bright_black().to_string()
         } else if is_gate {
             title.purple().to_string()
@@ -932,7 +933,7 @@ fn print_task_details(task: &task::Task, graph: &graph::TaskGraph, short: bool) 
     }
 
     // Status
-    let status_value = if task.complete {
+    let status_value = if is_complete {
         "complete".bright_black().to_string()
     } else if is_in_progress {
         "in progress".yellow().to_string()

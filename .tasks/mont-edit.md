@@ -1,6 +1,6 @@
 ---
 id: mont-edit
-complete: true
+status: complete
 title: Add a mont edit command
 ---
 

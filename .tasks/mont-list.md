@@ -1,7 +1,7 @@
 ---
 id: mont-list
 title: Implement mont list command
-complete: true
+status: complete
 validations:
   - test
 ---
