@@ -14,8 +14,8 @@ pub enum ValidationError {
         task_id: String,
         after_id: String,
     },
-    #[error("task '{task_id}' has validator '{after_id}' as after dependency (use validations instead)")]
-    AfterIsValidator {
+    #[error("task '{task_id}' has gate '{after_id}' as after dependency (use validations instead)")]
+    AfterIsGate {
         task_id: String,
         after_id: String,
     },
@@ -24,13 +24,13 @@ pub enum ValidationError {
         task_id: String,
         validation_id: String,
     },
-    #[error("task '{task_id}' references validation '{validation_id}' which is not a validator")]
+    #[error("task '{task_id}' references validation '{validation_id}' which is not a gate")]
     InvalidValidation {
         task_id: String,
         validation_id: String,
     },
-    #[error("task '{task_id}' references validator '{validation_id}' which has a before target (must be root validator)")]
-    ValidationNotRootValidator {
+    #[error("task '{task_id}' references gate '{validation_id}' which has a before target (must be root gate)")]
+    ValidationNotRootGate {
         task_id: String,
         validation_id: String,
     },
@@ -45,9 +45,9 @@ pub enum ValidationError {
 /// Checks that:
 /// - Before reference points to an existing task
 /// - All after references point to existing tasks
-/// - Non-validator tasks cannot have validators as after dependencies
-/// - All validation references point to tasks marked as validators
-/// - All validation references point to root validators (no before target)
+/// - Non-gate tasks cannot have gates as after dependencies
+/// - All validation references point to tasks marked as gates
+/// - All validation references point to root gates (no before target)
 pub fn validate_task(task: &Task, graph: &TaskGraph) -> Result<(), ValidationError> {
     for before_id in &task.before {
         if !graph.contains_key(before_id) {
@@ -66,8 +66,8 @@ pub fn validate_task(task: &Task, graph: &TaskGraph) -> Result<(), ValidationErr
             });
         };
 
-        if !task.validator && after_task.validator {
-            return Err(ValidationError::AfterIsValidator {
+        if !task.is_gate() && after_task.is_gate() {
+            return Err(ValidationError::AfterIsGate {
                 task_id: task.id.clone(),
                 after_id: after_id.clone(),
             });
@@ -75,22 +75,22 @@ pub fn validate_task(task: &Task, graph: &TaskGraph) -> Result<(), ValidationErr
     }
 
     for validation in &task.validations {
-        let Some(validator) = graph.get(&validation.id) else {
+        let Some(gate) = graph.get(&validation.id) else {
             return Err(ValidationError::ValidationNotFound {
                 task_id: task.id.clone(),
                 validation_id: validation.id.clone(),
             });
         };
 
-        if !validator.validator {
+        if !gate.is_gate() {
             return Err(ValidationError::InvalidValidation {
                 task_id: task.id.clone(),
                 validation_id: validation.id.clone(),
             });
         }
 
-        if !validator.before.is_empty() {
-            return Err(ValidationError::ValidationNotRootValidator {
+        if !gate.before.is_empty() {
+            return Err(ValidationError::ValidationNotRootGate {
                 task_id: task.id.clone(),
                 validation_id: validation.id.clone(),
             });
@@ -185,25 +185,23 @@ mod tests {
             after: vec![],
             validations: vec![],
             title: None,
-            validator: false,
             complete: false,
             in_progress: None,
-            task_type: TaskType::Feature,
+            task_type: TaskType::Task,
             description: String::new(),
         }
     }
 
-    fn make_validator(id: &str) -> Task {
+    fn make_gate(id: &str) -> Task {
         Task {
             id: id.to_string(),
             before: vec![],
             after: vec![],
             validations: vec![],
             title: None,
-            validator: true,
             complete: false,
             in_progress: None,
-            task_type: TaskType::Feature,
+            task_type: TaskType::Gate,
             description: String::new(),
         }
     }
@@ -211,17 +209,17 @@ mod tests {
     #[test]
     fn test_validate_task_valid() {
         let before_target = make_task("before-target");
-        let validator = make_validator("validator");
+        let gate = make_gate("gate");
         let mut task = make_task("task");
         task.before = vec!["before-target".to_string()];
         task.validations = vec![ValidationItem {
-            id: "validator".to_string(),
+            id: "gate".to_string(),
             status: ValidationStatus::Pending,
         }];
 
         let mut graph = TaskGraph::new();
         graph.insert("before-target".to_string(), before_target);
-        graph.insert("validator".to_string(), validator);
+        graph.insert("gate".to_string(), gate);
         graph.insert("task".to_string(), task.clone());
 
         assert!(validate_task(&task, &graph).is_ok());
@@ -262,20 +260,20 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_task_after_is_validator() {
-        let validator = make_validator("validator");
+    fn test_validate_task_after_is_gate() {
+        let gate = make_gate("gate");
         let mut task = make_task("task");
-        task.after = vec!["validator".to_string()];
+        task.after = vec!["gate".to_string()];
 
         let mut graph = TaskGraph::new();
-        graph.insert("validator".to_string(), validator);
+        graph.insert("gate".to_string(), gate);
         graph.insert("task".to_string(), task.clone());
 
         assert_eq!(
             validate_task(&task, &graph),
-            Err(ValidationError::AfterIsValidator {
+            Err(ValidationError::AfterIsGate {
                 task_id: "task".to_string(),
-                after_id: "validator".to_string(),
+                after_id: "gate".to_string(),
             })
         );
     }

@@ -33,7 +33,7 @@ Bugs have different characteristics than feature tasks:
 ---
 id: fix-login-crash
 title: Fix crash on login with empty password
-type: bug
+type: task
 ---
 
 App crashes when user submits login form with empty password field.

@@ -1,7 +1,7 @@
 ---
 id: interview-validator
 title: Conduct interview to confirm changes
-validator: true
+type: gate
 ---
 
 Review and collate all decisinos you made while working on this task.

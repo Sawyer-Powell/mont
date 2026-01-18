@@ -1,7 +1,7 @@
 ---
 id: list-tweaks
 title: A number of tweaks to mont list
-type: bug
+type: task
 complete: true
 validators:
   - test

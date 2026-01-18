@@ -133,11 +133,11 @@ const TASKS_DIR: &str = ".tasks";
 
 fn parse_task_type(s: &str) -> Result<TaskType, String> {
     match s.to_lowercase().as_str() {
-        "feature" => Ok(TaskType::Feature),
-        "bug" => Ok(TaskType::Bug),
+        "task" => Ok(TaskType::Task),
         "jot" => Ok(TaskType::Jot),
+        "gate" => Ok(TaskType::Gate),
         _ => Err(format!(
-            "invalid task type '{}', must be one of: feature, bug, jot",
+            "invalid task type '{}', must be one of: task, jot, gate",
             s
         )),
     }
@@ -313,9 +313,9 @@ fn ready_tasks() -> Result<(), AppError> {
     for task in ready {
         let title = render::truncate_title(task.title.as_deref().unwrap_or(""));
         let type_tag = match task.task_type {
-            TaskType::Bug => format!("{}", "[bug]".red().bold()),
-            TaskType::Feature => format!("{}", "[feature]".bright_green().bold()),
+            TaskType::Task => String::new(),
             TaskType::Jot => format!("{}", "[jot]".yellow().bold()),
+            TaskType::Gate => format!("{}", "[gate]".purple().bold()),
         };
         println!(
             "{}  {:max_title_len$}  {}",
@@ -899,8 +899,8 @@ fn show_task(
 
 fn print_task_details(task: &task::Task, graph: &graph::TaskGraph, short: bool) {
     let is_in_progress = task.in_progress.is_some();
-    let is_bug = task.task_type == TaskType::Bug;
-    let is_jot = task.task_type == TaskType::Jot;
+    let is_jot = task.is_jot();
+    let is_gate = task.is_gate();
 
     // Determine label width for table alignment
     const LABEL_WIDTH: usize = 14;
@@ -908,12 +908,10 @@ fn print_task_details(task: &task::Task, graph: &graph::TaskGraph, short: bool) 
     // Task ID
     let id_display = if task.complete {
         task.id.bright_black().bold().to_string()
-    } else if task.validator {
+    } else if is_gate {
         task.id.purple().bold().to_string()
     } else if is_jot || is_in_progress {
         task.id.yellow().bold().to_string()
-    } else if is_bug {
-        task.id.red().bold().to_string()
     } else {
         task.id.bright_green().bold().to_string()
     };
@@ -923,12 +921,10 @@ fn print_task_details(task: &task::Task, graph: &graph::TaskGraph, short: bool) 
     if let Some(ref title) = task.title {
         let title_display = if task.complete {
             title.bright_black().to_string()
-        } else if task.validator {
+        } else if is_gate {
             title.purple().to_string()
         } else if is_jot || is_in_progress {
             title.yellow().to_string()
-        } else if is_bug {
-            title.red().to_string()
         } else {
             title.bright_green().to_string()
         };
@@ -947,9 +943,9 @@ fn print_task_details(task: &task::Task, graph: &graph::TaskGraph, short: bool) 
 
     // Type
     let type_value = match task.task_type {
-        TaskType::Bug => "[bug]".red().to_string(),
-        TaskType::Feature => "[feature]".bright_green().to_string(),
+        TaskType::Task => "[task]".bright_green().to_string(),
         TaskType::Jot => "[jot]".yellow().to_string(),
+        TaskType::Gate => "[gate]".purple().to_string(),
     };
     println!("{:LABEL_WIDTH$} {}", "Type".bold(), type_value);
 
@@ -1641,9 +1637,9 @@ fn build_task_content(
 
     if let Some(tt) = task_type {
         let type_str = match tt {
-            TaskType::Feature => "feature",
-            TaskType::Bug => "bug",
+            TaskType::Task => "task",
             TaskType::Jot => "jot",
+            TaskType::Gate => "gate",
         };
         content.push_str(&format!("type: {}\n", type_str));
     }

@@ -34,7 +34,8 @@
       "Bash(EDITOR=true cargo run:*)",
       "Bash(for f in *.md)",
       "Bash(do sed -i '' 's/^parent:/before:/g; s/^preconditions:/after:/g; s/^type: epic$/type: feature/g' \"$f\")",
-      "Bash(done)"
+      "Bash(done)",
+      "Bash(wc:*)"
     ]
   }
 }

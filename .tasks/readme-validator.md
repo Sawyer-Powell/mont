@@ -1,7 +1,7 @@
 ---
 id: readme-validator
 title: Ensure the readme is up to date with code
-validator: true
+type: gate
 ---
 
 Read the readme, and ensure that all factual information is current

@@ -171,13 +171,13 @@ fn format_parse_error(error: &ParseError, file_path: &str) -> String {
             out.push('\n');
             out.push_str(&format!("  {}\n", yaml_err.to_string().dimmed()));
         }
-        ParseError::ValidatorWithAfter(task_id) => {
+        ParseError::GateWithAfter(task_id) => {
             out.push_str(&format!(
-                "validator task '{}' has after dependencies\n",
+                "gate '{}' has after dependencies\n",
                 task_id.yellow()
             ));
             out.push('\n');
-            out.push_str(&format!("  {}\n", "Validator tasks cannot have after dependencies because they are".dimmed()));
+            out.push_str(&format!("  {}\n", "Gates cannot have after dependencies because they are".dimmed()));
             out.push_str(&format!("  {}\n", "reusable validation criteria, not work items in the task graph.".dimmed()));
             out.push('\n');
             out.push_str(&format!("  {}:\n", "To fix this".bold()));
@@ -187,17 +187,17 @@ fn format_parse_error(error: &ParseError, file_path: &str) -> String {
                 file_path.cyan()
             ));
             out.push_str(&format!(
-                "    2. Or remove {} to make this a regular task\n",
-                "validator: true".cyan()
+                "    2. Or change {} to make this a regular task\n",
+                "type: gate".cyan()
             ));
         }
-        ParseError::ValidatorMarkedComplete(task_id) => {
+        ParseError::GateMarkedComplete(task_id) => {
             out.push_str(&format!(
-                "validator task '{}' is marked complete\n",
+                "gate '{}' is marked complete\n",
                 task_id.yellow()
             ));
             out.push('\n');
-            out.push_str(&format!("  {}\n", "Validator tasks are reusable and cannot be completed.".dimmed()));
+            out.push_str(&format!("  {}\n", "Gates are reusable and cannot be completed.".dimmed()));
             out.push_str(&format!("  {}\n", "They define validation criteria that can be run multiple times.".dimmed()));
             out.push('\n');
             out.push_str(&format!("  {}:\n", "To fix this".bold()));
@@ -207,8 +207,8 @@ fn format_parse_error(error: &ParseError, file_path: &str) -> String {
                 file_path.cyan()
             ));
             out.push_str(&format!(
-                "    2. Or remove {} to make this a regular task\n",
-                "validator: true".cyan()
+                "    2. Or change {} to make this a regular task\n",
+                "type: gate".cyan()
             ));
         }
     }
@@ -277,17 +277,17 @@ fn format_validation_error(error: &ValidationError, tasks_dir: &str) -> String {
             ));
             out.push_str("    3. Change the after dependency to an existing task\n");
         }
-        ValidationError::AfterIsValidator {
+        ValidationError::AfterIsGate {
             task_id,
             after_id,
         } => {
             out.push_str(&format!(
-                "task '{}' has validator '{}' as an after dependency\n",
+                "task '{}' has gate '{}' as an after dependency\n",
                 task_id.yellow(),
                 after_id.yellow()
             ));
             out.push('\n');
-            out.push_str(&format!("  {}\n", "Validators define validation criteria, not work dependencies.".dimmed()));
+            out.push_str(&format!("  {}\n", "Gates define validation criteria, not work dependencies.".dimmed()));
             out.push_str(&format!("  {}\n", "Use the 'validations' field instead of 'after'.".dimmed()));
             out.push('\n');
             out.push_str(&format!("  {}:\n", "To fix this".bold()));
@@ -323,10 +323,10 @@ fn format_validation_error(error: &ValidationError, tasks_dir: &str) -> String {
             out.push('\n');
             out.push_str(&format!("  {}:\n", "To fix this".bold()));
             out.push_str(&format!(
-                "    1. Create the validator task: {}/{}.md with {}\n",
+                "    1. Create the gate: {}/{}.md with {}\n",
                 tasks_dir.cyan(),
                 validation_id.cyan(),
-                "validator: true".cyan()
+                "type: gate".cyan()
             ));
             out.push_str(&format!(
                 "    2. Remove '{}' from validations in {}/{}.md\n",
@@ -334,27 +334,27 @@ fn format_validation_error(error: &ValidationError, tasks_dir: &str) -> String {
                 tasks_dir.cyan(),
                 task_id.cyan()
             ));
-            out.push_str("    3. Change the validation to reference an existing validator\n");
+            out.push_str("    3. Change the validation to reference an existing gate\n");
         }
         ValidationError::InvalidValidation {
             task_id,
             validation_id,
         } => {
             out.push_str(&format!(
-                "task '{}' references validation '{}' which is not a validator\n",
+                "task '{}' references validation '{}' which is not a gate\n",
                 task_id.yellow(),
                 validation_id.yellow()
             ));
             out.push('\n');
             out.push_str(&format!(
                 "  {}\n",
-                format!("The task '{}' exists but is not marked as a validator.", validation_id).dimmed()
+                format!("The task '{}' exists but is not a gate.", validation_id).dimmed()
             ));
             out.push('\n');
             out.push_str(&format!("  {}:\n", "To fix this".bold()));
             out.push_str(&format!(
-                "    1. Add {} to {}/{}.md\n",
-                "validator: true".cyan(),
+                "    1. Change to {} in {}/{}.md\n",
+                "type: gate".cyan(),
                 tasks_dir.cyan(),
                 validation_id.cyan()
             ));
@@ -364,19 +364,19 @@ fn format_validation_error(error: &ValidationError, tasks_dir: &str) -> String {
                 tasks_dir.cyan(),
                 task_id.cyan()
             ));
-            out.push_str("    3. Change the validation to reference an existing validator\n");
+            out.push_str("    3. Change the validation to reference an existing gate\n");
         }
-        ValidationError::ValidationNotRootValidator {
+        ValidationError::ValidationNotRootGate {
             task_id,
             validation_id,
         } => {
             out.push_str(&format!(
-                "task '{}' references validator '{}' which has a before target\n",
+                "task '{}' references gate '{}' which has a before target\n",
                 task_id.yellow(),
                 validation_id.yellow()
             ));
             out.push('\n');
-            out.push_str(&format!("  {}\n", "Validators used in the 'validations' field must be root validators".dimmed()));
+            out.push_str(&format!("  {}\n", "Gates used in the 'validations' field must be root gates".dimmed()));
             out.push_str(&format!("  {}\n", "(they cannot have a before target).".dimmed()));
             out.push('\n');
             out.push_str(&format!("  {}:\n", "To fix this".bold()));
@@ -387,7 +387,7 @@ fn format_validation_error(error: &ValidationError, tasks_dir: &str) -> String {
                 validation_id.cyan()
             ));
             out.push_str(&format!(
-                "    2. Use a different root validator in {}/{}.md\n",
+                "    2. Use a different root gate in {}/{}.md\n",
                 tasks_dir.cyan(),
                 task_id.cyan()
             ));

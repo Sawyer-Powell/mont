@@ -17,19 +17,19 @@ pub fn render_task_graph(graph: &TaskGraph, show_completed: bool) -> String {
 
     let mut active: TaskGraph = graph
         .iter()
-        .filter(|(_, t)| !t.validator && !t.complete)
+        .filter(|(_, t)| !t.is_gate() && !t.complete)
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
 
-    let validators: TaskGraph = graph
+    let gates: TaskGraph = graph
         .iter()
-        .filter(|(_, t)| t.validator)
+        .filter(|(_, t)| t.is_gate())
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
 
     let complete: TaskGraph = graph
         .iter()
-        .filter(|(_, t)| !t.validator && t.complete)
+        .filter(|(_, t)| !t.is_gate() && t.complete)
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
 
@@ -41,11 +41,11 @@ pub fn render_task_graph(graph: &TaskGraph, show_completed: bool) -> String {
         output.push_str(&render_section(&active));
     }
 
-    if !validators.is_empty() {
+    if !gates.is_empty() {
         if !output.is_empty() {
             output.push('\n');
         }
-        output.push_str(&render_section(&validators));
+        output.push_str(&render_section(&gates));
     }
 
     if show_completed && !complete.is_empty() {
@@ -233,12 +233,11 @@ fn build_ancestors(task_id: &str, effective_successors: &HashMap<&str, Vec<&str>
 }
 
 pub fn task_marker(task: &Task, graph: &TaskGraph) -> String {
-    let is_available = !task.complete && !task.validator && graph::is_available(task, graph);
+    let is_available = !task.complete && !task.is_gate() && graph::is_available(task, graph);
     let is_in_progress = task.in_progress.is_some();
-    let is_bug = task.task_type == TaskType::Bug;
-    let is_jot = task.task_type == TaskType::Jot;
+    let is_jot = task.is_jot();
 
-    if task.validator {
+    if task.is_gate() {
         "◈".purple().to_string()
     } else if task.complete {
         "●".bright_black().to_string()
@@ -246,8 +245,6 @@ pub fn task_marker(task: &Task, graph: &TaskGraph) -> String {
         "◐".yellow().to_string()
     } else if is_jot {
         "◇".yellow().to_string()
-    } else if is_available && is_bug {
-        "◉".red().to_string()
     } else if is_available {
         "◉".bright_green().to_string()
     } else {
@@ -263,20 +260,17 @@ pub fn format_task_line_short(task: &Task, graph: &TaskGraph) -> String {
     format_task_line_impl(task, graph, false)
 }
 
-fn format_task_line_impl(task: &Task, graph: &TaskGraph, show_validator_suffix: bool) -> String {
-    let is_available = !task.complete && !task.validator && graph::is_available(task, graph);
+fn format_task_line_impl(task: &Task, graph: &TaskGraph, show_gate_suffix: bool) -> String {
+    let is_available = !task.complete && !task.is_gate() && graph::is_available(task, graph);
     let is_in_progress = task.in_progress.is_some();
-    let is_bug = task.task_type == TaskType::Bug;
-    let is_jot = task.task_type == TaskType::Jot;
+    let is_jot = task.is_jot();
 
     let id_display = if task.complete {
         task.id.bright_black().bold().to_string()
-    } else if task.validator {
+    } else if task.is_gate() {
         task.id.purple().bold().to_string()
     } else if is_jot || is_in_progress {
         task.id.yellow().bold().to_string()
-    } else if is_available && is_bug {
-        task.id.red().bold().to_string()
     } else if is_available {
         task.id.bright_green().bold().to_string()
     } else {
@@ -287,29 +281,21 @@ fn format_task_line_impl(task: &Task, graph: &TaskGraph, show_validator_suffix: 
     let title_truncated = truncate_title(title_raw);
 
     let type_suffix = match task.task_type {
-        TaskType::Bug => {
-            if is_available {
-                format!(" {}", "[bug]".red())
-            } else {
-                format!(" {}", "[bug]".bright_black())
-            }
-        }
         TaskType::Jot => format!(" {}", "[jot]".yellow()),
-        TaskType::Feature => String::new(),
+        TaskType::Task => String::new(),
+        TaskType::Gate => String::new(),
     };
 
     let title_formatted = if task.complete {
         format!("{}{}", title_truncated.bright_black(), type_suffix)
-    } else if task.validator {
-        if show_validator_suffix {
-            format!("{} {}{}", title_truncated, "[validator]".purple(), type_suffix)
+    } else if task.is_gate() {
+        if show_gate_suffix {
+            format!("{} {}{}", title_truncated, "[gate]".purple(), type_suffix)
         } else {
             format!("{}{}", title_truncated.purple(), type_suffix)
         }
     } else if is_jot || is_in_progress {
         format!("{}{}", title_truncated.yellow(), type_suffix)
-    } else if is_available && is_bug {
-        format!("{}{}", title_truncated.red(), type_suffix)
     } else if is_available {
         format!("{}{}", title_truncated.bright_green(), type_suffix)
     } else {
@@ -339,10 +325,9 @@ mod tests {
             after: vec![],
             validations: vec![],
             title: Some(format!("{} title", id)),
-            validator: false,
             complete: false,
             in_progress: None,
-            task_type: TaskType::Feature,
+            task_type: TaskType::Task,
             description: String::new(),
         }
     }
@@ -354,10 +339,9 @@ mod tests {
             after: vec![],
             validations: vec![],
             title: Some(format!("{} title", id)),
-            validator: false,
             complete: false,
             in_progress: None,
-            task_type: TaskType::Feature,
+            task_type: TaskType::Task,
             description: String::new(),
         }
     }
@@ -451,8 +435,8 @@ mod tests {
     fn test_render_with_task_types_and_states() {
         let root = make_task("root");
 
-        let mut bug_task = make_task_with_before("bug-task", "root");
-        bug_task.task_type = TaskType::Bug;
+        let mut jot_task = make_task_with_before("jot-task", "root");
+        jot_task.task_type = TaskType::Jot;
 
         let mut in_progress = make_task_with_before("in-progress", "root");
         in_progress.in_progress = Some(1);
@@ -460,15 +444,15 @@ mod tests {
         let mut completed = make_task_with_before("completed", "root");
         completed.complete = true;
 
-        let mut validator = make_task("validator-task");
-        validator.validator = true;
+        let mut gate = make_task("gate-task");
+        gate.task_type = TaskType::Gate;
 
-        let graph = build_graph(vec![root, bug_task, in_progress, completed, validator]);
+        let graph = build_graph(vec![root, jot_task, in_progress, completed, gate]);
         let output = render_component(&graph);
         let stripped = strip_ansi(&output);
 
         println!("\n=== Task Types and States ===\n{}", stripped);
 
-        assert!(stripped.contains("[bug]"));
+        assert!(stripped.contains("[jot]"));
     }
 }

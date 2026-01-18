@@ -4,10 +4,10 @@ use thiserror::Error;
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum TaskType {
-    Bug,
-    #[default]
-    Feature,
     Jot,
+    #[default]
+    Task,
+    Gate,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Default)]
@@ -73,10 +73,10 @@ pub enum ParseError {
     MissingFrontmatter,
     #[error("invalid yaml: {0}")]
     InvalidYaml(#[from] serde_yaml::Error),
-    #[error("validator task '{0}' must not have after dependencies")]
-    ValidatorWithAfter(String),
-    #[error("validator task '{0}' cannot be marked complete")]
-    ValidatorMarkedComplete(String),
+    #[error("gate '{0}' must not have after dependencies")]
+    GateWithAfter(String),
+    #[error("gate '{0}' cannot be marked complete")]
+    GateMarkedComplete(String),
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
@@ -92,8 +92,6 @@ pub struct Task {
     pub validations: Vec<ValidationItem>,
     pub title: Option<String>,
     #[serde(default)]
-    pub validator: bool,
-    #[serde(default)]
     pub complete: bool,
     #[serde(default)]
     pub in_progress: Option<u32>,
@@ -106,6 +104,16 @@ pub struct Task {
 impl Task {
     pub fn validation_ids(&self) -> impl Iterator<Item = &str> {
         self.validations.iter().map(|v| v.id.as_str())
+    }
+
+    /// Returns true if this task is a gate (validator)
+    pub fn is_gate(&self) -> bool {
+        self.task_type == TaskType::Gate
+    }
+
+    /// Returns true if this task is a jot
+    pub fn is_jot(&self) -> bool {
+        self.task_type == TaskType::Jot
     }
 }
 
@@ -139,26 +147,26 @@ impl Task {
 /// assert_eq!(task.validations[0].id, "val1");
 /// assert_eq!(task.validations[0].status, ValidationStatus::Pending);
 /// assert_eq!(task.title, Some("Test Task".to_string()));
-/// assert!(!task.validator);
+/// assert!(!task.is_gate());
 /// assert_eq!(task.description, "This is the task description.");
 /// ```
 ///
-/// Parsing a validator task (no after dependencies allowed):
+/// Parsing a gate (no after dependencies allowed):
 /// ```
 /// use mont::task::{parse, ParseError};
 ///
 /// let content = r#"---
-/// id: test-validator
-/// validator: true
+/// id: test-gate
+/// type: gate
 /// before:
 ///   - parent1
 /// ---
 ///
-/// Validator description.
+/// Gate description.
 /// "#;
 ///
 /// let task = parse(content).unwrap();
-/// assert!(task.validator);
+/// assert!(task.is_gate());
 /// assert_eq!(task.before, vec!["parent1".to_string()]);
 /// ```
 ///
@@ -185,13 +193,13 @@ impl Task {
 /// assert!(matches!(result, Err(ParseError::InvalidYaml(_))));
 /// ```
 ///
-/// Validator with after dependencies returns an error:
+/// Gate with after dependencies returns an error:
 /// ```
 /// use mont::task::{parse, ParseError};
 ///
 /// let content = r#"---
-/// id: bad-validator
-/// validator: true
+/// id: bad-gate
+/// type: gate
 /// after:
 ///   - some-task
 /// ---
@@ -200,7 +208,7 @@ impl Task {
 /// "#;
 ///
 /// let result = parse(content);
-/// assert!(matches!(result, Err(ParseError::ValidatorWithAfter(_))));
+/// assert!(matches!(result, Err(ParseError::GateWithAfter(_))));
 /// ```
 pub fn parse(content: &str) -> Result<Task, ParseError> {
     let Some(start) = content.find("---") else {
@@ -216,12 +224,12 @@ pub fn parse(content: &str) -> Result<Task, ParseError> {
     let mut task: Task = serde_yaml::from_str(yaml)?;
     task.description = description;
 
-    if task.validator && !task.after.is_empty() {
-        return Err(ParseError::ValidatorWithAfter(task.id));
+    if task.is_gate() && !task.after.is_empty() {
+        return Err(ParseError::GateWithAfter(task.id));
     }
 
-    if task.validator && task.complete {
-        return Err(ParseError::ValidatorMarkedComplete(task.id));
+    if task.is_gate() && task.complete {
+        return Err(ParseError::GateMarkedComplete(task.id));
     }
 
     Ok(task)
@@ -254,33 +262,33 @@ Task description here.
         assert_eq!(task.validations[0].id, "val1");
         assert_eq!(task.validations[0].status, ValidationStatus::Pending);
         assert_eq!(task.title, Some("Test Task".to_string()));
-        assert!(!task.validator);
+        assert!(!task.is_gate());
         assert_eq!(task.description, "Task description here.");
     }
 
     #[test]
-    fn test_parse_validator_without_after() {
+    fn test_parse_gate_without_after() {
         let content = r#"---
-id: my-validator
-validator: true
+id: my-gate
+type: gate
 before:
   - task1
 ---
 
-Validator description.
+Gate description.
 "#;
         let task = parse(content).unwrap();
-        assert_eq!(task.id, "my-validator");
-        assert!(task.validator);
+        assert_eq!(task.id, "my-gate");
+        assert!(task.is_gate());
         assert_eq!(task.before, vec!["task1".to_string()]);
         assert!(task.after.is_empty());
     }
 
     #[test]
-    fn test_parse_validator_with_after_fails() {
+    fn test_parse_gate_with_after_fails() {
         let content = r#"---
-id: bad-validator
-validator: true
+id: bad-gate
+type: gate
 after:
   - some-task
 ---
@@ -290,15 +298,15 @@ Should fail.
         let result = parse(content);
         assert!(matches!(
             result,
-            Err(ParseError::ValidatorWithAfter(id)) if id == "bad-validator"
+            Err(ParseError::GateWithAfter(id)) if id == "bad-gate"
         ));
     }
 
     #[test]
-    fn test_parse_validator_marked_complete_fails() {
+    fn test_parse_gate_marked_complete_fails() {
         let content = r#"---
-id: complete-validator
-validator: true
+id: complete-gate
+type: gate
 complete: true
 ---
 
@@ -307,7 +315,7 @@ Should fail.
         let result = parse(content);
         assert!(matches!(
             result,
-            Err(ParseError::ValidatorMarkedComplete(id)) if id == "complete-validator"
+            Err(ParseError::GateMarkedComplete(id)) if id == "complete-gate"
         ));
     }
 
@@ -350,7 +358,7 @@ Minimal task.
         assert!(task.after.is_empty());
         assert!(task.validations.is_empty());
         assert!(task.title.is_none());
-        assert!(!task.validator);
+        assert!(!task.is_gate());
         assert!(!task.complete);
     }
 
@@ -424,40 +432,40 @@ A normal task without in_progress.
     }
 
     #[test]
-    fn test_parse_type_bug() {
+    fn test_parse_type_task() {
         let content = r#"---
-id: fix-login-crash
-title: Fix crash on login with empty password
-type: bug
+id: implement-feature
+title: Implement the login feature
+type: task
 ---
 
-App crashes when user submits login form with empty password field.
+Implement login functionality.
 "#;
         let task = parse(content).unwrap();
-        assert_eq!(task.id, "fix-login-crash");
-        assert_eq!(task.task_type, TaskType::Bug);
+        assert_eq!(task.id, "implement-feature");
+        assert_eq!(task.task_type, TaskType::Task);
         assert_eq!(
             task.title,
-            Some("Fix crash on login with empty password".to_string())
+            Some("Implement the login feature".to_string())
         );
     }
 
     #[test]
-    fn test_parse_type_feature() {
+    fn test_parse_type_gate() {
         let content = r#"---
-id: add-button
-type: feature
+id: run-tests
+type: gate
 ---
 
-A feature task.
+A gate task.
 "#;
         let task = parse(content).unwrap();
-        assert_eq!(task.id, "add-button");
-        assert_eq!(task.task_type, TaskType::Feature);
+        assert_eq!(task.id, "run-tests");
+        assert_eq!(task.task_type, TaskType::Gate);
     }
 
     #[test]
-    fn test_parse_type_defaults_to_feature() {
+    fn test_parse_type_defaults_to_task() {
         let content = r#"---
 id: regular-task
 ---
@@ -466,7 +474,7 @@ No type field specified.
 "#;
         let task = parse(content).unwrap();
         assert_eq!(task.id, "regular-task");
-        assert_eq!(task.task_type, TaskType::Feature);
+        assert_eq!(task.task_type, TaskType::Task);
     }
 
     #[test]

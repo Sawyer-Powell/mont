@@ -1,7 +1,7 @@
 ---
 id: test
 title: Run tests
-validator: true
+type: gate
 ---
 
 Run

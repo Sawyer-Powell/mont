@@ -15,13 +15,13 @@ pub use crate::validations::ValidationError as GraphError;
 ///
 /// A task is available if:
 /// - It is not complete
-/// - It is not a validator
+/// - It is not a gate
 /// - All after dependencies are complete
 /// - All subtasks are complete (tasks that have this task as before target)
 pub fn available_tasks(graph: &TaskGraph) -> Vec<&Task> {
     graph
         .values()
-        .filter(|task| !task.complete && !task.validator && is_available(task, graph))
+        .filter(|task| !task.complete && !task.is_gate() && is_available(task, graph))
         .collect()
 }
 
@@ -299,9 +299,9 @@ pub fn transitive_reduction(graph: &TaskGraph) -> HashMap<&str, Vec<&str>> {
 /// - No duplicate task IDs
 /// - All before references point to valid tasks
 /// - All after references point to valid tasks
-/// - Non-validator tasks cannot have validators as after dependencies
-/// - All validation references point to tasks marked as validators
-/// - All validation references point to root validators (no before target)
+/// - Non-gate tasks cannot have gates as after dependencies
+/// - All validation references point to tasks marked as gates
+/// - All validation references point to root gates (no before target)
 /// - The graph forms a DAG (no cycles)
 pub fn form_graph(tasks: Vec<Task>) -> Result<TaskGraph, ValidationError> {
     validate_graph(tasks)
@@ -319,25 +319,23 @@ mod tests {
             after: vec![],
             validations: vec![],
             title: None,
-            validator: false,
             complete: false,
             in_progress: None,
-            task_type: TaskType::Feature,
+            task_type: TaskType::Task,
             description: String::new(),
         }
     }
 
-    fn make_validator(id: &str) -> Task {
+    fn make_gate(id: &str) -> Task {
         Task {
             id: id.to_string(),
             before: vec![],
             after: vec![],
             validations: vec![],
             title: None,
-            validator: true,
             complete: false,
             in_progress: None,
-            task_type: TaskType::Feature,
+            task_type: TaskType::Gate,
             description: String::new(),
         }
     }
@@ -426,28 +424,28 @@ mod tests {
     }
 
     #[test]
-    fn test_after_is_validator() {
-        let validator = make_validator("validator");
+    fn test_after_is_gate() {
+        let gate = make_gate("gate");
         let mut task = make_task("task");
-        task.after = vec!["validator".to_string()];
+        task.after = vec!["gate".to_string()];
 
-        let result = form_graph(vec![validator, task]);
+        let result = form_graph(vec![gate, task]);
         assert_eq!(
             result,
-            Err(GraphError::AfterIsValidator {
+            Err(GraphError::AfterIsGate {
                 task_id: "task".to_string(),
-                after_id: "validator".to_string(),
+                after_id: "gate".to_string(),
             })
         );
     }
 
     #[test]
     fn test_valid_validation() {
-        let validator = make_validator("validator");
+        let gate = make_gate("gate");
         let mut task = make_task("task");
-        task.validations = vec![validation("validator")];
+        task.validations = vec![validation("gate")];
 
-        let result = form_graph(vec![validator, task]);
+        let result = form_graph(vec![gate, task]);
         assert!(result.is_ok());
     }
 
@@ -483,19 +481,19 @@ mod tests {
     }
 
     #[test]
-    fn test_validation_not_root_validator() {
+    fn test_validation_not_root_gate() {
         let before_target = make_task("before-target");
-        let mut validator = make_validator("validator");
-        validator.before = vec!["before-target".to_string()];
+        let mut gate = make_gate("gate");
+        gate.before = vec!["before-target".to_string()];
         let mut task = make_task("task");
-        task.validations = vec![validation("validator")];
+        task.validations = vec![validation("gate")];
 
-        let result = form_graph(vec![before_target, validator, task]);
+        let result = form_graph(vec![before_target, gate, task]);
         assert_eq!(
             result,
-            Err(GraphError::ValidationNotRootValidator {
+            Err(GraphError::ValidationNotRootGate {
                 task_id: "task".to_string(),
-                validation_id: "validator".to_string(),
+                validation_id: "gate".to_string(),
             })
         );
     }
@@ -572,20 +570,20 @@ mod tests {
 
     #[test]
     fn test_complex_valid_graph() {
-        // validator1, validator2 (root validators)
+        // gate1, gate2 (root gates)
         // task1 has before target task2
         // task1 has after dependency on task3
-        // task1 validates against validator1 and validator2
-        let validator1 = make_validator("validator1");
-        let validator2 = make_validator("validator2");
+        // task1 validates against gate1 and gate2
+        let gate1 = make_gate("gate1");
+        let gate2 = make_gate("gate2");
         let task2 = make_task("task2");
         let task3 = make_task("task3");
         let mut task1 = make_task("task1");
         task1.before = vec!["task2".to_string()];
         task1.after = vec!["task3".to_string()];
-        task1.validations = vec![validation("validator1"), validation("validator2")];
+        task1.validations = vec![validation("gate1"), validation("gate2")];
 
-        let result = form_graph(vec![validator1, validator2, task2, task3, task1]);
+        let result = form_graph(vec![gate1, gate2, task2, task3, task1]);
         assert!(result.is_ok());
         assert_eq!(result.unwrap().len(), 5);
     }
