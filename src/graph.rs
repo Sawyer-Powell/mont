@@ -65,17 +65,25 @@ impl std::fmt::Display for GraphReadError {
 impl std::error::Error for GraphReadError {}
 
 /// A graph of tasks with their dependencies.
-#[derive(Debug, Clone, Default, PartialEq)]
+///
+/// Tracks which tasks have been modified ("dirty") since the last save.
+#[derive(Debug, Clone, Default)]
 pub struct TaskGraph {
     tasks: HashMap<String, Task>,
+    dirty: HashSet<String>,
 }
 
 impl TaskGraph {
     pub fn new() -> Self {
-        Self { tasks: HashMap::new() }
+        Self {
+            tasks: HashMap::new(),
+            dirty: HashSet::new(),
+        }
     }
 
+    /// Insert a task, marking it as dirty.
     pub fn insert(&mut self, task: Task) {
+        self.dirty.insert(task.id.clone());
         self.tasks.insert(task.id.clone(), task);
     }
 
@@ -83,7 +91,11 @@ impl TaskGraph {
         self.tasks.get(id)
     }
 
+    /// Get a mutable reference to a task, marking it as dirty.
     pub fn get_mut(&mut self, id: &str) -> Option<&mut Task> {
+        if self.tasks.contains_key(id) {
+            self.dirty.insert(id.to_string());
+        }
         self.tasks.get_mut(id)
     }
 
@@ -91,7 +103,11 @@ impl TaskGraph {
         self.tasks.contains_key(id)
     }
 
+    /// Remove a task, marking it as dirty (for deletion tracking).
     pub fn remove(&mut self, id: &str) -> Option<Task> {
+        if self.tasks.contains_key(id) {
+            self.dirty.insert(id.to_string());
+        }
         self.tasks.remove(id)
     }
 
@@ -121,18 +137,60 @@ impl TaskGraph {
     {
         self.tasks.retain(f)
     }
+
+    // ---- Dirty tracking methods ----
+
+    /// Mark a task as dirty by ID.
+    pub fn mark_dirty(&mut self, id: &str) {
+        self.dirty.insert(id.to_string());
+    }
+
+    /// Check if a specific task is dirty.
+    pub fn is_dirty(&self, id: &str) -> bool {
+        self.dirty.contains(id)
+    }
+
+    /// Check if any tasks are dirty.
+    pub fn has_dirty(&self) -> bool {
+        !self.dirty.is_empty()
+    }
+
+    /// Get iterator over dirty task IDs.
+    pub fn dirty_ids(&self) -> impl Iterator<Item = &String> {
+        self.dirty.iter()
+    }
+
+    /// Get all dirty tasks.
+    pub fn dirty_tasks(&self) -> Vec<&Task> {
+        self.dirty
+            .iter()
+            .filter_map(|id| self.tasks.get(id))
+            .collect()
+    }
+
+    /// Clear all dirty flags (call after saving).
+    pub fn clear_dirty(&mut self) {
+        self.dirty.clear();
+    }
+}
+
+impl PartialEq for TaskGraph {
+    fn eq(&self, other: &Self) -> bool {
+        // Only compare tasks, not dirty state
+        self.tasks == other.tasks
+    }
 }
 
 impl FromIterator<Task> for TaskGraph {
     fn from_iter<I: IntoIterator<Item = Task>>(iter: I) -> Self {
         let tasks = iter.into_iter().map(|t| (t.id.clone(), t)).collect();
-        Self { tasks }
+        Self { tasks, dirty: HashSet::new() }
     }
 }
 
 impl FromIterator<(String, Task)> for TaskGraph {
     fn from_iter<I: IntoIterator<Item = (String, Task)>>(iter: I) -> Self {
-        Self { tasks: iter.into_iter().collect() }
+        Self { tasks: iter.into_iter().collect(), dirty: HashSet::new() }
     }
 }
 
