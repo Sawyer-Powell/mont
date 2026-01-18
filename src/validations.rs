@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 use thiserror::Error;
 
+pub use crate::graph::TaskGraph;
 use crate::task::Task;
-
-pub type TaskGraph = HashMap<String, Task>;
 
 #[derive(Error, Debug, PartialEq)]
 pub enum ValidationError {
@@ -50,7 +49,7 @@ pub enum ValidationError {
 /// - All validation references point to root gates (no before target)
 pub fn validate_task(task: &Task, graph: &TaskGraph) -> Result<(), ValidationError> {
     for before_id in &task.before {
-        if !graph.contains_key(before_id) {
+        if !graph.contains(before_id) {
             return Err(ValidationError::InvalidBefore {
                 task_id: task.id.clone(),
                 before_id: before_id.clone(),
@@ -107,13 +106,13 @@ pub fn validate_task(task: &Task, graph: &TaskGraph) -> Result<(), ValidationErr
 /// - All task references are valid (via validate_task)
 /// - The graph forms a DAG (no cycles)
 pub fn validate_graph(tasks: Vec<Task>) -> Result<TaskGraph, ValidationError> {
-    let mut graph: TaskGraph = HashMap::new();
+    let mut graph = TaskGraph::new();
 
     for task in tasks {
-        if graph.contains_key(&task.id) {
+        if graph.contains(&task.id) {
             return Err(ValidationError::DuplicateTaskId(task.id));
         }
-        graph.insert(task.id.clone(), task);
+        graph.insert(task);
     }
 
     for task in graph.values() {
@@ -152,7 +151,9 @@ fn has_cycle(graph: &TaskGraph) -> bool {
 fn dfs_cycle(graph: &TaskGraph, task_id: &str, colors: &mut HashMap<String, Color>) -> bool {
     colors.insert(task_id.to_string(), Color::Gray);
 
-    let task = &graph[task_id];
+    let Some(task) = graph.get(task_id) else {
+        return false;
+    };
 
     let neighbors = task.before.iter().chain(task.after.iter());
     for neighbor_id in neighbors {
@@ -216,9 +217,9 @@ mod tests {
         }];
 
         let mut graph = TaskGraph::new();
-        graph.insert("before-target".to_string(), before_target);
-        graph.insert("gate".to_string(), gate);
-        graph.insert("task".to_string(), task.clone());
+        graph.insert(before_target);
+        graph.insert(gate);
+        graph.insert(task.clone());
 
         assert!(validate_task(&task, &graph).is_ok());
     }
@@ -229,7 +230,7 @@ mod tests {
         task.before = vec!["nonexistent".to_string()];
 
         let mut graph = TaskGraph::new();
-        graph.insert("task".to_string(), task.clone());
+        graph.insert(task.clone());
 
         assert_eq!(
             validate_task(&task, &graph),
@@ -246,7 +247,7 @@ mod tests {
         task.after = vec!["nonexistent".to_string()];
 
         let mut graph = TaskGraph::new();
-        graph.insert("task".to_string(), task.clone());
+        graph.insert(task.clone());
 
         assert_eq!(
             validate_task(&task, &graph),
@@ -264,8 +265,8 @@ mod tests {
         task.after = vec!["gate".to_string()];
 
         let mut graph = TaskGraph::new();
-        graph.insert("gate".to_string(), gate);
-        graph.insert("task".to_string(), task.clone());
+        graph.insert(gate);
+        graph.insert(task.clone());
 
         assert_eq!(
             validate_task(&task, &graph),

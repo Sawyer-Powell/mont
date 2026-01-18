@@ -3,7 +3,77 @@ use std::collections::{HashMap, HashSet};
 use crate::task::Task;
 use crate::validations::{validate_graph, ValidationError};
 
-pub type TaskGraph = HashMap<String, Task>;
+/// A graph of tasks with their dependencies.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct TaskGraph {
+    tasks: HashMap<String, Task>,
+}
+
+impl TaskGraph {
+    pub fn new() -> Self {
+        Self { tasks: HashMap::new() }
+    }
+
+    pub fn insert(&mut self, task: Task) {
+        self.tasks.insert(task.id.clone(), task);
+    }
+
+    pub fn get(&self, id: &str) -> Option<&Task> {
+        self.tasks.get(id)
+    }
+
+    pub fn get_mut(&mut self, id: &str) -> Option<&mut Task> {
+        self.tasks.get_mut(id)
+    }
+
+    pub fn contains(&self, id: &str) -> bool {
+        self.tasks.contains_key(id)
+    }
+
+    pub fn remove(&mut self, id: &str) -> Option<Task> {
+        self.tasks.remove(id)
+    }
+
+    pub fn len(&self) -> usize {
+        self.tasks.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.tasks.is_empty()
+    }
+
+    pub fn keys(&self) -> impl Iterator<Item = &String> {
+        self.tasks.keys()
+    }
+
+    pub fn values(&self) -> impl Iterator<Item = &Task> {
+        self.tasks.values()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &Task)> {
+        self.tasks.iter()
+    }
+
+    pub fn retain<F>(&mut self, f: F)
+    where
+        F: FnMut(&String, &mut Task) -> bool,
+    {
+        self.tasks.retain(f)
+    }
+}
+
+impl FromIterator<Task> for TaskGraph {
+    fn from_iter<I: IntoIterator<Item = Task>>(iter: I) -> Self {
+        let tasks = iter.into_iter().map(|t| (t.id.clone(), t)).collect();
+        Self { tasks }
+    }
+}
+
+impl FromIterator<(String, Task)> for TaskGraph {
+    fn from_iter<I: IntoIterator<Item = (String, Task)>>(iter: I) -> Self {
+        Self { tasks: iter.into_iter().collect() }
+    }
+}
 
 pub use crate::validations::ValidationError as GraphError;
 
