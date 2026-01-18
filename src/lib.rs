@@ -12,8 +12,8 @@ pub use context::{
 // Re-export graph functions for binary
 pub use context::graph::{available_tasks, form_graph};
 
-// Re-export validation functions for binary
-pub use context::validations::{validate_graph, validate_task};
+// Re-export validation function for binary
+pub use context::validations::validate_view;
 
 use std::env;
 use std::path::Path;

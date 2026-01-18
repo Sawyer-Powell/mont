@@ -62,24 +62,34 @@ impl GraphView for TaskGraph {
 /// applying a transaction, without actually modifying the graph.
 pub struct ValidationView<'a> {
     base: &'a TaskGraph,
-    upserts: HashMap<String, &'a Task>,
+    inserts: HashMap<String, &'a Task>,
     deletes: HashSet<&'a str>,
 }
 
 impl<'a> ValidationView<'a> {
     /// Create a new validation view by overlaying operations on the base graph.
     pub fn new(base: &'a TaskGraph, ops: &'a [Op]) -> Self {
-        let mut upserts: HashMap<String, &'a Task> = HashMap::new();
+        let mut inserts: HashMap<String, &'a Task> = HashMap::new();
         let mut deletes: HashSet<&'a str> = HashSet::new();
 
         for op in ops {
             match op {
-                Op::Upsert(task) => {
+                Op::Insert(task) => {
                     deletes.remove(task.id.as_str());
-                    upserts.insert(task.id.clone(), task);
+                    inserts.insert(task.id.clone(), task);
+                }
+                Op::Update { old_id, task } => {
+                    // If ID changed, mark old as deleted
+                    if old_id != &task.id {
+                        inserts.remove(old_id);
+                        deletes.insert(old_id.as_str());
+                    }
+                    // Insert the updated task
+                    deletes.remove(task.id.as_str());
+                    inserts.insert(task.id.clone(), task);
                 }
                 Op::Delete(id) => {
-                    upserts.remove(id);
+                    inserts.remove(id);
                     deletes.insert(id.as_str());
                 }
             }
@@ -87,7 +97,7 @@ impl<'a> ValidationView<'a> {
 
         Self {
             base,
-            upserts,
+            inserts,
             deletes,
         }
     }
@@ -100,7 +110,7 @@ impl GraphView for ValidationView<'_> {
             return None;
         }
         // Upserted in this transaction (overrides base)
-        if let Some(task) = self.upserts.get(id) {
+        if let Some(task) = self.inserts.get(id) {
             return Some(task);
         }
         // Fall back to base (excluding soft-deleted)
@@ -114,12 +124,12 @@ impl GraphView for ValidationView<'_> {
             .values()
             .filter(|t| !t.is_deleted())
             .filter(|t| !self.deletes.contains(t.id.as_str()))
-            .filter(|t| !self.upserts.contains_key(&t.id));
+            .filter(|t| !self.inserts.contains_key(&t.id));
 
-        // Plus all upserted tasks
-        let upserted = self.upserts.values().copied();
+        // Plus all inserted tasks
+        let inserted = self.inserts.values().copied();
 
-        Box::new(base_tasks.chain(upserted))
+        Box::new(base_tasks.chain(inserted))
     }
 
     fn keys(&self) -> Box<dyn Iterator<Item = &str> + '_> {
@@ -129,13 +139,13 @@ impl GraphView for ValidationView<'_> {
             .iter()
             .filter(|(_, t)| !t.is_deleted())
             .filter(|(id, _)| !self.deletes.contains(id.as_str()))
-            .filter(|(id, _)| !self.upserts.contains_key(*id))
+            .filter(|(id, _)| !self.inserts.contains_key(*id))
             .map(|(id, _)| id.as_str());
 
-        // Plus upserted task IDs
-        let upserted_keys = self.upserts.keys().map(|s| s.as_str());
+        // Plus inserted task IDs
+        let inserted_keys = self.inserts.keys().map(|s| s.as_str());
 
-        Box::new(base_keys.chain(upserted_keys))
+        Box::new(base_keys.chain(inserted_keys))
     }
 }
 
@@ -162,7 +172,7 @@ mod tests {
     fn test_view_upsert_new_task() {
         let graph = TaskGraph::new();
         let task = make_task("new-task");
-        let ops = vec![Op::Upsert(task)];
+        let ops = vec![Op::Insert(task)];
 
         let view = ValidationView::new(&graph, &ops);
 
@@ -180,7 +190,7 @@ mod tests {
 
         let mut updated = make_task("task1");
         updated.title = Some("Updated".to_string());
-        let ops = vec![Op::Upsert(updated)];
+        let ops = vec![Op::Insert(updated)];
 
         let view = ValidationView::new(&graph, &ops);
 
@@ -213,7 +223,7 @@ mod tests {
 
         let ops = vec![
             Op::Delete("task1".to_string()),
-            Op::Upsert(make_task("task1")),
+            Op::Insert(make_task("task1")),
         ];
 
         let view = ValidationView::new(&graph, &ops);
@@ -227,7 +237,7 @@ mod tests {
         let graph = TaskGraph::new();
 
         let ops = vec![
-            Op::Upsert(make_task("task1")),
+            Op::Insert(make_task("task1")),
             Op::Delete("task1".to_string()),
         ];
 

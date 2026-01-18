@@ -3,10 +3,7 @@ use owo_colors::OwoColorize;
 use std::path::{Path, PathBuf};
 
 use mont::error_fmt::{AppError, IoResultExt, ParseResultExt, ValidationResultExt};
-use mont::{
-    available_tasks, form_graph, parse, render, validate_graph, validate_task, Task, TaskGraph,
-    TaskType,
-};
+use mont::{available_tasks, form_graph, parse, render, validate_view, Task, TaskGraph, TaskType};
 
 #[derive(Parser)]
 #[command(name = "mont")]
@@ -367,14 +364,15 @@ fn check_tasks(id: Option<&str>) -> Result<(), AppError> {
 fn check_single_task(tasks: &[Task], task_id: &str) -> Result<(), AppError> {
     let graph: TaskGraph = tasks.iter().map(|t| (t.id.clone(), t.clone())).collect();
 
-    let Some(task) = graph.get(task_id) else {
+    if !graph.contains(task_id) {
         return Err(AppError::TaskNotFound {
             task_id: task_id.to_string(),
             tasks_dir: TASKS_DIR.to_string(),
         });
-    };
+    }
 
-    validate_task(task, &graph).with_tasks_dir(TASKS_DIR)?;
+    // Validate the entire graph (a task's validity depends on its references)
+    validate_view(&graph).with_tasks_dir(TASKS_DIR)?;
 
     println!("ok: task '{}' is valid", task_id);
     Ok(())
@@ -382,7 +380,7 @@ fn check_single_task(tasks: &[Task], task_id: &str) -> Result<(), AppError> {
 
 fn check_full_graph(tasks: Vec<Task>) -> Result<(), AppError> {
     let count = tasks.len();
-    validate_graph(tasks).with_tasks_dir(TASKS_DIR)?;
+    form_graph(tasks).with_tasks_dir(TASKS_DIR)?;
     println!("ok: {} tasks validated", count);
     Ok(())
 }
@@ -433,7 +431,7 @@ fn new_task(
 
     let mut all_tasks = existing_tasks;
     all_tasks.push(new_task);
-    validate_graph(all_tasks).with_tasks_dir(tasks_dir)?;
+    form_graph(all_tasks).with_tasks_dir(tasks_dir)?;
 
     let file_path = dir.join(format!("{}.md", task_id));
     std::fs::write(&file_path, &content)
@@ -521,7 +519,7 @@ fn edit_task(
     }
 
     // Validate the entire graph
-    validate_graph(all_tasks).with_tasks_dir(tasks_dir)?;
+    form_graph(all_tasks).with_tasks_dir(tasks_dir)?;
 
     // Write the updated task
     let final_path = dir.join(format!("{}.md", final_id));
@@ -692,7 +690,7 @@ fn jot_task(
 
     let mut all_tasks = existing_tasks;
     all_tasks.push(new_task);
-    validate_graph(all_tasks).with_tasks_dir(tasks_dir)?;
+    form_graph(all_tasks).with_tasks_dir(tasks_dir)?;
 
     let file_path = dir.join(format!("{}.md", task_id));
     std::fs::write(&file_path, &content)
@@ -821,7 +819,7 @@ fn distill_task(tasks_dir: &str, id: &str) -> Result<(), AppError> {
     // Validate the entire graph with new tasks
     let mut all_tasks = existing_tasks.clone();
     all_tasks.extend(parsed_tasks.clone());
-    validate_graph(all_tasks).with_tasks_dir(tasks_dir)?;
+    form_graph(all_tasks).with_tasks_dir(tasks_dir)?;
 
     // Write all new task files
     for (task_id, task_content) in &new_tasks {
@@ -1269,7 +1267,7 @@ fn validate_and_update_edited(
     }
 
     // Validate the entire graph
-    if let Err(e) = validate_graph(all_tasks).with_tasks_dir(tasks_dir_str) {
+    if let Err(e) = form_graph(all_tasks).with_tasks_dir(tasks_dir_str) {
         return Err(AppError::EditTempValidationFailed {
             error: Box::new(e),
             original_id: original_id.to_string(),
@@ -1551,7 +1549,7 @@ fn validate_and_copy_temp(
     let mut all_tasks = existing_tasks;
     all_tasks.push(parsed.clone());
 
-    if let Err(e) = validate_graph(all_tasks).with_tasks_dir(tasks_dir_str) {
+    if let Err(e) = form_graph(all_tasks).with_tasks_dir(tasks_dir_str) {
         return Err(AppError::TempValidationFailed {
             error: Box::new(e),
             temp_path: temp_path_str,

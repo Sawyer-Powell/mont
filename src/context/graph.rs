@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 use super::task::{ParseError, Task};
-use super::validations::{validate_graph, ValidationError};
+use super::validations::{validate_view, ValidationError};
 
 /// Error collecting multiple issues found when reading a task graph.
 ///
@@ -204,7 +204,6 @@ impl FromIterator<(String, Task)> for TaskGraph {
     }
 }
 
-pub use super::validations::ValidationError as GraphError;
 
 // ============================================================================
 // Graph Query Operations
@@ -263,141 +262,6 @@ pub fn is_group_complete(task: &Task, graph: &TaskGraph) -> bool {
     }
 
     true
-}
-
-/// Returns connected components of tasks using union-find.
-/// Tasks are connected if they share before, after, or validation relationships.
-pub fn connected_components(graph: &TaskGraph) -> Vec<Vec<&str>> {
-    let task_ids: Vec<&str> = graph.keys().map(|s| s.as_str()).collect();
-    if task_ids.is_empty() {
-        return Vec::new();
-    }
-
-    let id_to_idx: HashMap<&str, usize> = task_ids
-        .iter()
-        .enumerate()
-        .map(|(i, &id)| (id, i))
-        .collect();
-
-    // Union-find parent array
-    let mut parent: Vec<usize> = (0..task_ids.len()).collect();
-
-    fn find(parent: &mut [usize], i: usize) -> usize {
-        if parent[i] != i {
-            parent[i] = find(parent, parent[i]);
-        }
-        parent[i]
-    }
-
-    fn union(parent: &mut [usize], i: usize, j: usize) {
-        let pi = find(parent, i);
-        let pj = find(parent, j);
-        if pi != pj {
-            parent[pi] = pj;
-        }
-    }
-
-    // Union tasks that are connected
-    for task in graph.values() {
-        let task_idx = id_to_idx[task.id.as_str()];
-
-        for before_id in &task.before {
-            if let Some(&before_idx) = id_to_idx.get(before_id.as_str()) {
-                union(&mut parent, task_idx, before_idx);
-            }
-        }
-
-        for after_id in &task.after {
-            if let Some(&after_idx) = id_to_idx.get(after_id.as_str()) {
-                union(&mut parent, task_idx, after_idx);
-            }
-        }
-
-        for validation in &task.validations {
-            if let Some(&val_idx) = id_to_idx.get(validation.id.as_str()) {
-                union(&mut parent, task_idx, val_idx);
-            }
-        }
-    }
-
-    // Group by component
-    let mut components: HashMap<usize, Vec<&str>> = HashMap::new();
-    for (i, &id) in task_ids.iter().enumerate() {
-        let root = find(&mut parent, i);
-        components.entry(root).or_default().push(id);
-    }
-
-    components.into_values().collect()
-}
-
-/// Returns tasks in topological order (dependencies before dependents).
-/// Subtasks come before their before targets, after dependencies come before tasks that depend on them.
-pub fn topological_sort(graph: &TaskGraph) -> Vec<&Task> {
-    if graph.is_empty() {
-        return Vec::new();
-    }
-
-    let task_ids: HashSet<&str> = graph.keys().map(|s| s.as_str()).collect();
-
-    let mut dependents: HashMap<&str, Vec<&str>> = HashMap::new();
-    let mut in_degree: HashMap<&str, usize> = HashMap::new();
-
-    for task in graph.values() {
-        in_degree.entry(task.id.as_str()).or_insert(0);
-        dependents.entry(task.id.as_str()).or_default();
-
-        // After: this task depends on after dependency completing
-        for after_id in &task.after {
-            if task_ids.contains(after_id.as_str()) {
-                dependents
-                    .entry(after_id.as_str())
-                    .or_default()
-                    .push(&task.id);
-                *in_degree.entry(task.id.as_str()).or_insert(0) += 1;
-            }
-        }
-
-        // Before: before targets depend on this task completing (subtask before target)
-        for before_id in &task.before {
-            if task_ids.contains(before_id.as_str()) {
-                dependents
-                    .entry(task.id.as_str())
-                    .or_default()
-                    .push(before_id.as_str());
-                *in_degree.entry(before_id.as_str()).or_insert(0) += 1;
-            }
-        }
-    }
-
-    // Kahn's algorithm with sorted queue for determinism
-    let mut queue: Vec<&str> = in_degree
-        .iter()
-        .filter(|(_, deg)| **deg == 0)
-        .map(|(&id, _)| id)
-        .collect();
-    queue.sort();
-
-    let mut result: Vec<&Task> = Vec::new();
-
-    while let Some(task_id) = queue.pop() {
-        if let Some(task) = graph.get(task_id) {
-            result.push(task);
-        }
-
-        if let Some(deps) = dependents.get(task_id) {
-            for &dep in deps {
-                if let Some(deg) = in_degree.get_mut(dep) {
-                    *deg -= 1;
-                    if *deg == 0 {
-                        let pos = queue.partition_point(|&x| x > dep);
-                        queue.insert(pos, dep);
-                    }
-                }
-            }
-        }
-    }
-
-    result
 }
 
 /// Computes the transitive reduction of dependency edges.
@@ -492,18 +356,23 @@ pub fn transitive_reduction(graph: &TaskGraph) -> HashMap<&str, Vec<&str>> {
     effective_successors
 }
 
-/// Forms a validated task graph from a list of tasks.
+/// Build a TaskGraph from a list of tasks and validate it.
 ///
-/// Validates:
-/// - No duplicate task IDs
-/// - All before references point to valid tasks
-/// - All after references point to valid tasks
-/// - Non-gate tasks cannot have gates as after dependencies
-/// - All validation references point to tasks marked as gates
-/// - All validation references point to root gates (no before target)
-/// - The graph forms a DAG (no cycles)
+/// Checks for duplicate IDs, validates all references, and ensures no cycles.
 pub fn form_graph(tasks: Vec<Task>) -> Result<TaskGraph, ValidationError> {
-    validate_graph(tasks)
+    let mut graph = TaskGraph::new();
+
+    for task in tasks {
+        if graph.contains(&task.id) {
+            return Err(ValidationError::DuplicateTaskId(task.id));
+        }
+        graph.insert(task);
+    }
+
+    validate_view(&graph)?;
+    graph.clear_dirty();
+
+    Ok(graph)
 }
 
 #[cfg(test)]
@@ -568,7 +437,7 @@ mod tests {
         let result = form_graph(vec![task1, task2]);
         assert_eq!(
             result,
-            Err(GraphError::DuplicateTaskId("task-1".to_string()))
+            Err(ValidationError::DuplicateTaskId("task-1".to_string()))
         );
     }
 
@@ -590,7 +459,7 @@ mod tests {
         let result = form_graph(vec![task]);
         assert_eq!(
             result,
-            Err(GraphError::InvalidBefore {
+            Err(ValidationError::InvalidBefore {
                 task_id: "task-1".to_string(),
                 before_id: "nonexistent".to_string(),
             })
@@ -615,7 +484,7 @@ mod tests {
         let result = form_graph(vec![task]);
         assert_eq!(
             result,
-            Err(GraphError::InvalidAfter {
+            Err(ValidationError::InvalidAfter {
                 task_id: "task-1".to_string(),
                 after_id: "nonexistent".to_string(),
             })
@@ -631,7 +500,7 @@ mod tests {
         let result = form_graph(vec![gate, task]);
         assert_eq!(
             result,
-            Err(GraphError::AfterIsGate {
+            Err(ValidationError::AfterIsGate {
                 task_id: "task".to_string(),
                 after_id: "gate".to_string(),
             })
@@ -656,7 +525,7 @@ mod tests {
         let result = form_graph(vec![task]);
         assert_eq!(
             result,
-            Err(GraphError::ValidationNotFound {
+            Err(ValidationError::ValidationNotFound {
                 task_id: "task".to_string(),
                 validation_id: "nonexistent".to_string(),
             })
@@ -672,7 +541,7 @@ mod tests {
         let result = form_graph(vec![not_validator, task]);
         assert_eq!(
             result,
-            Err(GraphError::InvalidValidation {
+            Err(ValidationError::InvalidValidation {
                 task_id: "task".to_string(),
                 validation_id: "not-validator".to_string(),
             })
@@ -690,7 +559,7 @@ mod tests {
         let result = form_graph(vec![before_target, gate, task]);
         assert_eq!(
             result,
-            Err(GraphError::ValidationNotRootGate {
+            Err(ValidationError::ValidationNotRootGate {
                 task_id: "task".to_string(),
                 validation_id: "gate".to_string(),
             })
@@ -716,7 +585,7 @@ mod tests {
         task.before = vec!["task".to_string()];
 
         let result = form_graph(vec![task]);
-        assert_eq!(result, Err(GraphError::CycleDetected));
+        assert_eq!(result, Err(ValidationError::CycleDetected));
     }
 
     #[test]
@@ -727,7 +596,7 @@ mod tests {
         b.before = vec!["a".to_string()];
 
         let result = form_graph(vec![a, b]);
-        assert_eq!(result, Err(GraphError::CycleDetected));
+        assert_eq!(result, Err(ValidationError::CycleDetected));
     }
 
     #[test]
@@ -740,7 +609,7 @@ mod tests {
         c.before = vec!["a".to_string()];
 
         let result = form_graph(vec![a, b, c]);
-        assert_eq!(result, Err(GraphError::CycleDetected));
+        assert_eq!(result, Err(ValidationError::CycleDetected));
     }
 
     #[test]
@@ -751,7 +620,7 @@ mod tests {
         b.after = vec!["a".to_string()];
 
         let result = form_graph(vec![a, b]);
-        assert_eq!(result, Err(GraphError::CycleDetected));
+        assert_eq!(result, Err(ValidationError::CycleDetected));
     }
 
     #[test]
@@ -764,7 +633,7 @@ mod tests {
         c.before = vec!["a".to_string()];
 
         let result = form_graph(vec![a, b, c]);
-        assert_eq!(result, Err(GraphError::CycleDetected));
+        assert_eq!(result, Err(ValidationError::CycleDetected));
     }
 
     #[test]

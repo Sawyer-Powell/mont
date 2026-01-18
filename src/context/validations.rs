@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use thiserror::Error;
 
-use super::graph::TaskGraph;
 use super::task::Task;
 use super::view::GraphView;
 
@@ -40,109 +39,28 @@ pub enum ValidationError {
     DuplicateTaskId(String),
 }
 
-/// Helper to check if a task exists and is not deleted.
-fn is_valid_reference(graph: &TaskGraph, id: &str) -> bool {
-    graph.get(id).is_some_and(|t| !t.is_deleted())
-}
-
-/// Validates a single task's references against a graph.
+/// Validates a GraphView (TaskGraph, ValidationView, or any other implementation).
 ///
 /// Checks that:
-/// - Before reference points to an existing, non-deleted task
-/// - All after references point to existing, non-deleted tasks
+/// - All task references (before, after, validations) point to existing tasks
 /// - Non-gate tasks cannot have gates as after dependencies
-/// - All validation references point to non-deleted tasks marked as gates
-/// - All validation references point to root gates (no before target)
+/// - Validation references point to root gates (gates without before targets)
+/// - The graph forms a DAG (no cycles)
 ///
-/// Deleted tasks are skipped (not validated).
-pub fn validate_task(task: &Task, graph: &TaskGraph) -> Result<(), ValidationError> {
-    // Skip validation of deleted tasks
-    if task.is_deleted() {
-        return Ok(());
+/// Deleted tasks are skipped and not validated.
+pub fn validate_view<V: GraphView>(view: &V) -> Result<(), ValidationError> {
+    for task in view.values() {
+        validate_task_in_view(task, view)?;
     }
 
-    for before_id in &task.before {
-        if !is_valid_reference(graph, before_id) {
-            return Err(ValidationError::InvalidBefore {
-                task_id: task.id.clone(),
-                before_id: before_id.clone(),
-            });
-        }
-    }
-
-    for after_id in &task.after {
-        let Some(after_task) = graph.get(after_id).filter(|t| !t.is_deleted()) else {
-            return Err(ValidationError::InvalidAfter {
-                task_id: task.id.clone(),
-                after_id: after_id.clone(),
-            });
-        };
-
-        if !task.is_gate() && after_task.is_gate() {
-            return Err(ValidationError::AfterIsGate {
-                task_id: task.id.clone(),
-                after_id: after_id.clone(),
-            });
-        }
-    }
-
-    for validation in &task.validations {
-        let Some(gate) = graph.get(&validation.id).filter(|t| !t.is_deleted()) else {
-            return Err(ValidationError::ValidationNotFound {
-                task_id: task.id.clone(),
-                validation_id: validation.id.clone(),
-            });
-        };
-
-        if !gate.is_gate() {
-            return Err(ValidationError::InvalidValidation {
-                task_id: task.id.clone(),
-                validation_id: validation.id.clone(),
-            });
-        }
-
-        if !gate.before.is_empty() {
-            return Err(ValidationError::ValidationNotRootGate {
-                task_id: task.id.clone(),
-                validation_id: validation.id.clone(),
-            });
-        }
+    if has_cycle(view) {
+        return Err(ValidationError::CycleDetected);
     }
 
     Ok(())
 }
 
-/// Validates the entire task graph.
-///
-/// Validates:
-/// - No duplicate task IDs
-/// - All task references are valid (via validate_task)
-/// - The graph forms a DAG (no cycles)
-pub fn validate_graph(tasks: Vec<Task>) -> Result<TaskGraph, ValidationError> {
-    let mut graph = TaskGraph::new();
-
-    for task in tasks {
-        if graph.contains(&task.id) {
-            return Err(ValidationError::DuplicateTaskId(task.id));
-        }
-        graph.insert(task);
-    }
-
-    for task in graph.values() {
-        validate_task(task, &graph)?;
-    }
-
-    if has_cycle(&graph) {
-        return Err(ValidationError::CycleDetected);
-    }
-
-    Ok(graph)
-}
-
 /// Validates a single task's references against a GraphView.
-///
-/// This is a generic version of validate_task that works with any GraphView,
-/// including ValidationView for transaction validation.
 fn validate_task_in_view<V: GraphView>(task: &Task, view: &V) -> Result<(), ValidationError> {
     // Skip validation of deleted tasks
     if task.is_deleted() {
@@ -200,29 +118,21 @@ fn validate_task_in_view<V: GraphView>(task: &Task, view: &V) -> Result<(), Vali
     Ok(())
 }
 
-/// Validates a GraphView (typically a ValidationView for transaction validation).
-///
-/// Checks that all task references are valid and the graph has no cycles.
-pub fn validate_view<V: GraphView>(view: &V) -> Result<(), ValidationError> {
-    for task in view.values() {
-        validate_task_in_view(task, view)?;
-    }
-
-    if has_cycle_in_view(view) {
-        return Err(ValidationError::CycleDetected);
-    }
-
-    Ok(())
+#[derive(Clone, Copy, PartialEq)]
+enum Color {
+    White,
+    Gray,
+    Black,
 }
 
-fn has_cycle_in_view<V: GraphView>(view: &V) -> bool {
+fn has_cycle<V: GraphView>(view: &V) -> bool {
     let mut colors: HashMap<String, Color> = HashMap::new();
     for id in view.keys() {
         colors.insert(id.to_string(), Color::White);
     }
 
     for id in view.keys() {
-        if colors[id] == Color::White && dfs_cycle_in_view(view, id, &mut colors) {
+        if colors[id] == Color::White && dfs_cycle(view, id, &mut colors) {
             return true;
         }
     }
@@ -230,11 +140,7 @@ fn has_cycle_in_view<V: GraphView>(view: &V) -> bool {
     false
 }
 
-fn dfs_cycle_in_view<V: GraphView>(
-    view: &V,
-    task_id: &str,
-    colors: &mut HashMap<String, Color>,
-) -> bool {
+fn dfs_cycle<V: GraphView>(view: &V, task_id: &str, colors: &mut HashMap<String, Color>) -> bool {
     colors.insert(task_id.to_string(), Color::Gray);
 
     let Some(task) = view.get(task_id) else {
@@ -248,55 +154,7 @@ fn dfs_cycle_in_view<V: GraphView>(
         match neighbor_color {
             Color::Gray => return true,
             Color::White => {
-                if dfs_cycle_in_view(view, neighbor_id, colors) {
-                    return true;
-                }
-            }
-            Color::Black => {}
-        }
-    }
-
-    colors.insert(task_id.to_string(), Color::Black);
-    false
-}
-
-#[derive(Clone, Copy, PartialEq)]
-enum Color {
-    White,
-    Gray,
-    Black,
-}
-
-fn has_cycle(graph: &TaskGraph) -> bool {
-    let mut colors: HashMap<String, Color> = HashMap::new();
-    for id in graph.keys() {
-        colors.insert(id.clone(), Color::White);
-    }
-
-    for id in graph.keys() {
-        if colors[id] == Color::White && dfs_cycle(graph, id, &mut colors) {
-            return true;
-        }
-    }
-
-    false
-}
-
-fn dfs_cycle(graph: &TaskGraph, task_id: &str, colors: &mut HashMap<String, Color>) -> bool {
-    colors.insert(task_id.to_string(), Color::Gray);
-
-    let Some(task) = graph.get(task_id) else {
-        return false;
-    };
-
-    let neighbors = task.before.iter().chain(task.after.iter());
-    for neighbor_id in neighbors {
-        let neighbor_color = colors.get(neighbor_id).copied().unwrap_or(Color::Black);
-
-        match neighbor_color {
-            Color::Gray => return true,
-            Color::White => {
-                if dfs_cycle(graph, neighbor_id, colors) {
+                if dfs_cycle(view, neighbor_id, colors) {
                     return true;
                 }
             }
@@ -311,6 +169,7 @@ fn dfs_cycle(graph: &TaskGraph, task_id: &str, colors: &mut HashMap<String, Colo
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::context::graph::TaskGraph;
     use crate::context::task::{TaskType, ValidationItem, ValidationStatus};
 
     fn make_task(id: &str) -> Task {
@@ -342,7 +201,7 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_task_valid() {
+    fn test_validate_view_valid() {
         let before_target = make_task("before-target");
         let gate = make_gate("gate");
         let mut task = make_task("task");
@@ -355,21 +214,21 @@ mod tests {
         let mut graph = TaskGraph::new();
         graph.insert(before_target);
         graph.insert(gate);
-        graph.insert(task.clone());
+        graph.insert(task);
 
-        assert!(validate_task(&task, &graph).is_ok());
+        assert!(validate_view(&graph).is_ok());
     }
 
     #[test]
-    fn test_validate_task_invalid_before() {
+    fn test_validate_view_invalid_before() {
         let mut task = make_task("task");
         task.before = vec!["nonexistent".to_string()];
 
         let mut graph = TaskGraph::new();
-        graph.insert(task.clone());
+        graph.insert(task);
 
         assert_eq!(
-            validate_task(&task, &graph),
+            validate_view(&graph),
             Err(ValidationError::InvalidBefore {
                 task_id: "task".to_string(),
                 before_id: "nonexistent".to_string(),
@@ -378,15 +237,15 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_task_invalid_after() {
+    fn test_validate_view_invalid_after() {
         let mut task = make_task("task");
         task.after = vec!["nonexistent".to_string()];
 
         let mut graph = TaskGraph::new();
-        graph.insert(task.clone());
+        graph.insert(task);
 
         assert_eq!(
-            validate_task(&task, &graph),
+            validate_view(&graph),
             Err(ValidationError::InvalidAfter {
                 task_id: "task".to_string(),
                 after_id: "nonexistent".to_string(),
@@ -395,17 +254,17 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_task_after_is_gate() {
+    fn test_validate_view_after_is_gate() {
         let gate = make_gate("gate");
         let mut task = make_task("task");
         task.after = vec!["gate".to_string()];
 
         let mut graph = TaskGraph::new();
         graph.insert(gate);
-        graph.insert(task.clone());
+        graph.insert(task);
 
         assert_eq!(
-            validate_task(&task, &graph),
+            validate_view(&graph),
             Err(ValidationError::AfterIsGate {
                 task_id: "task".to_string(),
                 after_id: "gate".to_string(),
@@ -414,41 +273,34 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_graph_duplicate_id() {
-        let task1 = make_task("task");
-        let task2 = make_task("task");
-
-        let result = validate_graph(vec![task1, task2]);
-        assert_eq!(
-            result,
-            Err(ValidationError::DuplicateTaskId("task".to_string()))
-        );
-    }
-
-    #[test]
-    fn test_validate_graph_cycle() {
+    fn test_validate_view_cycle() {
         let mut a = make_task("a");
         let mut b = make_task("b");
         a.before = vec!["b".to_string()];
         b.before = vec!["a".to_string()];
 
-        let result = validate_graph(vec![a, b]);
-        assert_eq!(result, Err(ValidationError::CycleDetected));
+        let mut graph = TaskGraph::new();
+        graph.insert(a);
+        graph.insert(b);
+
+        assert_eq!(validate_view(&graph), Err(ValidationError::CycleDetected));
     }
 
     #[test]
-    fn test_validate_graph_valid() {
+    fn test_validate_view_valid_dag() {
         let before_target = make_task("before-target");
         let mut child = make_task("child");
         child.before = vec!["before-target".to_string()];
 
-        let result = validate_graph(vec![before_target, child]);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap().len(), 2);
+        let mut graph = TaskGraph::new();
+        graph.insert(before_target);
+        graph.insert(child);
+
+        assert!(validate_view(&graph).is_ok());
     }
 
     #[test]
-    fn test_validate_task_reference_to_deleted_before() {
+    fn test_validate_view_reference_to_deleted_before() {
         let mut target = make_task("target");
         target.deleted = true;
 
@@ -457,10 +309,10 @@ mod tests {
 
         let mut graph = TaskGraph::new();
         graph.insert(target);
-        graph.insert(task.clone());
+        graph.insert(task);
 
         assert_eq!(
-            validate_task(&task, &graph),
+            validate_view(&graph),
             Err(ValidationError::InvalidBefore {
                 task_id: "task".to_string(),
                 before_id: "target".to_string(),
@@ -469,7 +321,7 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_task_reference_to_deleted_after() {
+    fn test_validate_view_reference_to_deleted_after() {
         let mut dep = make_task("dep");
         dep.deleted = true;
 
@@ -478,10 +330,10 @@ mod tests {
 
         let mut graph = TaskGraph::new();
         graph.insert(dep);
-        graph.insert(task.clone());
+        graph.insert(task);
 
         assert_eq!(
-            validate_task(&task, &graph),
+            validate_view(&graph),
             Err(ValidationError::InvalidAfter {
                 task_id: "task".to_string(),
                 after_id: "dep".to_string(),
@@ -490,21 +342,21 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_task_deleted_task_is_skipped() {
+    fn test_validate_view_deleted_task_is_skipped() {
         // A deleted task should pass validation even with invalid refs
         let mut task = make_task("task");
         task.before = vec!["nonexistent".to_string()];
         task.deleted = true;
 
         let mut graph = TaskGraph::new();
-        graph.insert(task.clone());
+        graph.insert(task);
 
         // Should pass because deleted tasks are skipped
-        assert!(validate_task(&task, &graph).is_ok());
+        assert!(validate_view(&graph).is_ok());
     }
 
     #[test]
-    fn test_validate_task_reference_to_deleted_validation() {
+    fn test_validate_view_reference_to_deleted_validation() {
         let mut gate = make_gate("gate");
         gate.deleted = true;
 
@@ -516,10 +368,10 @@ mod tests {
 
         let mut graph = TaskGraph::new();
         graph.insert(gate);
-        graph.insert(task.clone());
+        graph.insert(task);
 
         assert_eq!(
-            validate_task(&task, &graph),
+            validate_view(&graph),
             Err(ValidationError::ValidationNotFound {
                 task_id: "task".to_string(),
                 validation_id: "gate".to_string(),
