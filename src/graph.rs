@@ -103,12 +103,18 @@ impl TaskGraph {
         self.tasks.contains_key(id)
     }
 
-    /// Remove a task, marking it as dirty (for deletion tracking).
-    pub fn remove(&mut self, id: &str) -> Option<Task> {
-        if self.tasks.contains_key(id) {
+    /// Mark a task as deleted (soft-delete).
+    ///
+    /// The task remains in the graph but is flagged as deleted and marked dirty.
+    /// Returns true if the task existed and was marked deleted, false otherwise.
+    pub fn remove(&mut self, id: &str) -> bool {
+        if let Some(task) = self.tasks.get_mut(id) {
+            task.deleted = true;
             self.dirty.insert(id.to_string());
+            true
+        } else {
+            false
         }
-        self.tasks.remove(id)
     }
 
     pub fn len(&self) -> usize {
@@ -168,9 +174,13 @@ impl TaskGraph {
             .collect()
     }
 
-    /// Clear all dirty flags (call after saving).
+    /// Clear all dirty flags and remove deleted tasks from the graph.
+    ///
+    /// Call this after saving to disk. Deleted tasks are purged from memory
+    /// since their files have been removed.
     pub fn clear_dirty(&mut self) {
         self.dirty.clear();
+        self.tasks.retain(|_, task| !task.deleted);
     }
 }
 
@@ -511,6 +521,7 @@ mod tests {
             status: None,
             task_type: TaskType::Task,
             description: String::new(),
+            deleted: false,
         }
     }
 
@@ -524,6 +535,7 @@ mod tests {
             status: None,
             task_type: TaskType::Gate,
             description: String::new(),
+            deleted: false,
         }
     }
 

@@ -328,6 +328,7 @@ mod tests {
             status: None,
             task_type: TaskType::Task,
             description: String::new(),
+            deleted: false,
         }
     }
 
@@ -341,6 +342,7 @@ mod tests {
             status: None,
             task_type: TaskType::Task,
             description: String::new(),
+            deleted: false,
         }
     }
 

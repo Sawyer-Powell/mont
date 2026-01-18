@@ -39,17 +39,29 @@ pub enum ValidationError {
     DuplicateTaskId(String),
 }
 
+/// Helper to check if a task exists and is not deleted.
+fn is_valid_reference(graph: &TaskGraph, id: &str) -> bool {
+    graph.get(id).is_some_and(|t| !t.is_deleted())
+}
+
 /// Validates a single task's references against a graph.
 ///
 /// Checks that:
-/// - Before reference points to an existing task
-/// - All after references point to existing tasks
+/// - Before reference points to an existing, non-deleted task
+/// - All after references point to existing, non-deleted tasks
 /// - Non-gate tasks cannot have gates as after dependencies
-/// - All validation references point to tasks marked as gates
+/// - All validation references point to non-deleted tasks marked as gates
 /// - All validation references point to root gates (no before target)
+///
+/// Deleted tasks are skipped (not validated).
 pub fn validate_task(task: &Task, graph: &TaskGraph) -> Result<(), ValidationError> {
+    // Skip validation of deleted tasks
+    if task.is_deleted() {
+        return Ok(());
+    }
+
     for before_id in &task.before {
-        if !graph.contains(before_id) {
+        if !is_valid_reference(graph, before_id) {
             return Err(ValidationError::InvalidBefore {
                 task_id: task.id.clone(),
                 before_id: before_id.clone(),
@@ -58,7 +70,7 @@ pub fn validate_task(task: &Task, graph: &TaskGraph) -> Result<(), ValidationErr
     }
 
     for after_id in &task.after {
-        let Some(after_task) = graph.get(after_id) else {
+        let Some(after_task) = graph.get(after_id).filter(|t| !t.is_deleted()) else {
             return Err(ValidationError::InvalidAfter {
                 task_id: task.id.clone(),
                 after_id: after_id.clone(),
@@ -74,7 +86,7 @@ pub fn validate_task(task: &Task, graph: &TaskGraph) -> Result<(), ValidationErr
     }
 
     for validation in &task.validations {
-        let Some(gate) = graph.get(&validation.id) else {
+        let Some(gate) = graph.get(&validation.id).filter(|t| !t.is_deleted()) else {
             return Err(ValidationError::ValidationNotFound {
                 task_id: task.id.clone(),
                 validation_id: validation.id.clone(),
@@ -189,6 +201,7 @@ mod tests {
             status: None,
             task_type: TaskType::Task,
             description: String::new(),
+            deleted: false,
         }
     }
 
@@ -202,6 +215,7 @@ mod tests {
             status: None,
             task_type: TaskType::Gate,
             description: String::new(),
+            deleted: false,
         }
     }
 
@@ -309,5 +323,85 @@ mod tests {
         let result = validate_graph(vec![before_target, child]);
         assert!(result.is_ok());
         assert_eq!(result.unwrap().len(), 2);
+    }
+
+    #[test]
+    fn test_validate_task_reference_to_deleted_before() {
+        let mut target = make_task("target");
+        target.deleted = true;
+
+        let mut task = make_task("task");
+        task.before = vec!["target".to_string()];
+
+        let mut graph = TaskGraph::new();
+        graph.insert(target);
+        graph.insert(task.clone());
+
+        assert_eq!(
+            validate_task(&task, &graph),
+            Err(ValidationError::InvalidBefore {
+                task_id: "task".to_string(),
+                before_id: "target".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn test_validate_task_reference_to_deleted_after() {
+        let mut dep = make_task("dep");
+        dep.deleted = true;
+
+        let mut task = make_task("task");
+        task.after = vec!["dep".to_string()];
+
+        let mut graph = TaskGraph::new();
+        graph.insert(dep);
+        graph.insert(task.clone());
+
+        assert_eq!(
+            validate_task(&task, &graph),
+            Err(ValidationError::InvalidAfter {
+                task_id: "task".to_string(),
+                after_id: "dep".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn test_validate_task_deleted_task_is_skipped() {
+        // A deleted task should pass validation even with invalid refs
+        let mut task = make_task("task");
+        task.before = vec!["nonexistent".to_string()];
+        task.deleted = true;
+
+        let mut graph = TaskGraph::new();
+        graph.insert(task.clone());
+
+        // Should pass because deleted tasks are skipped
+        assert!(validate_task(&task, &graph).is_ok());
+    }
+
+    #[test]
+    fn test_validate_task_reference_to_deleted_validation() {
+        let mut gate = make_gate("gate");
+        gate.deleted = true;
+
+        let mut task = make_task("task");
+        task.validations = vec![ValidationItem {
+            id: "gate".to_string(),
+            status: ValidationStatus::Pending,
+        }];
+
+        let mut graph = TaskGraph::new();
+        graph.insert(gate);
+        graph.insert(task.clone());
+
+        assert_eq!(
+            validate_task(&task, &graph),
+            Err(ValidationError::ValidationNotFound {
+                task_id: "task".to_string(),
+                validation_id: "gate".to_string(),
+            })
+        );
     }
 }

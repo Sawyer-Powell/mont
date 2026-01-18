@@ -107,6 +107,9 @@ pub struct Task {
     pub task_type: TaskType,
     #[serde(skip)]
     pub description: String,
+    /// Internal flag for soft-deletion. Not persisted to markdown.
+    #[serde(skip)]
+    pub deleted: bool,
 }
 
 impl Task {
@@ -137,6 +140,82 @@ impl Task {
     /// Returns true if this task is marked stopped
     pub fn is_stopped(&self) -> bool {
         self.status == Some(Status::Stopped)
+    }
+
+    /// Returns true if this task is marked for deletion
+    pub fn is_deleted(&self) -> bool {
+        self.deleted
+    }
+
+    /// Serialize this task to markdown format.
+    ///
+    /// Produces the frontmatter YAML block followed by the description.
+    pub fn to_markdown(&self) -> String {
+        let mut content = String::new();
+        content.push_str("---\n");
+        content.push_str(&format!("id: {}\n", self.id));
+
+        if let Some(t) = &self.title {
+            content.push_str(&format!("title: {}\n", t));
+        }
+
+        match self.task_type {
+            TaskType::Task => {} // default, don't write
+            TaskType::Jot => content.push_str("type: jot\n"),
+            TaskType::Gate => content.push_str("type: gate\n"),
+        }
+
+        if let Some(status) = &self.status {
+            let status_str = match status {
+                Status::InProgress => "inprogress",
+                Status::Stopped => "stopped",
+                Status::Complete => "complete",
+            };
+            content.push_str(&format!("status: {}\n", status_str));
+        }
+
+        if !self.before.is_empty() {
+            content.push_str("before:\n");
+            for target in &self.before {
+                content.push_str(&format!("  - {}\n", target));
+            }
+        }
+
+        if !self.after.is_empty() {
+            content.push_str("after:\n");
+            for dep in &self.after {
+                content.push_str(&format!("  - {}\n", dep));
+            }
+        }
+
+        if !self.validations.is_empty() {
+            content.push_str("validations:\n");
+            for val in &self.validations {
+                match val.status {
+                    ValidationStatus::Pending => {
+                        content.push_str(&format!("  - {}\n", val.id));
+                    }
+                    ValidationStatus::Passed => {
+                        content.push_str(&format!("  - {}: passed\n", val.id));
+                    }
+                    ValidationStatus::Failed => {
+                        content.push_str(&format!("  - {}: failed\n", val.id));
+                    }
+                    ValidationStatus::Skipped => {
+                        content.push_str(&format!("  - {}: skipped\n", val.id));
+                    }
+                }
+            }
+        }
+
+        content.push_str("---\n\n");
+
+        if !self.description.is_empty() {
+            content.push_str(&self.description);
+            content.push('\n');
+        }
+
+        content
     }
 }
 
@@ -596,5 +675,122 @@ Task description.
         let task = parse(content).unwrap();
         let ids: Vec<&str> = task.validation_ids().collect();
         assert_eq!(ids, vec!["val1", "val2", "val3"]);
+    }
+
+    #[test]
+    fn test_to_markdown_minimal() {
+        let task = Task {
+            id: "minimal".to_string(),
+            before: vec![],
+            after: vec![],
+            validations: vec![],
+            title: None,
+            status: None,
+            task_type: TaskType::Task,
+            description: String::new(),
+            deleted: false,
+        };
+        let markdown = task.to_markdown();
+        let parsed = parse(&markdown).unwrap();
+        assert_eq!(parsed.id, "minimal");
+        assert!(parsed.title.is_none());
+        assert_eq!(parsed.task_type, TaskType::Task);
+    }
+
+    #[test]
+    fn test_to_markdown_roundtrip_full() {
+        let task = Task {
+            id: "full-task".to_string(),
+            before: vec!["parent1".to_string(), "parent2".to_string()],
+            after: vec!["dep1".to_string()],
+            validations: vec![
+                ValidationItem {
+                    id: "val1".to_string(),
+                    status: ValidationStatus::Pending,
+                },
+                ValidationItem {
+                    id: "val2".to_string(),
+                    status: ValidationStatus::Passed,
+                },
+                ValidationItem {
+                    id: "val3".to_string(),
+                    status: ValidationStatus::Failed,
+                },
+            ],
+            title: Some("Full Task Title".to_string()),
+            status: Some(Status::InProgress),
+            task_type: TaskType::Jot,
+            description: "This is the description.".to_string(),
+            deleted: false,
+        };
+        let markdown = task.to_markdown();
+        let parsed = parse(&markdown).unwrap();
+
+        assert_eq!(parsed.id, task.id);
+        assert_eq!(parsed.title, task.title);
+        assert_eq!(parsed.task_type, TaskType::Jot);
+        assert_eq!(parsed.status, Some(Status::InProgress));
+        assert_eq!(parsed.before, task.before);
+        assert_eq!(parsed.after, task.after);
+        assert_eq!(parsed.validations.len(), 3);
+        assert_eq!(parsed.validations[0].status, ValidationStatus::Pending);
+        assert_eq!(parsed.validations[1].status, ValidationStatus::Passed);
+        assert_eq!(parsed.validations[2].status, ValidationStatus::Failed);
+        assert_eq!(parsed.description, task.description);
+    }
+
+    #[test]
+    fn test_to_markdown_gate() {
+        let task = Task {
+            id: "my-gate".to_string(),
+            before: vec!["consumer".to_string()],
+            after: vec![],
+            validations: vec![],
+            title: Some("Gate Title".to_string()),
+            status: None,
+            task_type: TaskType::Gate,
+            description: "Gate description.".to_string(),
+            deleted: false,
+        };
+        let markdown = task.to_markdown();
+        let parsed = parse(&markdown).unwrap();
+        assert_eq!(parsed.task_type, TaskType::Gate);
+        assert!(parsed.is_gate());
+    }
+
+    #[test]
+    fn test_to_markdown_complete_status() {
+        let task = Task {
+            id: "done-task".to_string(),
+            before: vec![],
+            after: vec![],
+            validations: vec![],
+            title: Some("Completed Task".to_string()),
+            status: Some(Status::Complete),
+            task_type: TaskType::Task,
+            description: String::new(),
+            deleted: false,
+        };
+        let markdown = task.to_markdown();
+        let parsed = parse(&markdown).unwrap();
+        assert!(parsed.is_complete());
+    }
+
+    #[test]
+    fn test_to_markdown_stopped_status() {
+        let task = Task {
+            id: "stopped-task".to_string(),
+            before: vec![],
+            after: vec![],
+            validations: vec![],
+            title: None,
+            status: Some(Status::Stopped),
+            task_type: TaskType::Task,
+            description: String::new(),
+            deleted: false,
+        };
+        let markdown = task.to_markdown();
+        let parsed = parse(&markdown).unwrap();
+        assert!(parsed.is_stopped());
     }
 }
