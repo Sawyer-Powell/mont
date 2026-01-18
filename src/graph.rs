@@ -1,7 +1,68 @@
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 
-use crate::task::Task;
+use crate::task::{ParseError, Task};
 use crate::validations::{validate_graph, ValidationError};
+
+/// Error collecting multiple issues found when reading a task graph.
+///
+/// This allows batch error reporting - all errors are collected and reported
+/// together rather than failing on the first error.
+#[derive(Debug, Default)]
+pub struct GraphReadError {
+    pub io_errors: Vec<(PathBuf, std::io::Error)>,
+    pub parse_errors: Vec<(PathBuf, ParseError)>,
+    pub validation_errors: Vec<ValidationError>,
+}
+
+impl GraphReadError {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.io_errors.is_empty() && self.parse_errors.is_empty() && self.validation_errors.is_empty()
+    }
+
+    pub fn add_io_error(&mut self, path: PathBuf, error: std::io::Error) {
+        self.io_errors.push((path, error));
+    }
+
+    pub fn add_parse_error(&mut self, path: PathBuf, error: ParseError) {
+        self.parse_errors.push((path, error));
+    }
+
+    pub fn add_validation_error(&mut self, error: ValidationError) {
+        self.validation_errors.push(error);
+    }
+
+    pub fn error_count(&self) -> usize {
+        self.io_errors.len() + self.parse_errors.len() + self.validation_errors.len()
+    }
+}
+
+impl std::fmt::Display for GraphReadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let count = self.error_count();
+        writeln!(f, "Found {} error(s) while reading task graph:", count)?;
+
+        for (path, error) in &self.io_errors {
+            writeln!(f, "  IO error in {}: {}", path.display(), error)?;
+        }
+
+        for (path, error) in &self.parse_errors {
+            writeln!(f, "  Parse error in {}: {}", path.display(), error)?;
+        }
+
+        for error in &self.validation_errors {
+            writeln!(f, "  Validation error: {}", error)?;
+        }
+
+        Ok(())
+    }
+}
+
+impl std::error::Error for GraphReadError {}
 
 /// A graph of tasks with their dependencies.
 #[derive(Debug, Clone, Default, PartialEq)]
