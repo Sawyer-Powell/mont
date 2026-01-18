@@ -3,7 +3,8 @@ use std::io;
 
 use owo_colors::OwoColorize;
 
-use crate::{ParseError, ValidationError};
+use crate::{ParseError, TransactionError, ValidationError};
+use crate::context::GraphReadError;
 use crate::EditorError;
 
 /// Application error with context for actionable error messages.
@@ -46,6 +47,8 @@ pub enum AppError {
     },
     /// Task is not a jot (for distill command)
     NotAJot(String),
+    /// Graph read error (loading tasks)
+    GraphRead(GraphReadError),
 }
 
 impl fmt::Display for AppError {
@@ -90,6 +93,9 @@ impl fmt::Display for AppError {
             }
             AppError::NotAJot(id) => {
                 write!(f, "{}", format_not_a_jot(id))
+            }
+            AppError::GraphRead(e) => {
+                write!(f, "{}", format_graph_read_error(e))
             }
         }
     }
@@ -662,9 +668,76 @@ fn format_not_a_jot(id: &str) -> String {
     out
 }
 
+fn format_graph_read_error(error: &GraphReadError) -> String {
+    let mut out = String::new();
+
+    out.push_str(&format!("{}: ", "error".red().bold()));
+    out.push_str("failed to load task graph\n");
+
+    for (path, io_err) in &error.io_errors {
+        out.push_str(&format!(
+            "  {} {}: {}\n",
+            "•".red(),
+            path.display().to_string().cyan(),
+            io_err
+        ));
+    }
+
+    for (path, parse_err) in &error.parse_errors {
+        out.push_str(&format!(
+            "  {} {}: {:?}\n",
+            "•".red(),
+            path.display().to_string().cyan(),
+            parse_err
+        ));
+    }
+
+    for val_err in &error.validation_errors {
+        out.push_str(&format!("  {} {:?}\n", "•".red(), val_err));
+    }
+
+    out
+}
+
 impl From<EditorError> for AppError {
     fn from(e: EditorError) -> Self {
         AppError::Editor(e)
+    }
+}
+
+impl From<GraphReadError> for AppError {
+    fn from(e: GraphReadError) -> Self {
+        AppError::GraphRead(e)
+    }
+}
+
+impl From<TransactionError> for AppError {
+    fn from(e: TransactionError) -> Self {
+        match e {
+            TransactionError::Validation(v) => AppError::Validation {
+                tasks_dir: ".tasks".to_string(),
+                source: v,
+            },
+            TransactionError::Io(io) => AppError::Io {
+                context: "transaction failed".to_string(),
+                source: io,
+            },
+            TransactionError::TaskNotFound(id) => AppError::TaskNotFound {
+                task_id: id,
+                tasks_dir: ".tasks".to_string(),
+            },
+            TransactionError::TaskAlreadyExists(id) => AppError::IdAlreadyExists(id),
+            TransactionError::IdGenerationFailed(attempts) => {
+                AppError::IdGenerationFailed { attempts }
+            }
+            TransactionError::Conflict { expected, actual } => AppError::Io {
+                context: format!(
+                    "concurrent modification: expected version {}, found {}",
+                    expected, actual
+                ),
+                source: io::Error::other("version conflict"),
+            },
+        }
     }
 }
 

@@ -1,0 +1,446 @@
+//! Shared utilities for commands, particularly temp file management.
+
+use std::path::{Path, PathBuf};
+
+use crate::error_fmt::{AppError, IoResultExt, ParseResultExt};
+use crate::{parse, resolve_editor, MontContext, Task};
+
+/// Create a temp file containing one or more tasks.
+///
+/// The file is named `{ULID}_{suffix}.md` in the system temp directory.
+/// Tasks are serialized as standard markdown with `---` frontmatter delimiters.
+/// Multiple tasks are separated by their frontmatter delimiters.
+///
+/// If `comment` is provided, it will be prepended as `# ` lines at the top of the file.
+pub fn make_temp_file(suffix: &str, tasks: &[Task], comment: Option<&str>) -> Result<PathBuf, AppError> {
+    let ulid = ulid::Ulid::new();
+    let filename = format!("{}_{}.md", ulid, suffix);
+    let path = std::env::temp_dir().join(filename);
+
+    let mut content = String::new();
+
+    // Add comment lines at the top
+    if let Some(comment_text) = comment {
+        for line in comment_text.lines() {
+            content.push_str("# ");
+            content.push_str(line);
+            content.push('\n');
+        }
+        content.push('\n');
+    }
+
+    // Add tasks
+    let tasks_content = tasks
+        .iter()
+        .map(|t| t.to_markdown())
+        .collect::<Vec<_>>()
+        .join("\n");
+    content.push_str(&tasks_content);
+
+    std::fs::write(&path, &content)
+        .with_context(&format!("failed to write temp file {}", path.display()))?;
+
+    Ok(path)
+}
+
+/// Parse a temp file containing one or more tasks.
+///
+/// Each task in the file should have standard markdown frontmatter (`---` delimiters).
+/// Multiple tasks are separated by their frontmatter delimiters.
+pub fn parse_temp_file(path: &Path) -> Result<Vec<Task>, AppError> {
+    let content = std::fs::read_to_string(path)
+        .with_context(&format!("failed to read temp file {}", path.display()))?;
+
+    parse_multi_task_content(&content, path)
+}
+
+/// Open a temp file in an editor and return the parsed tasks.
+///
+/// This is the unified workflow for editing tasks via temp files:
+/// 1. Opens the file in the specified editor
+/// 2. Waits for the editor to close
+/// 3. Parses the file and returns the tasks
+///
+/// The temp file is NOT automatically removed - caller should use `remove_temp_file`
+/// after successfully processing the tasks.
+pub fn edit_temp_file(path: &Path, editor_name: Option<&str>) -> Result<Vec<Task>, AppError> {
+    let mut cmd = resolve_editor(editor_name, path)?;
+    cmd.status().with_context("failed to run editor")?;
+
+    parse_temp_file(path)
+}
+
+/// Parse content containing one or more tasks.
+///
+/// Parsing rule:
+/// - Odd `---` lines start a new task's frontmatter
+/// - Even `---` lines end frontmatter, start body
+/// - Content before the first `---` is ignored (allows for comments/instructions)
+fn parse_multi_task_content(content: &str, path: &Path) -> Result<Vec<Task>, AppError> {
+    let mut tasks = Vec::new();
+    let mut current_task = String::new();
+    let mut delimiter_count = 0;
+
+    for line in content.lines() {
+        if line.trim() == "---" {
+            delimiter_count += 1;
+
+            if delimiter_count % 2 == 1 {
+                // Odd: start of new task's frontmatter
+                // Save previous task if we have one
+                if !current_task.is_empty() {
+                    let task = parse(&current_task)
+                        .with_path(&path.display().to_string())?;
+                    tasks.push(task);
+                    current_task = String::new();
+                }
+            }
+            // Always add the delimiter to current task
+            current_task.push_str(line);
+            current_task.push('\n');
+        } else if delimiter_count > 0 {
+            // We're inside a task (after first ---)
+            current_task.push_str(line);
+            current_task.push('\n');
+        }
+        // Lines before the first --- are ignored (comments/instructions)
+    }
+
+    // Don't forget the last task
+    if !current_task.is_empty() && delimiter_count >= 2 {
+        let task = parse(&current_task)
+            .with_path(&path.display().to_string())?;
+        tasks.push(task);
+    }
+
+    Ok(tasks)
+}
+
+/// Find temp files matching the given suffix.
+///
+/// Returns paths matching `*_{suffix}.md` in the system temp directory,
+/// ordered by ULID descending (most recent first).
+pub fn find_temp_files(suffix: &str) -> Vec<PathBuf> {
+    let temp_dir = std::env::temp_dir();
+    let pattern = format!("_{}.md", suffix);
+
+    let Ok(entries) = std::fs::read_dir(&temp_dir) else {
+        return Vec::new();
+    };
+
+    let mut files: Vec<PathBuf> = entries
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.ends_with(&pattern))
+        })
+        .collect();
+
+    // Sort by filename descending (ULIDs are lexicographically sortable by time)
+    files.sort_by(|a, b| b.file_name().cmp(&a.file_name()));
+
+    files
+}
+
+/// Remove a temp file.
+pub fn remove_temp_file(path: &Path) -> Result<(), AppError> {
+    std::fs::remove_file(path)
+        .with_context(&format!("failed to remove temp file {}", path.display()))
+}
+
+/// Result of an update operation via editor.
+pub enum UpdateResult {
+    /// Task was updated (includes new_id which may equal original_id)
+    Updated { new_id: String, id_changed: bool },
+    /// User deleted all content, no changes made
+    Aborted,
+}
+
+/// Create tasks via temp file editor workflow.
+///
+/// 1. Opens the temp file in an editor
+/// 2. Parses the result
+/// 3. Validates and inserts all tasks atomically
+/// 4. Removes the temp file on success
+///
+/// Returns the IDs of created tasks, or empty vec if user aborted (deleted all content).
+pub fn create_via_editor(
+    ctx: &MontContext,
+    path: &Path,
+    editor_name: Option<&str>,
+) -> Result<Vec<String>, AppError> {
+    let mut cmd = resolve_editor(editor_name, path)?;
+    cmd.status().with_context("failed to run editor")?;
+
+    let temp_path_str = path.display().to_string();
+
+    // Parse the temp file
+    let tasks = match parse_temp_file(path) {
+        Ok(t) => t,
+        Err(e) => {
+            return Err(AppError::TempValidationFailed {
+                error: Box::new(e),
+                temp_path: temp_path_str,
+                editor_name: editor_name.map(String::from),
+            });
+        }
+    };
+
+    if tasks.is_empty() {
+        remove_temp_file(path)?;
+        return Ok(Vec::new());
+    }
+
+    // Build a single transaction for atomicity
+    let mut txn = ctx.begin();
+    let mut created_ids = Vec::new();
+
+    for task in &tasks {
+        // Check for duplicate ID before adding to transaction
+        if !task.id.is_empty() && ctx.graph().contains(&task.id) {
+            return Err(AppError::TempValidationFailed {
+                error: Box::new(AppError::IdAlreadyExists(task.id.clone())),
+                temp_path: temp_path_str,
+                editor_name: editor_name.map(String::from),
+            });
+        }
+        created_ids.push(task.id.clone());
+        txn.insert(task.clone());
+    }
+
+    // Commit atomically
+    if let Err(e) = ctx.commit(txn) {
+        return Err(AppError::TempValidationFailed {
+            error: Box::new(e.into()),
+            temp_path: temp_path_str,
+            editor_name: editor_name.map(String::from),
+        });
+    }
+
+    // Clean up temp file
+    remove_temp_file(path)?;
+
+    Ok(created_ids)
+}
+
+/// Update a single task via temp file editor workflow.
+///
+/// 1. Opens the temp file in an editor
+/// 2. Parses the result (takes first task)
+/// 3. Validates and updates the task
+/// 4. Removes the temp file on success
+///
+/// Returns UpdateResult indicating what happened.
+pub fn update_via_editor(
+    ctx: &MontContext,
+    original_id: &str,
+    path: &Path,
+    editor_name: Option<&str>,
+) -> Result<UpdateResult, AppError> {
+    let mut cmd = resolve_editor(editor_name, path)?;
+    cmd.status().with_context("failed to run editor")?;
+
+    let temp_path_str = path.display().to_string();
+
+    // Parse the temp file (takes first task for edit)
+    let tasks = match parse_temp_file(path) {
+        Ok(t) => t,
+        Err(e) => {
+            return Err(AppError::EditTempValidationFailed {
+                error: Box::new(e),
+                original_id: original_id.to_string(),
+                temp_path: temp_path_str,
+                editor_name: editor_name.map(String::from),
+            });
+        }
+    };
+
+    let Some(parsed) = tasks.into_iter().next() else {
+        remove_temp_file(path)?;
+        return Ok(UpdateResult::Aborted);
+    };
+
+    let id_changed = parsed.id != original_id;
+
+    // Check if new ID conflicts with existing (excluding original)
+    if id_changed && ctx.graph().contains(&parsed.id) {
+        return Err(AppError::EditTempValidationFailed {
+            error: Box::new(AppError::IdAlreadyExists(parsed.id.clone())),
+            original_id: original_id.to_string(),
+            temp_path: temp_path_str,
+            editor_name: editor_name.map(String::from),
+        });
+    }
+
+    // Update the task
+    if let Err(e) = ctx.update(original_id, parsed.clone()) {
+        return Err(AppError::EditTempValidationFailed {
+            error: Box::new(e.into()),
+            original_id: original_id.to_string(),
+            temp_path: temp_path_str,
+            editor_name: editor_name.map(String::from),
+        });
+    }
+
+    // Clean up temp file
+    remove_temp_file(path)?;
+
+    Ok(UpdateResult::Updated {
+        new_id: parsed.id,
+        id_changed,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::TaskType;
+
+    #[test]
+    fn test_make_and_parse_single_task() {
+        let task = Task {
+            id: "test-task".to_string(),
+            title: Some("Test Title".to_string()),
+            description: "Test description".to_string(),
+            before: vec![],
+            after: vec![],
+            validations: vec![],
+            task_type: TaskType::Task,
+            status: None,
+            deleted: false,
+        };
+
+        let path = make_temp_file("test", &[task.clone()], None).unwrap();
+        assert!(path.exists());
+
+        let parsed = parse_temp_file(&path).unwrap();
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].id, "test-task");
+        assert_eq!(parsed[0].title, Some("Test Title".to_string()));
+
+        remove_temp_file(&path).unwrap();
+    }
+
+    #[test]
+    fn test_make_and_parse_multiple_tasks() {
+        let tasks = vec![
+            Task {
+                id: "task-one".to_string(),
+                title: Some("First Task".to_string()),
+                description: "First description".to_string(),
+                before: vec![],
+                after: vec![],
+                validations: vec![],
+                task_type: TaskType::Task,
+                status: None,
+                deleted: false,
+            },
+            Task {
+                id: "task-two".to_string(),
+                title: Some("Second Task".to_string()),
+                description: "Second description".to_string(),
+                before: vec![],
+                after: vec!["task-one".to_string()],
+                validations: vec![],
+                task_type: TaskType::Task,
+                status: None,
+                deleted: false,
+            },
+        ];
+
+        let path = make_temp_file("multi", &tasks, None).unwrap();
+        let parsed = parse_temp_file(&path).unwrap();
+
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed[0].id, "task-one");
+        assert_eq!(parsed[1].id, "task-two");
+        assert_eq!(parsed[1].after, vec!["task-one".to_string()]);
+
+        remove_temp_file(&path).unwrap();
+    }
+
+    #[test]
+    fn test_make_with_comment() {
+        let task = Task {
+            id: "commented-task".to_string(),
+            title: Some("Task".to_string()),
+            description: String::new(),
+            before: vec![],
+            after: vec![],
+            validations: vec![],
+            task_type: TaskType::Task,
+            status: None,
+            deleted: false,
+        };
+
+        let comment = "Instructions for editing\nLine two of instructions";
+        let path = make_temp_file("comment_test", &[task], Some(comment)).unwrap();
+
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.starts_with("# Instructions for editing\n# Line two of instructions\n"));
+
+        let parsed = parse_temp_file(&path).unwrap();
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].id, "commented-task");
+
+        remove_temp_file(&path).unwrap();
+    }
+
+    #[test]
+    fn test_parse_with_leading_comments() {
+        let content = r#"# Instructions
+# This is a comment
+# Define your tasks below
+
+---
+id: my-task
+title: My Task
+---
+Description here
+"#;
+        let path = std::env::temp_dir().join("test_comments.md");
+        std::fs::write(&path, content).unwrap();
+
+        let parsed = parse_temp_file(&path).unwrap();
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].id, "my-task");
+
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
+    fn test_find_temp_files_ordering() {
+        // Create files with known ULIDs (older first)
+        let suffix = "find_test";
+        let temp_dir = std::env::temp_dir();
+
+        let file1 = temp_dir.join(format!("01ARZ3NDEKTSV4RRFFQ69G5FAV_{}.md", suffix));
+        let file2 = temp_dir.join(format!("01BRZ3NDEKTSV4RRFFQ69G5FAV_{}.md", suffix));
+        let file3 = temp_dir.join(format!("01CRZ3NDEKTSV4RRFFQ69G5FAV_{}.md", suffix));
+
+        std::fs::write(&file1, "").unwrap();
+        std::fs::write(&file2, "").unwrap();
+        std::fs::write(&file3, "").unwrap();
+
+        let found = find_temp_files(suffix);
+
+        // Should be ordered descending (most recent first)
+        assert!(found.len() >= 3);
+        let found_names: Vec<_> = found.iter().filter_map(|p| p.file_name()).collect();
+
+        // file3 (01C...) should come before file2 (01B...) which comes before file1 (01A...)
+        let pos1 = found_names.iter().position(|n| n.to_str().unwrap().contains("01ARZ"));
+        let pos2 = found_names.iter().position(|n| n.to_str().unwrap().contains("01BRZ"));
+        let pos3 = found_names.iter().position(|n| n.to_str().unwrap().contains("01CRZ"));
+
+        assert!(pos3 < pos2);
+        assert!(pos2 < pos1);
+
+        // Cleanup
+        std::fs::remove_file(&file1).unwrap();
+        std::fs::remove_file(&file2).unwrap();
+        std::fs::remove_file(&file3).unwrap();
+    }
+}

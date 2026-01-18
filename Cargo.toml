@@ -7,6 +7,7 @@ edition = "2024"
 clap = { version = "4", features = ["derive"] }
 owo-colors = "4"
 petname = "2"
+ulid = "1"
 sapling-renderdag = "0.1"
 serde = { version = "1", features = ["derive"] }
 serde_yaml = "0.9"
