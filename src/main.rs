@@ -874,16 +874,14 @@ fn show_task(
         });
     }
 
-    // If editor flag is set, open in editor instead of printing
-    if let Some(editor_opt) = editor {
-        let editor_name = editor_opt.as_deref();
-        let mut cmd = mont::resolve_editor(editor_name, &file_path)?;
-        cmd.status().with_context("failed to run editor")?;
-        return Ok(());
-    }
-
     let content = std::fs::read_to_string(&file_path)
         .with_context(&format!("failed to read {}", file_path.display()))?;
+
+    // If editor flag is set, use edit_with_editor for full validation support
+    if let Some(editor_opt) = editor {
+        let editor_name = editor_opt.as_deref();
+        return edit_with_editor(tasks_dir, &dir, id, id, &content, editor_name);
+    }
 
     let task = task::parse(&content).with_path(&file_path.display().to_string())?;
 

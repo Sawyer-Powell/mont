@@ -6,8 +6,8 @@ type: jot
 
 A few things:
 
-- We need to consolidate all of the methods for constructing an optimized task graph
+- We need to consolidate all of the methods for constructing an optimized task graph from the file system
     - Task graphs after being read from file system should always have transitive reduction run on them
-- This should also consolidate the definition of a ready task
 
+- This should also consolidate the definition of a ready task
 - We should have a commands module instead of dumping everything in main.rs
