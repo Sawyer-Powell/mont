@@ -6,6 +6,7 @@ after:
   - mont-check
 validations:
   - test
+  - readme-validator
 ---
 
 Implement the `mont show <task-id>` command to display a single task's details.
