@@ -10,6 +10,7 @@ petname = "2"
 sapling-renderdag = "0.1"
 serde = { version = "1", features = ["derive"] }
 serde_yaml = "0.9"
+termimad = "0.34.1"
 thiserror = "1"
 unidiff = "0.4"
 

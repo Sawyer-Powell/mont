@@ -232,7 +232,7 @@ fn build_ancestors(task_id: &str, effective_successors: &HashMap<&str, Vec<&str>
         .unwrap_or_default()
 }
 
-fn task_marker(task: &Task, graph: &TaskGraph) -> String {
+pub fn task_marker(task: &Task, graph: &TaskGraph) -> String {
     let is_available = !task.complete && !task.validator && graph::is_available(task, graph);
     let is_in_progress = task.in_progress.is_some();
     let is_bug = task.task_type == TaskType::Bug;
@@ -255,7 +255,15 @@ fn task_marker(task: &Task, graph: &TaskGraph) -> String {
     }
 }
 
-fn format_task_line(task: &Task, graph: &TaskGraph) -> String {
+pub fn format_task_line(task: &Task, graph: &TaskGraph) -> String {
+    format_task_line_impl(task, graph, true)
+}
+
+pub fn format_task_line_short(task: &Task, graph: &TaskGraph) -> String {
+    format_task_line_impl(task, graph, false)
+}
+
+fn format_task_line_impl(task: &Task, graph: &TaskGraph, show_validator_suffix: bool) -> String {
     let is_available = !task.complete && !task.validator && graph::is_available(task, graph);
     let is_in_progress = task.in_progress.is_some();
     let is_bug = task.task_type == TaskType::Bug;
@@ -293,7 +301,11 @@ fn format_task_line(task: &Task, graph: &TaskGraph) -> String {
     let title_formatted = if task.complete {
         format!("{}{}", title_truncated.bright_black(), type_suffix)
     } else if task.validator {
-        format!("{} {}{}", title_truncated, "[validator]".purple(), type_suffix)
+        if show_validator_suffix {
+            format!("{} {}{}", title_truncated, "[validator]".purple(), type_suffix)
+        } else {
+            format!("{}{}", title_truncated.purple(), type_suffix)
+        }
     } else if is_jot || is_in_progress {
         format!("{}{}", title_truncated.yellow(), type_suffix)
     } else if is_available && is_bug {

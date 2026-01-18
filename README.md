@@ -39,6 +39,7 @@ mont check <task-id>       # validate a single task and its references
 mont new                   # create a new task
 mont edit <task-id>        # edit an existing task
 mont delete <task-id>      # delete a task and remove references
+mont show <task-id>        # show details for a single task
 mont jot                   # quickly jot down an idea
 mont jot "My idea"         # jot with a title
 mont distill <jot-id>      # distill a jot into proper tasks
@@ -77,17 +78,38 @@ mont delete my-task                             # delete with confirmation promp
 mont delete my-task --force                     # delete without confirmation
 ```
 
+### Showing tasks
+
+```
+mont show my-task                               # show task details with markdown description
+mont show my-task --short                       # show task details without description
+mont show my-task --editor                      # open task in $EDITOR
+mont show my-task --editor vim                  # open task in specific editor
+```
+
 ## Current output of `mont list` for this repo
 
 Items with ◉ icon are ready for work
 
 ```
-◉  global-settings Enable a global settings yml file in .tasks file.
+◇  jot-rousing-ruff Update --show-completed behavior mont list [jot]
+◇  jot-engrossing-hog Rename 'validators' to 'gates' - breaking change [jot]
+◇  jot-aspirant-dog Rework task types [jot]
+○  global-settings Enable a global settings yml file in .tasks file.
+◇  jot-adequate-cockroach Implement a priority system [jot]
+◇  jot-awake-mandrill Do an architecture review of the code [jot]
+◇  jot-consonant-grackle Improve mont jot [jot]
+◇  jot-earthy-oarfish Add an --append flag to add text to end of markdown file fo… [jot]
+◇  jot-exceeding-earthworm Implement search + edit flow [jot]
+◇  jot-malleable-mealworm Script to automatically update readme [jot]
+◇  jot-safe-fireback Improve mont distill, whole task in markdown appears after … [jot]
+◇  jot-shining-naiad Mont delete, show full pretty print yaml on confirm [jot]
+◇  jot-unbroken-woodlouse Organize mont list & ready [jot]
 ◉  mont-complete Implement mont complete command
-◐  mont-jot Need to add a new task type called 'jot' and 'distill'
 ◉  mont-start Implement mont start command
 ○  mont-llm-start Implement mont llm start
-◉  mont-show Implement mont show command
+◐  mont-show Implement mont show command
+◉  relative-whiting Jots need to be treated as part of dependency graph [bug]
 ◉  review-error-aesthetics Review error message aesthetics with Claude Code
 
 ◈  interview-validator Conduct interview to confirm changes [validator]
@@ -111,6 +133,7 @@ for now, but feel free to ask questions.
 - CLI: `mont delete` for deleting tasks and cleaning up references
 - CLI: `mont jot` for quickly capturing ideas as jot-type tasks
 - CLI: `mont distill` for converting jots into proper tasks
+- CLI: `mont show` for displaying task details with markdown rendering
 - Task relationships: before/after ordering, validations
 - Task types: feature, bug, jot
 - Validator tasks for defining reusable acceptance criteria

@@ -116,6 +116,17 @@ enum Commands {
         /// Jot task ID to distill
         id: String,
     },
+    /// Show details for a single task
+    Show {
+        /// Task ID to show
+        id: String,
+        /// Show shortened version (omit description)
+        #[arg(long, short)]
+        short: bool,
+        /// Open in editor (optionally specify editor command)
+        #[arg(long, short)]
+        editor: Option<Option<String>>,
+    },
 }
 
 const TASKS_DIR: &str = ".tasks";
@@ -206,6 +217,12 @@ fn main() {
         }
         Commands::Distill { id } => {
             if let Err(e) = distill_task(TASKS_DIR, &id) {
+                eprint!("{}", e);
+                std::process::exit(1);
+            }
+        }
+        Commands::Show { id, short, editor } => {
+            if let Err(e) = show_task(TASKS_DIR, &id, short, editor) {
                 eprint!("{}", e);
                 std::process::exit(1);
             }
@@ -836,6 +853,160 @@ fn distill_task(tasks_dir: &str, id: &str) -> Result<(), AppError> {
     }
 
     Ok(())
+}
+
+fn show_task(
+    tasks_dir: &str,
+    id: &str,
+    short: bool,
+    editor: Option<Option<String>>,
+) -> Result<(), AppError> {
+    let dir = PathBuf::from(tasks_dir);
+
+    if !dir.exists() {
+        return Err(AppError::DirNotFound(tasks_dir.to_string()));
+    }
+
+    let file_path = dir.join(format!("{}.md", id));
+    if !file_path.exists() {
+        return Err(AppError::TaskNotFound {
+            task_id: id.to_string(),
+            tasks_dir: tasks_dir.to_string(),
+        });
+    }
+
+    // If editor flag is set, open in editor instead of printing
+    if let Some(editor_opt) = editor {
+        let editor_name = editor_opt.as_deref();
+        let mut cmd = mont::resolve_editor(editor_name, &file_path)?;
+        cmd.status().with_context("failed to run editor")?;
+        return Ok(());
+    }
+
+    let content = std::fs::read_to_string(&file_path)
+        .with_context(&format!("failed to read {}", file_path.display()))?;
+
+    let task = task::parse(&content).with_path(&file_path.display().to_string())?;
+
+    // Load all tasks to render validators in graph format
+    let all_tasks = load_existing_tasks(&dir)?;
+    let task_graph: graph::TaskGraph = all_tasks
+        .into_iter()
+        .map(|t| (t.id.clone(), t))
+        .collect();
+
+    print_task_details(&task, &task_graph, short);
+
+    Ok(())
+}
+
+fn print_task_details(task: &task::Task, graph: &graph::TaskGraph, short: bool) {
+    let is_in_progress = task.in_progress.is_some();
+    let is_bug = task.task_type == TaskType::Bug;
+    let is_jot = task.task_type == TaskType::Jot;
+
+    // Determine label width for table alignment
+    const LABEL_WIDTH: usize = 14;
+
+    // Task ID
+    let id_display = if task.complete {
+        task.id.bright_black().bold().to_string()
+    } else if task.validator {
+        task.id.purple().bold().to_string()
+    } else if is_jot || is_in_progress {
+        task.id.yellow().bold().to_string()
+    } else if is_bug {
+        task.id.red().bold().to_string()
+    } else {
+        task.id.bright_green().bold().to_string()
+    };
+    println!("{:LABEL_WIDTH$} {}", "Id".bold(), id_display);
+
+    // Title
+    if let Some(ref title) = task.title {
+        let title_display = if task.complete {
+            title.bright_black().to_string()
+        } else if task.validator {
+            title.purple().to_string()
+        } else if is_jot || is_in_progress {
+            title.yellow().to_string()
+        } else if is_bug {
+            title.red().to_string()
+        } else {
+            title.bright_green().to_string()
+        };
+        println!("{:LABEL_WIDTH$} {}", "Title".bold(), title_display);
+    }
+
+    // Status
+    let status_value = if task.complete {
+        "complete".bright_black().to_string()
+    } else if is_in_progress {
+        "in progress".yellow().to_string()
+    } else {
+        "incomplete".white().to_string()
+    };
+    println!("{:LABEL_WIDTH$} {}", "Status".bold(), status_value);
+
+    // Type
+    let type_value = match task.task_type {
+        TaskType::Bug => "[bug]".red().to_string(),
+        TaskType::Feature => "[feature]".bright_green().to_string(),
+        TaskType::Jot => "[jot]".yellow().to_string(),
+    };
+    println!("{:LABEL_WIDTH$} {}", "Type".bold(), type_value);
+
+    // Parent (before field)
+    if !task.before.is_empty() {
+        println!(
+            "{:LABEL_WIDTH$} {}",
+            "Before".bold(),
+            task.before.join(", ").cyan()
+        );
+    }
+
+    // After field
+    if !task.after.is_empty() {
+        println!(
+            "{:LABEL_WIDTH$} {}",
+            "After".bold(),
+            task.after.join(", ").cyan()
+        );
+    }
+
+    // Validations - render like mont list but without [validator] suffix
+    if !task.validations.is_empty() {
+        for (i, val_item) in task.validations.iter().enumerate() {
+            let label = if i == 0 { "Validations" } else { "" };
+            if let Some(val_task) = graph.get(&val_item.id) {
+                let marker = render::task_marker(val_task, graph);
+                let line = render::format_task_line_short(val_task, graph);
+                println!("{:LABEL_WIDTH$} {} {}", label.bold(), marker, line);
+            } else {
+                // Validator not found in graph, show ID only
+                println!(
+                    "{:LABEL_WIDTH$} {} {}",
+                    label.bold(),
+                    "?".bright_black(),
+                    val_item.id.bright_black()
+                );
+            }
+        }
+    }
+
+    // Description (unless short mode)
+    if !short && !task.description.is_empty() {
+        println!();
+        let mut skin = termimad::MadSkin::default();
+        // Left-align headers
+        skin.headers[0].align = termimad::Alignment::Left;
+        skin.headers[1].align = termimad::Alignment::Left;
+        skin.headers[2].align = termimad::Alignment::Left;
+        skin.headers[3].align = termimad::Alignment::Left;
+        skin.headers[4].align = termimad::Alignment::Left;
+        skin.headers[5].align = termimad::Alignment::Left;
+        skin.print_text(&task.description);
+    }
 }
 
 fn parse_distill_content(
