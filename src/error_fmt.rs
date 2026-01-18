@@ -3,8 +3,7 @@ use std::io;
 
 use owo_colors::OwoColorize;
 
-use crate::task::ParseError;
-use crate::validations::ValidationError;
+use crate::{ParseError, ValidationError};
 use crate::EditorError;
 
 /// Application error with context for actionable error messages.

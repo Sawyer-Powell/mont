@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
-use crate::task::{ParseError, Task};
-use crate::validations::{validate_graph, ValidationError};
+use super::task::{ParseError, Task};
+use super::validations::{validate_graph, ValidationError};
 
 /// Error collecting multiple issues found when reading a task graph.
 ///
@@ -204,7 +204,7 @@ impl FromIterator<(String, Task)> for TaskGraph {
     }
 }
 
-pub use crate::validations::ValidationError as GraphError;
+pub use super::validations::ValidationError as GraphError;
 
 // ============================================================================
 // Graph Query Operations
@@ -509,7 +509,7 @@ pub fn form_graph(tasks: Vec<Task>) -> Result<TaskGraph, ValidationError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::task::{TaskType, ValidationItem, ValidationStatus};
+    use super::super::task::{TaskType, ValidationItem, ValidationStatus};
 
     fn make_task(id: &str) -> Task {
         Task {

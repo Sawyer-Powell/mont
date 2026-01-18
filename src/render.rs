@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use owo_colors::OwoColorize;
 use renderdag::{Ancestor, GraphRowRenderer, Renderer};
 
-use crate::graph::{self, TaskGraph};
-use crate::task::{Task, TaskType};
+use crate::context::graph;
+use crate::{Task, TaskGraph, TaskType};
 
 type BoxRenderer = renderdag::BoxDrawingRenderer<String, GraphRowRenderer<String>>;
 
@@ -316,7 +316,7 @@ pub fn truncate_title(title: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::task::Task;
+    use crate::Task;
 
     fn make_task(id: &str) -> Task {
         Task {
@@ -433,7 +433,7 @@ mod tests {
 
     #[test]
     fn test_render_with_task_types_and_states() {
-        use crate::task::Status;
+        use crate::Status;
 
         let root = make_task("root");
 

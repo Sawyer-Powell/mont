@@ -225,7 +225,7 @@ impl Task {
 ///
 /// Parsing a valid task:
 /// ```
-/// use mont::task::{parse, ParseError, ValidationStatus};
+/// use mont::{parse, ParseError, ValidationStatus};
 ///
 /// let content = r#"---
 /// id: test-task
@@ -255,7 +255,7 @@ impl Task {
 ///
 /// Parsing a gate (no after dependencies allowed):
 /// ```
-/// use mont::task::{parse, ParseError};
+/// use mont::{parse, ParseError};
 ///
 /// let content = r#"---
 /// id: test-gate
@@ -274,7 +274,7 @@ impl Task {
 ///
 /// Missing frontmatter returns an error:
 /// ```
-/// use mont::task::{parse, ParseError};
+/// use mont::{parse, ParseError};
 ///
 /// let result = parse("No frontmatter here");
 /// assert!(matches!(result, Err(ParseError::MissingFrontmatter)));
@@ -282,7 +282,7 @@ impl Task {
 ///
 /// Missing required `id` field returns an error:
 /// ```
-/// use mont::task::{parse, ParseError};
+/// use mont::{parse, ParseError};
 ///
 /// let content = r#"---
 /// title: Task without id
@@ -297,7 +297,7 @@ impl Task {
 ///
 /// Gate with after dependencies returns an error:
 /// ```
-/// use mont::task::{parse, ParseError};
+/// use mont::{parse, ParseError};
 ///
 /// let content = r#"---
 /// id: bad-gate

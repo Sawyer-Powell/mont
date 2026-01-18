@@ -1,10 +1,19 @@
 pub mod context;
 pub mod error_fmt;
-pub mod graph;
 pub mod jj;
 pub mod render;
-pub mod task;
-pub mod validations;
+
+// Re-export commonly used types from context module for convenience
+pub use context::{
+    parse, GraphReadError, MontContext, Op, ParseError, Status, Task, TaskGraph, TaskType,
+    Transaction, TransactionError, ValidationError, ValidationItem, ValidationStatus,
+};
+
+// Re-export graph functions for binary
+pub use context::graph::{available_tasks, form_graph};
+
+// Re-export validation functions for binary
+pub use context::validations::{validate_graph, validate_task};
 
 use std::env;
 use std::path::Path;

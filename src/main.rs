@@ -3,8 +3,10 @@ use owo_colors::OwoColorize;
 use std::path::{Path, PathBuf};
 
 use mont::error_fmt::{AppError, IoResultExt, ParseResultExt, ValidationResultExt};
-use mont::task::TaskType;
-use mont::{graph, render, task, validations};
+use mont::{
+    available_tasks, form_graph, parse, render, validate_graph, validate_task, Task, TaskGraph,
+    TaskType,
+};
 
 #[derive(Parser)]
 #[command(name = "mont")]
@@ -249,7 +251,7 @@ fn list_tasks(show_completed: bool) -> Result<(), AppError> {
     for path in &paths {
         let path_str = path.display().to_string();
         let content = std::fs::read_to_string(path).with_context(&format!("failed to read {}", path_str))?;
-        let parsed = task::parse(&content).with_path(&path_str)?;
+        let parsed = parse(&content).with_path(&path_str)?;
         tasks.push(parsed);
     }
 
@@ -258,7 +260,7 @@ fn list_tasks(show_completed: bool) -> Result<(), AppError> {
         return Ok(());
     }
 
-    let validated = graph::form_graph(tasks).with_tasks_dir(TASKS_DIR)?;
+    let validated = form_graph(tasks).with_tasks_dir(TASKS_DIR)?;
 
     let output = render::render_task_graph(&validated, show_completed);
     print!("{}", output);
@@ -285,7 +287,7 @@ fn ready_tasks() -> Result<(), AppError> {
     for path in &paths {
         let path_str = path.display().to_string();
         let content = std::fs::read_to_string(path).with_context(&format!("failed to read {}", path_str))?;
-        let parsed = task::parse(&content).with_path(&path_str)?;
+        let parsed = parse(&content).with_path(&path_str)?;
         tasks.push(parsed);
     }
 
@@ -294,8 +296,8 @@ fn ready_tasks() -> Result<(), AppError> {
         return Ok(());
     }
 
-    let validated = graph::form_graph(tasks).with_tasks_dir(TASKS_DIR)?;
-    let mut ready: Vec<_> = graph::available_tasks(&validated);
+    let validated = form_graph(tasks).with_tasks_dir(TASKS_DIR)?;
+    let mut ready: Vec<_> = available_tasks(&validated);
     ready.sort_by(|a, b| a.id.cmp(&b.id));
 
     if ready.is_empty() {
@@ -347,7 +349,7 @@ fn check_tasks(id: Option<&str>) -> Result<(), AppError> {
     for path in &paths {
         let path_str = path.display().to_string();
         let content = std::fs::read_to_string(path).with_context(&format!("failed to read {}", path_str))?;
-        let parsed = task::parse(&content).with_path(&path_str)?;
+        let parsed = parse(&content).with_path(&path_str)?;
         tasks.push(parsed);
     }
 
@@ -362,8 +364,8 @@ fn check_tasks(id: Option<&str>) -> Result<(), AppError> {
     }
 }
 
-fn check_single_task(tasks: &[task::Task], task_id: &str) -> Result<(), AppError> {
-    let graph: validations::TaskGraph = tasks.iter().map(|t| (t.id.clone(), t.clone())).collect();
+fn check_single_task(tasks: &[Task], task_id: &str) -> Result<(), AppError> {
+    let graph: TaskGraph = tasks.iter().map(|t| (t.id.clone(), t.clone())).collect();
 
     let Some(task) = graph.get(task_id) else {
         return Err(AppError::TaskNotFound {
@@ -372,15 +374,15 @@ fn check_single_task(tasks: &[task::Task], task_id: &str) -> Result<(), AppError
         });
     };
 
-    validations::validate_task(task, &graph).with_tasks_dir(TASKS_DIR)?;
+    validate_task(task, &graph).with_tasks_dir(TASKS_DIR)?;
 
     println!("ok: task '{}' is valid", task_id);
     Ok(())
 }
 
-fn check_full_graph(tasks: Vec<task::Task>) -> Result<(), AppError> {
+fn check_full_graph(tasks: Vec<Task>) -> Result<(), AppError> {
     let count = tasks.len();
-    validations::validate_graph(tasks).with_tasks_dir(TASKS_DIR)?;
+    validate_graph(tasks).with_tasks_dir(TASKS_DIR)?;
     println!("ok: {} tasks validated", count);
     Ok(())
 }
@@ -427,11 +429,11 @@ fn new_task(
     }
 
     // Non-editor mode: validate in memory, then write
-    let new_task = task::parse(&content).with_path(&format!("{}/{}.md", tasks_dir, task_id))?;
+    let new_task = parse(&content).with_path(&format!("{}/{}.md", tasks_dir, task_id))?;
 
     let mut all_tasks = existing_tasks;
     all_tasks.push(new_task);
-    validations::validate_graph(all_tasks).with_tasks_dir(tasks_dir)?;
+    validate_graph(all_tasks).with_tasks_dir(tasks_dir)?;
 
     let file_path = dir.join(format!("{}.md", task_id));
     std::fs::write(&file_path, &content)
@@ -472,7 +474,7 @@ fn edit_task(
     let original_content = std::fs::read_to_string(&file_path)
         .with_context(&format!("failed to read {}", file_path.display()))?;
 
-    let original_task = task::parse(&original_content)
+    let original_task = parse(&original_content)
         .with_path(&file_path.display().to_string())?;
 
     let final_id = new_id.as_deref().unwrap_or(id);
@@ -505,7 +507,7 @@ fn edit_task(
     );
 
     // Validate the updated task
-    let updated_task = task::parse(&updated_content)
+    let updated_task = parse(&updated_content)
         .with_path(&format!("{}/{}.md", tasks_dir, final_id))?;
 
     // Load all tasks, replacing the original with the updated one
@@ -519,7 +521,7 @@ fn edit_task(
     }
 
     // Validate the entire graph
-    validations::validate_graph(all_tasks).with_tasks_dir(tasks_dir)?;
+    validate_graph(all_tasks).with_tasks_dir(tasks_dir)?;
 
     // Write the updated task
     let final_path = dir.join(format!("{}.md", final_id));
@@ -686,11 +688,11 @@ fn jot_task(
     }
 
     // Non-editor mode: validate in memory, then write
-    let new_task = task::parse(&content).with_path(&format!("{}/{}.md", tasks_dir, task_id))?;
+    let new_task = parse(&content).with_path(&format!("{}/{}.md", tasks_dir, task_id))?;
 
     let mut all_tasks = existing_tasks;
     all_tasks.push(new_task);
-    validations::validate_graph(all_tasks).with_tasks_dir(tasks_dir)?;
+    validate_graph(all_tasks).with_tasks_dir(tasks_dir)?;
 
     let file_path = dir.join(format!("{}.md", task_id));
     std::fs::write(&file_path, &content)
@@ -736,7 +738,7 @@ fn distill_task(tasks_dir: &str, id: &str) -> Result<(), AppError> {
     let content = std::fs::read_to_string(&file_path)
         .with_context(&format!("failed to read {}", file_path.display()))?;
 
-    let jot_task = task::parse(&content).with_path(&file_path.display().to_string())?;
+    let jot_task = parse(&content).with_path(&file_path.display().to_string())?;
 
     // Verify this is a jot
     if jot_task.task_type != TaskType::Jot {
@@ -811,7 +813,7 @@ fn distill_task(tasks_dir: &str, id: &str) -> Result<(), AppError> {
     // Parse and validate new tasks
     let mut parsed_tasks = Vec::new();
     for (task_id, task_content) in &new_tasks {
-        let parsed = task::parse(task_content)
+        let parsed = parse(task_content)
             .with_path(&format!("{}/{}.md", tasks_dir, task_id))?;
         parsed_tasks.push(parsed);
     }
@@ -819,7 +821,7 @@ fn distill_task(tasks_dir: &str, id: &str) -> Result<(), AppError> {
     // Validate the entire graph with new tasks
     let mut all_tasks = existing_tasks.clone();
     all_tasks.extend(parsed_tasks.clone());
-    validations::validate_graph(all_tasks).with_tasks_dir(tasks_dir)?;
+    validate_graph(all_tasks).with_tasks_dir(tasks_dir)?;
 
     // Write all new task files
     for (task_id, task_content) in &new_tasks {
@@ -883,11 +885,11 @@ fn show_task(
         return edit_with_editor(tasks_dir, &dir, id, id, &content, editor_name);
     }
 
-    let task = task::parse(&content).with_path(&file_path.display().to_string())?;
+    let task = parse(&content).with_path(&file_path.display().to_string())?;
 
     // Load all tasks to render validators in graph format
     let all_tasks = load_existing_tasks(&dir)?;
-    let task_graph: graph::TaskGraph = all_tasks
+    let task_graph: TaskGraph = all_tasks
         .into_iter()
         .map(|t| (t.id.clone(), t))
         .collect();
@@ -897,7 +899,7 @@ fn show_task(
     Ok(())
 }
 
-fn print_task_details(task: &task::Task, graph: &graph::TaskGraph, short: bool) {
+fn print_task_details(task: &Task, graph: &TaskGraph, short: bool) {
     let is_in_progress = task.is_in_progress();
     let is_jot = task.is_jot();
     let is_gate = task.is_gate();
@@ -1228,7 +1230,7 @@ fn validate_and_update_edited(
         .with_context(&format!("failed to read temp file {}", temp_path.display()))?;
 
     let temp_path_str = temp_path.display().to_string();
-    let parsed = match task::parse(&content).with_path(&temp_path_str) {
+    let parsed = match parse(&content).with_path(&temp_path_str) {
         Ok(t) => t,
         Err(e) => {
             return Err(AppError::EditTempValidationFailed {
@@ -1267,7 +1269,7 @@ fn validate_and_update_edited(
     }
 
     // Validate the entire graph
-    if let Err(e) = validations::validate_graph(all_tasks).with_tasks_dir(tasks_dir_str) {
+    if let Err(e) = validate_graph(all_tasks).with_tasks_dir(tasks_dir_str) {
         return Err(AppError::EditTempValidationFailed {
             error: Box::new(e),
             original_id: original_id.to_string(),
@@ -1299,7 +1301,7 @@ fn validate_and_update_edited(
 }
 
 fn merge_task_content(
-    original: &task::Task,
+    original: &Task,
     original_content: &str,
     new_id: &str,
     fields: &TaskFields,
@@ -1376,7 +1378,7 @@ fn update_task_references(
     tasks_dir: &Path,
     old_id: &str,
     new_id: &str,
-    all_tasks: &mut [task::Task],
+    all_tasks: &mut [Task],
 ) -> Result<(), AppError> {
     for task in all_tasks.iter_mut() {
         let mut changed = false;
@@ -1523,7 +1525,7 @@ fn validate_and_copy_temp(
         .with_context(&format!("failed to read temp file {}", temp_path.display()))?;
 
     let temp_path_str = temp_path.display().to_string();
-    let parsed = match task::parse(&content).with_path(&temp_path_str) {
+    let parsed = match parse(&content).with_path(&temp_path_str) {
         Ok(t) => t,
         Err(e) => {
             return Err(AppError::TempValidationFailed {
@@ -1549,7 +1551,7 @@ fn validate_and_copy_temp(
     let mut all_tasks = existing_tasks;
     all_tasks.push(parsed.clone());
 
-    if let Err(e) = validations::validate_graph(all_tasks).with_tasks_dir(tasks_dir_str) {
+    if let Err(e) = validate_graph(all_tasks).with_tasks_dir(tasks_dir_str) {
         return Err(AppError::TempValidationFailed {
             error: Box::new(e),
             temp_path: temp_path_str,
@@ -1569,7 +1571,7 @@ fn validate_and_copy_temp(
     Ok(())
 }
 
-fn load_existing_tasks(dir: &PathBuf) -> Result<Vec<task::Task>, AppError> {
+fn load_existing_tasks(dir: &PathBuf) -> Result<Vec<Task>, AppError> {
     let mut paths: Vec<_> = std::fs::read_dir(dir)
         .with_context(&format!("failed to read directory {}", TASKS_DIR))?
         .filter_map(|e| e.ok())
@@ -1583,7 +1585,7 @@ fn load_existing_tasks(dir: &PathBuf) -> Result<Vec<task::Task>, AppError> {
         let path_str = path.display().to_string();
         let content =
             std::fs::read_to_string(path).with_context(&format!("failed to read {}", path_str))?;
-        let parsed = task::parse(&content).with_path(&path_str)?;
+        let parsed = parse(&content).with_path(&path_str)?;
         tasks.push(parsed);
     }
 

@@ -36,7 +36,8 @@
       "Bash(do sed -i '' 's/^parent:/before:/g; s/^preconditions:/after:/g; s/^type: epic$/type: feature/g' \"$f\")",
       "Bash(done)",
       "Bash(wc:*)",
-      "Skill(mont-task)"
+      "Skill(mont-task)",
+      "Bash(mont list:*)"
     ]
   }
 }

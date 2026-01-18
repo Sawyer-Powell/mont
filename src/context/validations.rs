@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 use thiserror::Error;
 
-pub use crate::graph::TaskGraph;
-use crate::task::Task;
+use super::graph::TaskGraph;
+use super::task::Task;
+use super::view::GraphView;
 
 #[derive(Error, Debug, PartialEq)]
 pub enum ValidationError {
@@ -138,6 +139,127 @@ pub fn validate_graph(tasks: Vec<Task>) -> Result<TaskGraph, ValidationError> {
     Ok(graph)
 }
 
+/// Validates a single task's references against a GraphView.
+///
+/// This is a generic version of validate_task that works with any GraphView,
+/// including ValidationView for transaction validation.
+fn validate_task_in_view<V: GraphView>(task: &Task, view: &V) -> Result<(), ValidationError> {
+    // Skip validation of deleted tasks
+    if task.is_deleted() {
+        return Ok(());
+    }
+
+    for before_id in &task.before {
+        if view.get(before_id).is_none() {
+            return Err(ValidationError::InvalidBefore {
+                task_id: task.id.clone(),
+                before_id: before_id.clone(),
+            });
+        }
+    }
+
+    for after_id in &task.after {
+        let Some(after_task) = view.get(after_id) else {
+            return Err(ValidationError::InvalidAfter {
+                task_id: task.id.clone(),
+                after_id: after_id.clone(),
+            });
+        };
+
+        if !task.is_gate() && after_task.is_gate() {
+            return Err(ValidationError::AfterIsGate {
+                task_id: task.id.clone(),
+                after_id: after_id.clone(),
+            });
+        }
+    }
+
+    for validation in &task.validations {
+        let Some(gate) = view.get(&validation.id) else {
+            return Err(ValidationError::ValidationNotFound {
+                task_id: task.id.clone(),
+                validation_id: validation.id.clone(),
+            });
+        };
+
+        if !gate.is_gate() {
+            return Err(ValidationError::InvalidValidation {
+                task_id: task.id.clone(),
+                validation_id: validation.id.clone(),
+            });
+        }
+
+        if !gate.before.is_empty() {
+            return Err(ValidationError::ValidationNotRootGate {
+                task_id: task.id.clone(),
+                validation_id: validation.id.clone(),
+            });
+        }
+    }
+
+    Ok(())
+}
+
+/// Validates a GraphView (typically a ValidationView for transaction validation).
+///
+/// Checks that all task references are valid and the graph has no cycles.
+pub fn validate_view<V: GraphView>(view: &V) -> Result<(), ValidationError> {
+    for task in view.values() {
+        validate_task_in_view(task, view)?;
+    }
+
+    if has_cycle_in_view(view) {
+        return Err(ValidationError::CycleDetected);
+    }
+
+    Ok(())
+}
+
+fn has_cycle_in_view<V: GraphView>(view: &V) -> bool {
+    let mut colors: HashMap<String, Color> = HashMap::new();
+    for id in view.keys() {
+        colors.insert(id.to_string(), Color::White);
+    }
+
+    for id in view.keys() {
+        if colors[id] == Color::White && dfs_cycle_in_view(view, id, &mut colors) {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn dfs_cycle_in_view<V: GraphView>(
+    view: &V,
+    task_id: &str,
+    colors: &mut HashMap<String, Color>,
+) -> bool {
+    colors.insert(task_id.to_string(), Color::Gray);
+
+    let Some(task) = view.get(task_id) else {
+        return false;
+    };
+
+    let neighbors = task.before.iter().chain(task.after.iter());
+    for neighbor_id in neighbors {
+        let neighbor_color = colors.get(neighbor_id.as_str()).copied().unwrap_or(Color::Black);
+
+        match neighbor_color {
+            Color::Gray => return true,
+            Color::White => {
+                if dfs_cycle_in_view(view, neighbor_id, colors) {
+                    return true;
+                }
+            }
+            Color::Black => {}
+        }
+    }
+
+    colors.insert(task_id.to_string(), Color::Black);
+    false
+}
+
 #[derive(Clone, Copy, PartialEq)]
 enum Color {
     White,
@@ -189,7 +311,7 @@ fn dfs_cycle(graph: &TaskGraph, task_id: &str, colors: &mut HashMap<String, Colo
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::task::{TaskType, ValidationItem, ValidationStatus};
+    use crate::context::task::{TaskType, ValidationItem, ValidationStatus};
 
     fn make_task(id: &str) -> Task {
         Task {
