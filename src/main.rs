@@ -708,9 +708,8 @@ fn generate_jot_id(existing_ids: &std::collections::HashSet<&str>) -> Result<Str
         let Some(candidate) = petname::petname(2, "-") else {
             continue;
         };
-        let jot_id = format!("jot-{}", candidate);
-        if !existing_ids.contains(jot_id.as_str()) {
-            return Ok(jot_id);
+        if !existing_ids.contains(candidate.as_str()) {
+            return Ok(candidate);
         }
     }
 
