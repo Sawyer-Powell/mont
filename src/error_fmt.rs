@@ -57,6 +57,14 @@ pub enum AppError {
     NoActiveTasks,
     /// Gate not valid for this task
     GateNotValid { gate_id: String, task_id: String },
+    /// Task is already complete
+    TaskAlreadyComplete(String),
+    /// Task is already in progress
+    TaskAlreadyInProgress(String),
+    /// Working copy has uncommitted changes
+    WorkingCopyNotEmpty,
+    /// JJ command failed
+    JJError(String),
 }
 
 impl fmt::Display for AppError {
@@ -116,6 +124,18 @@ impl fmt::Display for AppError {
             }
             AppError::GateNotValid { gate_id, task_id } => {
                 write!(f, "{}", format_gate_not_valid(gate_id, task_id))
+            }
+            AppError::TaskAlreadyComplete(id) => {
+                write!(f, "{}", format_task_already_complete(id))
+            }
+            AppError::TaskAlreadyInProgress(id) => {
+                write!(f, "{}", format_task_already_in_progress(id))
+            }
+            AppError::WorkingCopyNotEmpty => {
+                write!(f, "{}", format_working_copy_not_empty())
+            }
+            AppError::JJError(msg) => {
+                write!(f, "{}", format_jj_error(msg))
             }
         }
     }
@@ -805,6 +825,74 @@ fn format_gate_not_valid(gate_id: &str, task_id: &str) -> String {
         "    3. Check spelling: {}\n",
         "mont list".cyan()
     ));
+
+    out
+}
+
+fn format_task_already_complete(id: &str) -> String {
+    let mut out = String::new();
+
+    out.push_str(&format!("{}: ", "error".red().bold()));
+    out.push_str(&format!("task '{}' is already complete\n", id.yellow()));
+    out.push('\n');
+    out.push_str(&format!("  {}\n", "Cannot start a task that has already been completed.".dimmed()));
+    out.push('\n');
+    out.push_str(&format!("  {}:\n", "To fix this".bold()));
+    out.push_str(&format!(
+        "    1. Choose a different task: {}\n",
+        "mont ready".cyan()
+    ));
+    out.push_str(&format!(
+        "    2. Edit the task to remove complete status: {}\n",
+        format!("mont edit {} --editor", id).cyan()
+    ));
+
+    out
+}
+
+fn format_task_already_in_progress(id: &str) -> String {
+    let mut out = String::new();
+
+    out.push_str(&format!("{}: ", "error".red().bold()));
+    out.push_str(&format!("task '{}' is already in progress\n", id.yellow()));
+    out.push('\n');
+    out.push_str(&format!("  {}\n", "This task has already been started.".dimmed()));
+    out.push('\n');
+    out.push_str(&format!("  {}:\n", "To fix this".bold()));
+    out.push_str(&format!(
+        "    1. View current status: {}\n",
+        "mont status".cyan()
+    ));
+    out.push_str(&format!(
+        "    2. Choose a different task: {}\n",
+        "mont ready".cyan()
+    ));
+
+    out
+}
+
+fn format_working_copy_not_empty() -> String {
+    let mut out = String::new();
+
+    out.push_str(&format!("{}: ", "error".red().bold()));
+    out.push_str("working copy has uncommitted changes\n");
+    out.push('\n');
+    out.push_str(&format!("  {}\n", "Cannot start a new task with uncommitted changes.".dimmed()));
+    out.push('\n');
+    out.push_str(&format!("  {}:\n", "To fix this".bold()));
+    out.push_str(&format!(
+        "    Commit your changes first: {}\n",
+        "jj commit -m \"your message\"".cyan()
+    ));
+
+    out
+}
+
+fn format_jj_error(msg: &str) -> String {
+    let mut out = String::new();
+
+    out.push_str(&format!("{}: ", "error".red().bold()));
+    out.push_str(&format!("jj command failed: {}\n", msg));
 
     out
 }

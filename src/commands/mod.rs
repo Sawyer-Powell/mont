@@ -13,6 +13,7 @@ pub mod new;
 mod ready;
 pub mod shared;
 mod show;
+mod start;
 mod status;
 pub mod unlock;
 
@@ -25,5 +26,6 @@ pub use list::list;
 pub use new::new;
 pub use ready::ready;
 pub use show::show;
+pub use start::start;
 pub use status::status;
 pub use unlock::unlock;

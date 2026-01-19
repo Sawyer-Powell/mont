@@ -1,6 +1,7 @@
 ---
 id: mont-start
 title: Implement mont start command
+status: complete
 after:
   - add-jj-lib
   - in-progress-status

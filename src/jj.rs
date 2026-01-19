@@ -21,6 +21,21 @@ pub struct CommitResult {
     pub stderr: String,
 }
 
+/// Checks if the current working copy revision is empty (has no changes).
+pub fn is_working_copy_empty() -> Result<bool, JJError> {
+    let output = Command::new("jj")
+        .args(["diff", "--stat"])
+        .output()?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        return Err(JJError::CommandFailed(stderr));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Ok(stdout.trim().is_empty())
+}
+
 /// Runs `jj commit` with the given message.
 pub fn commit(message: &str) -> Result<CommitResult, JJError> {
     let output = Command::new("jj")

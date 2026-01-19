@@ -148,6 +148,11 @@ enum Commands {
         #[arg(long, short, value_delimiter = ',')]
         gates: Vec<String>,
     },
+    /// Start working on a task
+    Start {
+        /// Task ID to start. If not provided, opens interactive picker.
+        id: Option<String>,
+    },
 }
 
 fn parse_task_type(s: &str) -> Result<TaskType, String> {
@@ -299,6 +304,13 @@ fn run(cli: Cli) -> Result<(), AppError> {
                     gates,
                 },
             )
+        }
+        Commands::Start { id } => {
+            let resolved_id = match id {
+                Some(id) => id,
+                None => pick_task(&ctx.graph())?,
+            };
+            commands::start(&ctx, &resolved_id)
         }
     }
 }
