@@ -26,7 +26,9 @@ Your goal is to help distill this jot into one or more well-defined tasks.
    - A clear, actionable title
    - What needs to be done (description)
    - Dependencies between tasks (if multiple)
-4. Use `mont distill {{ jot_id }}` to convert this jot into tasks
+4. Use `mont list` to identify how these tasks might or might not be dependent on existing tasks
+4. Communicate your breakdown to the user to confirm
+5. Use `mont distill {{ jot_id }}` to convert this jot into tasks
 
 When running `mont distill`, you can provide tasks directly using YAML.
 **Important:** Use `=` to attach the YAML value (required because YAML starts with `-`):
