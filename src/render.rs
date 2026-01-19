@@ -15,9 +15,17 @@ pub fn render_task_graph(graph: &TaskGraph, show_completed: bool) -> String {
         return String::new();
     }
 
+    // Active tasks (not jots, not gates, not complete)
     let mut active: TaskGraph = graph
         .iter()
-        .filter(|(_, t)| !t.is_gate() && !t.is_complete())
+        .filter(|(_, t)| !t.is_gate() && !t.is_jot() && !t.is_complete())
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+
+    // Standalone jots (jots not connected to other tasks)
+    let jots: TaskGraph = graph
+        .iter()
+        .filter(|(_, t)| t.is_jot() && !t.is_complete())
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
 
@@ -39,6 +47,13 @@ pub fn render_task_graph(graph: &TaskGraph, show_completed: bool) -> String {
 
     if !active.is_empty() {
         output.push_str(&render_section(&active));
+    }
+
+    if !jots.is_empty() {
+        if !output.is_empty() {
+            output.push('\n');
+        }
+        output.push_str(&render_section(&jots));
     }
 
     if !gates.is_empty() {
@@ -191,11 +206,20 @@ fn format_task_line_impl(task: &Task, graph: &TaskGraph, show_gate_suffix: bool)
     format!("{} {}", id_display, title_formatted)
 }
 
+/// Truncate a title to fit within MAX_TITLE_LEN.
 pub fn truncate_title(title: &str) -> String {
-    if title.len() <= MAX_TITLE_LEN {
+    truncate_to(title, MAX_TITLE_LEN)
+}
+
+/// Truncate a title to fit within the specified length.
+/// Trims trailing whitespace before adding ellipsis.
+pub fn truncate_to(title: &str, max_len: usize) -> String {
+    if title.len() <= max_len {
         title.to_string()
     } else {
-        format!("{}…", &title[..MAX_TITLE_LEN - 1])
+        let truncated = &title[..max_len - 1];
+        let trimmed = truncated.trim_end();
+        format!("{}…", trimmed)
     }
 }
 

@@ -1,6 +1,7 @@
 ---
 id: mont-list-tweaks
 title: Tweaks to mont list output
+status: complete
 after:
   - introduce-shortcodes
 ---
