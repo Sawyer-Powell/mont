@@ -41,7 +41,10 @@
       "Bash(find:*)",
       "Bash(mont llm prompt:*)",
       "Bash(mont unlock:*)",
-      "Bash(mont done:*)"
+      "Bash(mont done:*)",
+      "Bash(mont ready:*)",
+      "Bash(mont show:*)",
+      "Bash(mont start:*)"
     ]
   }
 }
