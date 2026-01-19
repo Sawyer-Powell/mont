@@ -304,7 +304,6 @@ pub fn claude(ctx: &MontContext, task_id: &str, ignore: bool) -> Result<(), AppE
     let prompt = generate_prompt(ctx, &state)?;
 
     let status = std::process::Command::new("claude")
-        .arg("--permission-mode=acceptEdits")
         .arg("--append-system-prompt")
         .arg(CLAUDE_SYSTEM_PROMPT)
         .arg(&prompt)
