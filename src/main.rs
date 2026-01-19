@@ -161,6 +161,22 @@ enum Commands {
         #[arg(long, short)]
         message: Option<String>,
     },
+    /// LLM-assisted workflow commands
+    Llm {
+        #[command(subcommand)]
+        command: LlmCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum LlmCommands {
+    /// Generate a prompt based on current task state
+    Prompt,
+    /// Start a task and generate initial prompt
+    Start {
+        /// Task ID to start. If not provided, opens interactive picker.
+        id: Option<String>,
+    },
 }
 
 fn parse_task_type(s: &str) -> Result<TaskType, String> {
@@ -321,6 +337,16 @@ fn run(cli: Cli) -> Result<(), AppError> {
             commands::start(&ctx, &resolved_id)
         }
         Commands::Done { id, message } => commands::done(&ctx, id.as_deref(), message.as_deref()),
+        Commands::Llm { command } => match command {
+            LlmCommands::Prompt => commands::llm_prompt(&ctx),
+            LlmCommands::Start { id } => {
+                let resolved_id = match id {
+                    Some(id) => id,
+                    None => pick_task(&ctx.graph())?,
+                };
+                commands::llm_start(&ctx, &resolved_id)
+            }
+        },
     }
 }
 

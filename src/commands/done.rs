@@ -100,10 +100,8 @@ fn detect_in_progress_task(_ctx: &MontContext) -> Result<String, AppError> {
             for line in hunk.lines() {
                 if line.is_added() && line.value.contains("status: inprogress") {
                     // Extract task ID from path: b/.tasks/foo.md -> foo
-                    if let Some(filename) = path.split('/').last() {
-                        if let Some(id) = filename.strip_suffix(".md") {
-                            found_tasks.push(id.to_string());
-                        }
+                    if let Some(id) = path.split('/').next_back().and_then(|f| f.strip_suffix(".md")) {
+                        found_tasks.push(id.to_string());
                     }
                     break;
                 }

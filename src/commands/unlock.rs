@@ -85,14 +85,14 @@ fn update_gates(ctx: &MontContext, task_id: &str, updates: GateUpdates) -> Resul
 
     // Add any gates that were specified but not already on the task
     for gate_id in updates.all_gates() {
-        if !seen_ids.contains(gate_id) {
-            if let Some(status) = updates.status_for(gate_id) {
-                new_gates.push(GateItem {
-                    id: gate_id.clone(),
-                    status,
-                });
-                seen_ids.insert(gate_id.clone());
-            }
+        if !seen_ids.contains(gate_id)
+            && let Some(status) = updates.status_for(gate_id)
+        {
+            new_gates.push(GateItem {
+                id: gate_id.clone(),
+                status,
+            });
+            seen_ids.insert(gate_id.clone());
         }
     }
 

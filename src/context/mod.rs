@@ -230,6 +230,7 @@ impl MontContext {
     }
 
     /// Get all valid gate IDs for a task (task's gates + default gates from config).
+    #[allow(clippy::expect_used)] // RwLock poisoning is a bug
     pub fn all_gate_ids(&self, task: &Task) -> HashSet<String> {
         let inner = self.inner.read().expect("lock poisoned");
         let task_gate_ids = task.gate_ids().map(|s| s.to_string());

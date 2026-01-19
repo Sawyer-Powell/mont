@@ -38,7 +38,10 @@
       "Bash(wc:*)",
       "Skill(mont-task)",
       "Bash(mont list:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(mont llm prompt:*)",
+      "Bash(mont unlock:*)",
+      "Bash(mont done:*)"
     ]
   }
 }

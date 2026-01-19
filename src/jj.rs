@@ -75,6 +75,36 @@ pub fn is_working_copy_empty() -> Result<bool, JJError> {
     Ok(stdout.trim().is_empty())
 }
 
+/// Checks if there are changes outside the .tasks/ directory.
+pub fn has_code_changes() -> Result<bool, JJError> {
+    let patch = working_copy_diff()?;
+
+    for file in patch.files() {
+        let path: &str = &file.target_file;
+        // Skip .tasks/ files - we only care about code changes
+        if !path.contains(".tasks/") {
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
+}
+
+/// Gets the description of the current working copy revision.
+pub fn working_copy_description() -> Result<String, JJError> {
+    let output = Command::new("jj")
+        .args(["log", "-r", "@", "--no-graph", "-T", "description"])
+        .output()?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        return Err(JJError::CommandFailed(stderr));
+    }
+
+    let description = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Ok(description)
+}
+
 /// Runs `jj commit` with the given message.
 pub fn commit(message: &str) -> Result<CommitResult, JJError> {
     let output = Command::new("jj")

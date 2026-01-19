@@ -167,10 +167,8 @@ fn count_ready_tasks(graph: &TaskGraph) -> usize {
 
             // Check all after dependencies are complete
             for after_id in &task.after {
-                if let Some(after_task) = graph.get(after_id) {
-                    if !after_task.is_complete() {
-                        return false;
-                    }
+                if graph.get(after_id).is_some_and(|t| !t.is_complete()) {
+                    return false;
                 }
             }
 

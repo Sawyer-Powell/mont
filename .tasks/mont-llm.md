@@ -1,8 +1,11 @@
 ---
 id: mont-llm
 title: Implement mont llm
+status: complete
 after:
   - mont-start
+gates:
+  - test: passed
 ---
 
 This is the LLM/agentic coding namespace for mont.
