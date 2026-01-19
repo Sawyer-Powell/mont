@@ -1,7 +1,16 @@
 //! LLM commands - generate prompts and manage LLM-assisted workflows.
 
+use minijinja::{context, Environment};
+
 use crate::error_fmt::AppError;
 use crate::{jj, GateStatus, MontContext, Task};
+
+// Embed templates at compile time (numbered by state machine order)
+const TEMPLATE_NO_TASK: &str = include_str!("../prompts/00_no-task-in-progress.md");
+const TEMPLATE_NO_CODE_CHANGES: &str = include_str!("../prompts/01_no-code-changes.md");
+const TEMPLATE_HAS_CODE_CHANGES: &str = include_str!("../prompts/02_has-code-changes.md");
+const TEMPLATE_SOME_GATES_UNLOCKED: &str = include_str!("../prompts/03_some-gates-unlocked.md");
+const TEMPLATE_ALL_GATES_UNLOCKED: &str = include_str!("../prompts/04_all-gates-unlocked.md");
 
 /// State of the task graph from the LLM's perspective.
 #[derive(Debug)]
@@ -23,14 +32,25 @@ pub enum InProgressState {
     /// No code changes outside .tasks/ - need to start implementation.
     NoCodeChanges,
     /// Has code changes but no gates unlocked yet.
-    HasCodeChanges,
+    HasCodeChanges {
+        first_gate: Option<GateInfo>,
+    },
     /// Some gates unlocked but not all.
     SomeGatesUnlocked {
         unlocked: Vec<String>,
         pending: Vec<String>,
+        next_gate: Option<GateInfo>,
     },
     /// All gates unlocked - ready for mont done.
     AllGatesUnlocked,
+}
+
+/// Information about a gate for templating.
+#[derive(Debug, Clone)]
+pub struct GateInfo {
+    pub id: String,
+    pub title: Option<String>,
+    pub description: String,
 }
 
 /// Detect the current state of the task graph for LLM prompting.
@@ -49,7 +69,6 @@ pub fn detect_state(ctx: &MontContext) -> Result<TaskGraphState, AppError> {
     }
 
     // For now, just use the first in-progress task
-    // (could error if multiple, but let's keep it simple)
     let task = in_progress[0].clone();
 
     // Determine the in-progress state
@@ -60,7 +79,7 @@ pub fn detect_state(ctx: &MontContext) -> Result<TaskGraphState, AppError> {
 
 /// Detect the state of an in-progress task.
 fn detect_in_progress_state(ctx: &MontContext, task: &Task) -> Result<InProgressState, AppError> {
-    // Get all gate IDs for this task (task gates + default gates)
+    let graph = ctx.graph();
     let all_gate_ids = ctx.all_gate_ids(task);
 
     // Categorize gates by status
@@ -81,6 +100,15 @@ fn detect_in_progress_state(ctx: &MontContext, task: &Task) -> Result<InProgress
         }
     }
 
+    // Helper to get gate info
+    let get_gate_info = |gate_id: &str| -> Option<GateInfo> {
+        graph.get(gate_id).map(|gate_task| GateInfo {
+            id: gate_id.to_string(),
+            title: gate_task.title.clone(),
+            description: gate_task.description.clone(),
+        })
+    };
+
     // If all gates unlocked, ready for mont done
     if pending.is_empty() {
         return Ok(InProgressState::AllGatesUnlocked);
@@ -96,143 +124,115 @@ fn detect_in_progress_state(ctx: &MontContext, task: &Task) -> Result<InProgress
 
     // Has code changes - check if any gates unlocked
     if unlocked.is_empty() {
-        Ok(InProgressState::HasCodeChanges)
+        let first_gate = pending.first().and_then(|id| get_gate_info(id));
+        Ok(InProgressState::HasCodeChanges { first_gate })
     } else {
-        Ok(InProgressState::SomeGatesUnlocked { unlocked, pending })
+        let next_gate = pending.first().and_then(|id| get_gate_info(id));
+        Ok(InProgressState::SomeGatesUnlocked { unlocked, pending, next_gate })
     }
 }
 
 /// Generate a prompt based on the current state.
-pub fn generate_prompt(ctx: &MontContext, state: &TaskGraphState) -> Result<String, AppError> {
+pub fn generate_prompt(_ctx: &MontContext, state: &TaskGraphState) -> Result<String, AppError> {
+    let mut env = Environment::new();
+
+    // Add templates
+    env.add_template("no-task", TEMPLATE_NO_TASK)
+        .map_err(|e| AppError::TemplateError(e.to_string()))?;
+    env.add_template("no-code-changes", TEMPLATE_NO_CODE_CHANGES)
+        .map_err(|e| AppError::TemplateError(e.to_string()))?;
+    env.add_template("has-code-changes", TEMPLATE_HAS_CODE_CHANGES)
+        .map_err(|e| AppError::TemplateError(e.to_string()))?;
+    env.add_template("some-gates-unlocked", TEMPLATE_SOME_GATES_UNLOCKED)
+        .map_err(|e| AppError::TemplateError(e.to_string()))?;
+    env.add_template("all-gates-unlocked", TEMPLATE_ALL_GATES_UNLOCKED)
+        .map_err(|e| AppError::TemplateError(e.to_string()))?;
+
     match state {
         TaskGraphState::NoTaskInProgress { has_uncommitted_changes } => {
-            generate_no_task_prompt(*has_uncommitted_changes)
+            let tmpl = env.get_template("no-task")
+                .map_err(|e| AppError::TemplateError(e.to_string()))?;
+            tmpl.render(context! { has_uncommitted_changes })
+                .map_err(|e| AppError::TemplateError(e.to_string()))
         }
         TaskGraphState::TaskInProgress { task, state } => {
-            generate_in_progress_prompt(ctx, task, state)
+            render_in_progress_prompt(&env, task, state)
         }
     }
 }
 
-fn generate_no_task_prompt(has_uncommitted_changes: bool) -> Result<String, AppError> {
-    let mut prompt = String::new();
-
-    prompt.push_str("There is currently no task marked as in progress.\n\n");
-
-    if has_uncommitted_changes {
-        prompt.push_str("However, this revision has uncommitted changes.\n\n");
-        prompt.push_str("Please review the current changes with `jj diff` and either:\n");
-        prompt.push_str("1. Commit them with `jj commit -m \"message\"` if they are complete\n");
-        prompt.push_str("2. Start a task that relates to this work with `mont start <task-id>`\n");
-        prompt.push_str("3. Abandon the changes with `jj abandon` if they are not needed\n");
-    } else {
-        prompt.push_str("To begin work, start a task with `mont start <task-id>`.\n\n");
-        prompt.push_str("You can see available tasks with `mont ready`.\n");
-    }
-
-    Ok(prompt)
-}
-
-fn generate_in_progress_prompt(
-    ctx: &MontContext,
+fn render_in_progress_prompt(
+    env: &Environment,
     task: &Task,
     state: &InProgressState,
 ) -> Result<String, AppError> {
-    let mut prompt = String::new();
-
-    // Always include task info header
-    prompt.push_str(&format!("# Task: {}\n\n", task.id));
-    if let Some(title) = &task.title {
-        prompt.push_str(&format!("**{}**\n\n", title));
-    }
+    let task_id = &task.id;
+    let task_title = task.title.as_deref().unwrap_or("");
+    let task_description = &task.description;
 
     match state {
         InProgressState::NoCodeChanges => {
-            prompt.push_str("## Status: Ready to implement\n\n");
-            prompt.push_str("No code changes have been made yet. Read the task description below and begin implementation.\n\n");
-            prompt.push_str("### Task Description\n\n");
-            if task.description.is_empty() {
-                prompt.push_str("*No description provided.*\n");
-            } else {
-                prompt.push_str(&task.description);
-                prompt.push('\n');
-            }
-            prompt.push_str("\n### Guidelines\n\n");
-            prompt.push_str("1. Implement the task as described\n");
-            prompt.push_str("2. Keep changes focused and minimal\n");
-            prompt.push_str("3. When implementation is complete, run `mont llm prompt` for next steps\n");
+            let tmpl = env.get_template("no-code-changes")
+                .map_err(|e| AppError::TemplateError(e.to_string()))?;
+            tmpl.render(context! {
+                task_id,
+                task_title,
+                task_description,
+            })
+            .map_err(|e| AppError::TemplateError(e.to_string()))
         }
 
-        InProgressState::HasCodeChanges => {
-            prompt.push_str("## Status: Implementation in progress\n\n");
-            prompt.push_str("Code changes have been made. Review the implementation against the task requirements.\n\n");
-            prompt.push_str("### Task Description\n\n");
-            if task.description.is_empty() {
-                prompt.push_str("*No description provided.*\n");
-            } else {
-                prompt.push_str(&task.description);
-                prompt.push('\n');
-            }
+        InProgressState::HasCodeChanges { first_gate } => {
+            let tmpl = env.get_template("has-code-changes")
+                .map_err(|e| AppError::TemplateError(e.to_string()))?;
 
-            // Get first gate info
-            let all_gate_ids = ctx.all_gate_ids(task);
-            if let Some(first_gate_id) = all_gate_ids.iter().next() {
-                prompt.push_str(&format!("\n### Next Step: Verify gate `{}`\n\n", first_gate_id));
+            let (gate_id, gate_title, gate_description) = match first_gate {
+                Some(g) => (g.id.as_str(), g.title.as_deref().unwrap_or(""), g.description.as_str()),
+                None => ("", "", ""),
+            };
 
-                // Try to get gate task description
-                let graph = ctx.graph();
-                if let Some(gate_task) = graph.get(first_gate_id) {
-                    if let Some(title) = &gate_task.title {
-                        prompt.push_str(&format!("**{}**\n\n", title));
-                    }
-                    if !gate_task.description.is_empty() {
-                        prompt.push_str(&gate_task.description);
-                        prompt.push('\n');
-                    }
-                }
-
-                prompt.push_str("\nOnce verified, mark the gate as passed:\n");
-                prompt.push_str(&format!("`mont unlock {} --passed {}`\n", task.id, first_gate_id));
-            }
+            tmpl.render(context! {
+                task_id,
+                task_title,
+                task_description,
+                gate_id,
+                gate_title,
+                gate_description,
+            })
+            .map_err(|e| AppError::TemplateError(e.to_string()))
         }
 
-        InProgressState::SomeGatesUnlocked { unlocked, pending } => {
-            prompt.push_str("## Status: Verification in progress\n\n");
-            prompt.push_str(&format!("Gates passed: {}\n", unlocked.join(", ")));
-            prompt.push_str(&format!("Gates remaining: {}\n\n", pending.join(", ")));
+        InProgressState::SomeGatesUnlocked { unlocked, pending, next_gate } => {
+            let tmpl = env.get_template("some-gates-unlocked")
+                .map_err(|e| AppError::TemplateError(e.to_string()))?;
 
-            // Get next pending gate info
-            if let Some(next_gate_id) = pending.first() {
-                prompt.push_str(&format!("### Next Step: Verify gate `{}`\n\n", next_gate_id));
+            let (gate_id, gate_title, gate_description) = match next_gate {
+                Some(g) => (g.id.as_str(), g.title.as_deref().unwrap_or(""), g.description.as_str()),
+                None => ("", "", ""),
+            };
 
-                let graph = ctx.graph();
-                if let Some(gate_task) = graph.get(next_gate_id) {
-                    if let Some(title) = &gate_task.title {
-                        prompt.push_str(&format!("**{}**\n\n", title));
-                    }
-                    if !gate_task.description.is_empty() {
-                        prompt.push_str(&gate_task.description);
-                        prompt.push('\n');
-                    }
-                }
-
-                prompt.push_str("\nOnce verified, mark the gate as passed:\n");
-                prompt.push_str(&format!("`mont unlock {} --passed {}`\n", task.id, next_gate_id));
-                prompt.push_str("\nOnce the gate is passed, run mont llm prompt again:\n");
-            }
+            tmpl.render(context! {
+                task_id,
+                task_title,
+                gates_unlocked => unlocked.join(", "),
+                gates_pending => pending.join(", "),
+                gate_id,
+                gate_title,
+                gate_description,
+            })
+            .map_err(|e| AppError::TemplateError(e.to_string()))
         }
 
         InProgressState::AllGatesUnlocked => {
-            prompt.push_str("## Status: Ready to complete\n\n");
-            prompt.push_str("All gates have been unlocked. The task is ready to be marked as complete.\n\n");
-            prompt.push_str("### Next Steps\n\n");
-            prompt.push_str("1. Review the changes with `jj diff`\n");
-            prompt.push_str("2. Construct an appropriate commit message summarizing the work\n");
-            prompt.push_str("3. Complete the task with `mont done -m \"your commit message\"`\n");
+            let tmpl = env.get_template("all-gates-unlocked")
+                .map_err(|e| AppError::TemplateError(e.to_string()))?;
+            tmpl.render(context! {
+                task_id,
+                task_title,
+            })
+            .map_err(|e| AppError::TemplateError(e.to_string()))
         }
     }
-
-    Ok(prompt)
 }
 
 /// Run the `mont llm prompt` command.

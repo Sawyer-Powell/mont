@@ -1,8 +1,11 @@
 ---
 id: llm-prompt-templates
 title: Extract LLM prompt templates to markdown files
+status: complete
 after:
   - mont-llm
+gates:
+  - test: passed
 ---
 
 Extract the default LLM prompt templates from hardcoded strings in llm.rs to markdown files.

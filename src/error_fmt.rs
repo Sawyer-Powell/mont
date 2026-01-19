@@ -76,6 +76,8 @@ pub enum AppError {
     NoInProgressTaskInDiff,
     /// Multiple in-progress tasks found in the current JJ diff
     MultipleInProgressTasksInDiff(Vec<String>),
+    /// Template rendering error
+    TemplateError(String),
 }
 
 impl fmt::Display for AppError {
@@ -159,6 +161,9 @@ impl fmt::Display for AppError {
             }
             AppError::MultipleInProgressTasksInDiff(tasks) => {
                 write!(f, "{}", format_multiple_in_progress_tasks_in_diff(tasks))
+            }
+            AppError::TemplateError(msg) => {
+                write!(f, "{}", format_template_error(msg))
             }
         }
     }
@@ -1017,6 +1022,15 @@ fn format_multiple_in_progress_tasks_in_diff(tasks: &[String]) -> String {
         "    Specify which task to complete: {}\n",
         "mont done <task-id>".cyan()
     ));
+
+    out
+}
+
+fn format_template_error(msg: &str) -> String {
+    let mut out = String::new();
+
+    out.push_str(&format!("{}: ", "error".red().bold()));
+    out.push_str(&format!("template error: {}\n", msg));
 
     out
 }
