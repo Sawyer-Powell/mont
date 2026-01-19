@@ -28,9 +28,10 @@ Your goal is to help distill this jot into one or more well-defined tasks.
    - Dependencies between tasks (if multiple)
 4. Use `mont distill {{ jot_id }}` to convert this jot into tasks
 
-When running `mont distill`, you can provide tasks directly:
+When running `mont distill`, you can provide tasks directly using YAML.
+**Important:** Use `=` to attach the YAML value (required because YAML starts with `-`):
 ```bash
-mont distill {{ jot_id }} --tasks '- id: task-id
+mont distill {{ jot_id }} --tasks='- id: task-id
   title: Task Title
   description: What needs to be done
 - id: another-task
