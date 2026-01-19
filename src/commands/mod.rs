@@ -6,6 +6,7 @@
 mod check;
 mod delete;
 mod distill;
+mod done;
 pub mod edit;
 pub mod jot;
 mod list;
@@ -20,6 +21,7 @@ pub mod unlock;
 pub use check::check;
 pub use delete::delete;
 pub use distill::distill;
+pub use done::done;
 pub use edit::edit;
 pub use jot::jot;
 pub use list::list;

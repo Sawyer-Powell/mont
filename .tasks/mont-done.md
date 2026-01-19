@@ -1,8 +1,11 @@
 ---
 id: mont-done
 title: Implement mont done command
+status: complete
 after:
   - mont-start
+gates:
+  - test: passed
 ---
 
 Only works if the revision has an in-progress task in the change list,

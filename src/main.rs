@@ -153,6 +153,14 @@ enum Commands {
         /// Task ID to start. If not provided, opens interactive picker.
         id: Option<String>,
     },
+    /// Complete a task and commit
+    Done {
+        /// Task ID to complete. If not provided, detects from current revision.
+        id: Option<String>,
+        /// Commit message (opens editor if not provided)
+        #[arg(long, short)]
+        message: Option<String>,
+    },
 }
 
 fn parse_task_type(s: &str) -> Result<TaskType, String> {
@@ -312,6 +320,7 @@ fn run(cli: Cli) -> Result<(), AppError> {
             };
             commands::start(&ctx, &resolved_id)
         }
+        Commands::Done { id, message } => commands::done(&ctx, id.as_deref(), message.as_deref()),
     }
 }
 

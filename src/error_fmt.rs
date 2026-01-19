@@ -65,6 +65,17 @@ pub enum AppError {
     WorkingCopyNotEmpty,
     /// JJ command failed
     JJError(String),
+    /// Task is not in progress
+    TaskNotInProgress(String),
+    /// Gates not passed (blocking gates with their status)
+    GatesNotPassed {
+        task_id: String,
+        blocking: Vec<(String, crate::GateStatus)>,
+    },
+    /// No in-progress task found in the current JJ diff
+    NoInProgressTaskInDiff,
+    /// Multiple in-progress tasks found in the current JJ diff
+    MultipleInProgressTasksInDiff(Vec<String>),
 }
 
 impl fmt::Display for AppError {
@@ -136,6 +147,18 @@ impl fmt::Display for AppError {
             }
             AppError::JJError(msg) => {
                 write!(f, "{}", format_jj_error(msg))
+            }
+            AppError::TaskNotInProgress(id) => {
+                write!(f, "{}", format_task_not_in_progress(id))
+            }
+            AppError::GatesNotPassed { task_id, blocking } => {
+                write!(f, "{}", format_gates_not_passed(task_id, blocking))
+            }
+            AppError::NoInProgressTaskInDiff => {
+                write!(f, "{}", format_no_in_progress_task_in_diff())
+            }
+            AppError::MultipleInProgressTasksInDiff(tasks) => {
+                write!(f, "{}", format_multiple_in_progress_tasks_in_diff(tasks))
             }
         }
     }
@@ -893,6 +916,107 @@ fn format_jj_error(msg: &str) -> String {
 
     out.push_str(&format!("{}: ", "error".red().bold()));
     out.push_str(&format!("jj command failed: {}\n", msg));
+
+    out
+}
+
+fn format_task_not_in_progress(id: &str) -> String {
+    let mut out = String::new();
+
+    out.push_str(&format!("{}: ", "error".red().bold()));
+    out.push_str(&format!("task '{}' is not in progress\n", id.yellow()));
+    out.push('\n');
+    out.push_str(&format!("  {}\n", "Cannot complete a task that is not in progress.".dimmed()));
+    out.push('\n');
+    out.push_str(&format!("  {}:\n", "To fix this".bold()));
+    out.push_str(&format!(
+        "    1. Start the task first: {}\n",
+        format!("mont start {}", id).cyan()
+    ));
+    out.push_str(&format!(
+        "    2. View current status: {}\n",
+        "mont status".cyan()
+    ));
+
+    out
+}
+
+fn format_gates_not_passed(task_id: &str, blocking: &[(String, crate::GateStatus)]) -> String {
+    let mut out = String::new();
+
+    out.push_str(&format!("{}: ", "error".red().bold()));
+    out.push_str(&format!(
+        "cannot complete '{}': gates not passed\n",
+        task_id.yellow()
+    ));
+    out.push('\n');
+    out.push_str(&format!("  {}\n", "The following gates must be passed or skipped:".dimmed()));
+    out.push('\n');
+
+    for (gate_id, status) in blocking {
+        let status_str = match status {
+            crate::GateStatus::Pending => "pending".bright_black().to_string(),
+            crate::GateStatus::Failed => "failed".red().to_string(),
+            crate::GateStatus::Passed => "passed".green().to_string(),
+            crate::GateStatus::Skipped => "skipped".yellow().to_string(),
+        };
+        out.push_str(&format!("    {} {}\n", gate_id.cyan(), status_str));
+    }
+
+    out.push('\n');
+    out.push_str(&format!("  {}:\n", "To fix this".bold()));
+    out.push_str(&format!(
+        "    Mark gates as passed: {}\n",
+        format!("mont unlock {} --passed <gate>", task_id).cyan()
+    ));
+    out.push_str(&format!(
+        "    Or skip gates: {}\n",
+        format!("mont unlock {} --skipped <gate>", task_id).cyan()
+    ));
+
+    out
+}
+
+fn format_no_in_progress_task_in_diff() -> String {
+    let mut out = String::new();
+
+    out.push_str(&format!("{}: ", "error".red().bold()));
+    out.push_str("no in-progress task found in current revision\n");
+    out.push('\n');
+    out.push_str(&format!("  {}\n", "Could not detect which task to complete from the diff.".dimmed()));
+    out.push('\n');
+    out.push_str(&format!("  {}:\n", "To fix this".bold()));
+    out.push_str(&format!(
+        "    Specify the task ID explicitly: {}\n",
+        "mont done <task-id>".cyan()
+    ));
+    out.push_str(&format!(
+        "    View in-progress tasks: {}\n",
+        "mont status".cyan()
+    ));
+
+    out
+}
+
+fn format_multiple_in_progress_tasks_in_diff(tasks: &[String]) -> String {
+    let mut out = String::new();
+
+    out.push_str(&format!("{}: ", "error".red().bold()));
+    out.push_str("multiple in-progress tasks found in current revision\n");
+    out.push('\n');
+    out.push_str(&format!("  {}\n", "Found multiple tasks with status: inprogress in the diff:".dimmed()));
+    out.push('\n');
+
+    for task_id in tasks {
+        out.push_str(&format!("    {}\n", task_id.cyan()));
+    }
+
+    out.push('\n');
+    out.push_str(&format!("  {}:\n", "To fix this".bold()));
+    out.push_str(&format!(
+        "    Specify which task to complete: {}\n",
+        "mont done <task-id>".cyan()
+    ));
 
     out
 }

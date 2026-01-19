@@ -21,6 +21,45 @@ pub struct CommitResult {
     pub stderr: String,
 }
 
+/// Gets the diff for the current working copy as a PatchSet.
+pub fn working_copy_diff() -> Result<PatchSet, JJError> {
+    let output = Command::new("jj")
+        .args(["diff", "--git"])
+        .output()?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        return Err(JJError::CommandFailed(stderr));
+    }
+
+    let diff_str = String::from_utf8_lossy(&output.stdout);
+    let mut patch = PatchSet::new();
+    patch
+        .parse(&diff_str)
+        .map_err(|e| JJError::DiffParseError(e.to_string()))?;
+
+    Ok(patch)
+}
+
+/// Runs `jj commit` without a message, opening the default editor.
+pub fn commit_interactive() -> Result<CommitResult, JJError> {
+    let output = Command::new("jj")
+        .args(["commit"])
+        .stdin(std::process::Stdio::inherit())
+        .stdout(std::process::Stdio::inherit())
+        .stderr(std::process::Stdio::inherit())
+        .status()?;
+
+    if !output.success() {
+        return Err(JJError::CommandFailed("jj commit failed".to_string()));
+    }
+
+    Ok(CommitResult {
+        stdout: String::new(),
+        stderr: String::new(),
+    })
+}
+
 /// Checks if the current working copy revision is empty (has no changes).
 pub fn is_working_copy_empty() -> Result<bool, JJError> {
     let output = Command::new("jj")
