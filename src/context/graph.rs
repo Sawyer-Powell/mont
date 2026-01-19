@@ -182,6 +182,223 @@ impl TaskGraph {
         self.dirty.clear();
         self.tasks.retain(|_, task| !task.deleted);
     }
+
+    // ---- Graph Algorithm Methods ----
+
+    /// Computes the transitive reduction of dependency edges.
+    /// Returns a map from task_id to its effective successors after removing redundant edges.
+    ///
+    /// For example, if A → B → C and A → C, the edge A → C is redundant.
+    /// After reduction, A's effective successors are just [B] (not [B, C]).
+    pub fn transitive_reduction(&self) -> HashMap<&str, Vec<&str>> {
+        let task_ids: HashSet<&str> = self.tasks.keys().map(|s| s.as_str()).collect();
+
+        // Build dependency edges: from task to tasks that depend on it
+        let mut edges: HashMap<&str, HashSet<&str>> = HashMap::new();
+
+        for task in self.tasks.values() {
+            edges.entry(task.id.as_str()).or_default();
+
+            // Before relationship: before targets depend on this task
+            for before_id in &task.before {
+                if task_ids.contains(before_id.as_str()) {
+                    edges
+                        .entry(task.id.as_str())
+                        .or_default()
+                        .insert(before_id.as_str());
+                }
+            }
+
+            // After relationship: this task depends on after dependency
+            for after_id in &task.after {
+                if task_ids.contains(after_id.as_str()) {
+                    edges
+                        .entry(after_id.as_str())
+                        .or_default()
+                        .insert(task.id.as_str());
+                }
+            }
+        }
+
+        // Compute reachability for each node
+        let mut reachable: HashMap<&str, HashSet<&str>> = HashMap::new();
+
+        for &start in task_ids.iter() {
+            let mut visited = HashSet::new();
+            let mut stack = vec![start];
+
+            while let Some(node) = stack.pop() {
+                if visited.contains(node) {
+                    continue;
+                }
+                visited.insert(node);
+
+                if let Some(neighbors) = edges.get(node) {
+                    for &neighbor in neighbors {
+                        if !visited.contains(neighbor) {
+                            stack.push(neighbor);
+                        }
+                    }
+                }
+            }
+
+            visited.remove(start);
+            reachable.insert(start, visited);
+        }
+
+        // Compute effective successors after reduction
+        let mut effective_successors: HashMap<&str, Vec<&str>> = HashMap::new();
+
+        for task in self.tasks.values() {
+            let task_id = task.id.as_str();
+
+            if let Some(direct_successors) = edges.get(task_id) {
+                // Find successors not reachable through other successors
+                let mut reduced: Vec<&str> = Vec::new();
+
+                for &succ in direct_successors {
+                    let reachable_via_other = direct_successors.iter().any(|&other| {
+                        other != succ && reachable.get(other).is_some_and(|r| r.contains(succ))
+                    });
+
+                    if !reachable_via_other {
+                        reduced.push(succ);
+                    }
+                }
+
+                // Sort for deterministic output
+                reduced.sort();
+                effective_successors.insert(task_id, reduced);
+            } else {
+                effective_successors.insert(task_id, Vec::new());
+            }
+        }
+
+        effective_successors
+    }
+
+    /// Returns task IDs in topological order.
+    ///
+    /// Uses Kahn's algorithm with the transitive reduction of the graph.
+    pub fn topological_order(&self) -> Vec<&str> {
+        if self.tasks.is_empty() {
+            return Vec::new();
+        }
+
+        let effective_successors = self.transitive_reduction();
+
+        let mut in_degree: HashMap<&str, usize> = HashMap::new();
+        for id in self.tasks.keys() {
+            in_degree.insert(id.as_str(), 0);
+        }
+
+        for successors in effective_successors.values() {
+            for &succ in successors {
+                if let Some(deg) = in_degree.get_mut(succ) {
+                    *deg += 1;
+                }
+            }
+        }
+
+        let mut queue: Vec<&str> = in_degree
+            .iter()
+            .filter(|(_, deg)| **deg == 0)
+            .map(|(&id, _)| id)
+            .collect();
+        queue.sort();
+
+        let mut result = Vec::new();
+        let mut remaining = in_degree.clone();
+
+        while let Some(task_id) = queue.pop() {
+            result.push(task_id);
+
+            if let Some(successors) = effective_successors.get(task_id) {
+                for &succ in successors {
+                    if let Some(deg) = remaining.get_mut(succ) {
+                        *deg -= 1;
+                        if *deg == 0 {
+                            let pos = queue.partition_point(|&x| x > succ);
+                            queue.insert(pos, succ);
+                        }
+                    }
+                }
+            }
+        }
+
+        result
+    }
+
+    /// Find connected components in the graph using union-find.
+    ///
+    /// Returns groups of task IDs where tasks in each group are connected
+    /// through before/after/validation relationships.
+    pub fn connected_components(&self) -> Vec<Vec<&str>> {
+        if self.tasks.is_empty() {
+            return Vec::new();
+        }
+
+        let task_ids: Vec<&str> = self.tasks.keys().map(|s| s.as_str()).collect();
+        let id_to_idx: HashMap<&str, usize> = task_ids
+            .iter()
+            .enumerate()
+            .map(|(i, &id)| (id, i))
+            .collect();
+
+        let mut parent: Vec<usize> = (0..task_ids.len()).collect();
+
+        fn find(parent: &mut [usize], i: usize) -> usize {
+            if parent[i] != i {
+                parent[i] = find(parent, parent[i]);
+            }
+            parent[i]
+        }
+
+        fn union(parent: &mut [usize], i: usize, j: usize) {
+            let pi = find(parent, i);
+            let pj = find(parent, j);
+            if pi != pj {
+                parent[pi] = pj;
+            }
+        }
+
+        for task in self.tasks.values() {
+            let task_idx = id_to_idx[task.id.as_str()];
+
+            for p in &task.before {
+                if let Some(&parent_idx) = id_to_idx.get(p.as_str()) {
+                    union(&mut parent, task_idx, parent_idx);
+                }
+            }
+
+            for precond in &task.after {
+                if let Some(&precond_idx) = id_to_idx.get(precond.as_str()) {
+                    union(&mut parent, task_idx, precond_idx);
+                }
+            }
+
+            for validation in &task.validations {
+                if let Some(&val_idx) = id_to_idx.get(validation.id.as_str()) {
+                    union(&mut parent, task_idx, val_idx);
+                }
+            }
+        }
+
+        let mut by_root: HashMap<usize, Vec<&str>> = HashMap::new();
+        for (i, &id) in task_ids.iter().enumerate() {
+            let root = find(&mut parent, i);
+            by_root.entry(root).or_default().push(id);
+        }
+
+        let mut components: Vec<Vec<&str>> = by_root.into_values().collect();
+        components.sort_by(|a, b| {
+            let a_min = a.iter().min().unwrap_or(&"");
+            let b_min = b.iter().min().unwrap_or(&"");
+            a_min.cmp(b_min)
+        });
+
+        components
+    }
 }
 
 impl PartialEq for TaskGraph {
@@ -262,98 +479,6 @@ pub fn is_group_complete(task: &Task, graph: &TaskGraph) -> bool {
     }
 
     true
-}
-
-/// Computes the transitive reduction of dependency edges.
-/// Returns a map from task_id to its effective successors after removing redundant edges.
-///
-/// For example, if A → B → C and A → C, the edge A → C is redundant.
-/// After reduction, A's effective successors are just [B] (not [B, C]).
-pub fn transitive_reduction(graph: &TaskGraph) -> HashMap<&str, Vec<&str>> {
-    let task_ids: HashSet<&str> = graph.keys().map(|s| s.as_str()).collect();
-
-    // Build dependency edges: from task to tasks that depend on it
-    let mut edges: HashMap<&str, HashSet<&str>> = HashMap::new();
-
-    for task in graph.values() {
-        edges.entry(task.id.as_str()).or_default();
-
-        // Before relationship: before targets depend on this task
-        for before_id in &task.before {
-            if task_ids.contains(before_id.as_str()) {
-                edges
-                    .entry(task.id.as_str())
-                    .or_default()
-                    .insert(before_id.as_str());
-            }
-        }
-
-        // After relationship: this task depends on after dependency
-        for after_id in &task.after {
-            if task_ids.contains(after_id.as_str()) {
-                edges
-                    .entry(after_id.as_str())
-                    .or_default()
-                    .insert(task.id.as_str());
-            }
-        }
-    }
-
-    // Compute reachability for each node
-    let mut reachable: HashMap<&str, HashSet<&str>> = HashMap::new();
-
-    for &start in task_ids.iter() {
-        let mut visited = HashSet::new();
-        let mut stack = vec![start];
-
-        while let Some(node) = stack.pop() {
-            if visited.contains(node) {
-                continue;
-            }
-            visited.insert(node);
-
-            if let Some(neighbors) = edges.get(node) {
-                for &neighbor in neighbors {
-                    if !visited.contains(neighbor) {
-                        stack.push(neighbor);
-                    }
-                }
-            }
-        }
-
-        visited.remove(start);
-        reachable.insert(start, visited);
-    }
-
-    // Compute effective successors after reduction
-    let mut effective_successors: HashMap<&str, Vec<&str>> = HashMap::new();
-
-    for task in graph.values() {
-        let task_id = task.id.as_str();
-
-        if let Some(direct_successors) = edges.get(task_id) {
-            // Find successors not reachable through other successors
-            let mut reduced: Vec<&str> = Vec::new();
-
-            for &succ in direct_successors {
-                let reachable_via_other = direct_successors.iter().any(|&other| {
-                    other != succ && reachable.get(other).is_some_and(|r| r.contains(succ))
-                });
-
-                if !reachable_via_other {
-                    reduced.push(succ);
-                }
-            }
-
-            // Sort for deterministic output
-            reduced.sort();
-            effective_successors.insert(task_id, reduced);
-        } else {
-            effective_successors.insert(task_id, Vec::new());
-        }
-    }
-
-    effective_successors
 }
 
 /// Build a TaskGraph from a list of tasks and validate it.

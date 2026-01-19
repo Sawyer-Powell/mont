@@ -59,88 +59,20 @@ pub fn render_task_graph(graph: &TaskGraph, show_completed: bool) -> String {
 }
 
 fn render_section(graph: &TaskGraph) -> String {
-    let components = find_connected_components(graph);
+    let components = graph.connected_components();
     let mut output = String::new();
 
-    for component in components {
+    for component_ids in components {
+        // Build sub-graph for this component
+        let component: TaskGraph = component_ids
+            .iter()
+            .filter_map(|&id| graph.get(id).cloned())
+            .collect();
+
         output.push_str(&render_component(&component));
     }
 
     output
-}
-
-fn find_connected_components(graph: &TaskGraph) -> Vec<TaskGraph> {
-    if graph.is_empty() {
-        return Vec::new();
-    }
-
-    let task_ids: Vec<&str> = graph.keys().map(|s| s.as_str()).collect();
-    let id_to_idx: HashMap<&str, usize> = task_ids
-        .iter()
-        .enumerate()
-        .map(|(i, &id)| (id, i))
-        .collect();
-
-    let mut parent: Vec<usize> = (0..task_ids.len()).collect();
-
-    fn find(parent: &mut [usize], i: usize) -> usize {
-        if parent[i] != i {
-            parent[i] = find(parent, parent[i]);
-        }
-        parent[i]
-    }
-
-    fn union(parent: &mut [usize], i: usize, j: usize) {
-        let pi = find(parent, i);
-        let pj = find(parent, j);
-        if pi != pj {
-            parent[pi] = pj;
-        }
-    }
-
-    for task in graph.values() {
-        let task_idx = id_to_idx[task.id.as_str()];
-
-        for p in &task.before {
-            if let Some(&parent_idx) = id_to_idx.get(p.as_str()) {
-                union(&mut parent, task_idx, parent_idx);
-            }
-        }
-
-        for precond in &task.after {
-            if let Some(&precond_idx) = id_to_idx.get(precond.as_str()) {
-                union(&mut parent, task_idx, precond_idx);
-            }
-        }
-
-        for validation in &task.validations {
-            if let Some(&val_idx) = id_to_idx.get(validation.id.as_str()) {
-                union(&mut parent, task_idx, val_idx);
-            }
-        }
-    }
-
-    let mut by_root: HashMap<usize, Vec<&str>> = HashMap::new();
-    for (i, &id) in task_ids.iter().enumerate() {
-        let root = find(&mut parent, i);
-        by_root.entry(root).or_default().push(id);
-    }
-
-    let mut components: Vec<Vec<&str>> = by_root.into_values().collect();
-    components.sort_by(|a, b| {
-        let a_min = a.iter().min().unwrap_or(&"");
-        let b_min = b.iter().min().unwrap_or(&"");
-        a_min.cmp(b_min)
-    });
-
-    components
-        .into_iter()
-        .map(|ids| {
-            ids.into_iter()
-                .filter_map(|id| graph.get(id).map(|t| (id.to_string(), t.clone())))
-                .collect()
-        })
-        .collect()
 }
 
 fn render_component(graph: &TaskGraph) -> String {
@@ -148,8 +80,8 @@ fn render_component(graph: &TaskGraph) -> String {
         return String::new();
     }
 
-    let effective_successors = graph::transitive_reduction(graph);
-    let topo_order = topological_order(graph, &effective_successors);
+    let effective_successors = graph.transitive_reduction();
+    let topo_order = graph.topological_order();
 
     let mut renderer: BoxRenderer = GraphRowRenderer::<String>::new()
         .output()
@@ -159,65 +91,19 @@ fn render_component(graph: &TaskGraph) -> String {
     let mut output = String::new();
 
     for task_id in topo_order {
-        let Some(task) = graph.get(&task_id) else {
+        let Some(task) = graph.get(task_id) else {
             continue;
         };
 
-        let ancestors = build_ancestors(&task_id, &effective_successors);
+        let ancestors = build_ancestors(task_id, &effective_successors);
         let marker = task_marker(task, graph);
         let task_line = format_task_line(task, graph);
 
-        let row = renderer.next_row(task_id.clone(), ancestors, marker, task_line);
+        let row = renderer.next_row(task_id.to_string(), ancestors, marker, task_line);
         output.push_str(&row);
     }
 
     output
-}
-
-fn topological_order(
-    graph: &TaskGraph,
-    effective_successors: &HashMap<&str, Vec<&str>>,
-) -> Vec<String> {
-    let mut in_degree: HashMap<&str, usize> = HashMap::new();
-    for id in graph.keys() {
-        in_degree.insert(id.as_str(), 0);
-    }
-
-    for successors in effective_successors.values() {
-        for &succ in successors {
-            if let Some(deg) = in_degree.get_mut(succ) {
-                *deg += 1;
-            }
-        }
-    }
-
-    let mut queue: Vec<&str> = in_degree
-        .iter()
-        .filter(|(_, deg)| **deg == 0)
-        .map(|(&id, _)| id)
-        .collect();
-    queue.sort();
-
-    let mut result = Vec::new();
-    let mut remaining = in_degree.clone();
-
-    while let Some(task_id) = queue.pop() {
-        result.push(task_id.to_string());
-
-        if let Some(successors) = effective_successors.get(task_id) {
-            for &succ in successors {
-                if let Some(deg) = remaining.get_mut(succ) {
-                    *deg -= 1;
-                    if *deg == 0 {
-                        let pos = queue.partition_point(|&x| x > succ);
-                        queue.insert(pos, succ);
-                    }
-                }
-            }
-        }
-    }
-
-    result
 }
 
 fn build_ancestors(task_id: &str, effective_successors: &HashMap<&str, Vec<&str>>) -> Vec<Ancestor<String>> {
