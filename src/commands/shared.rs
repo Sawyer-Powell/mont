@@ -4,6 +4,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+use crate::context::graph::is_available;
 use crate::error_fmt::{AppError, IoResultExt, ParseResultExt};
 use crate::{parse, resolve_editor, MontContext, Task, TaskGraph};
 
@@ -16,6 +17,8 @@ pub enum TaskFilter {
     InProgress,
     /// All tasks including complete
     All,
+    /// Only ready tasks (not complete, not gates, all dependencies complete)
+    Ready,
 }
 
 /// Pick a task interactively using fzf.
@@ -43,6 +46,7 @@ pub fn pick_task(graph: &TaskGraph, filter: TaskFilter) -> Result<String, AppErr
             TaskFilter::Active => !t.is_complete(),
             TaskFilter::InProgress => t.is_in_progress(),
             TaskFilter::All => true,
+            TaskFilter::Ready => !t.is_complete() && !t.is_gate() && is_available(t, graph),
         })
         .collect();
 

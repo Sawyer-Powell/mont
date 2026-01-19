@@ -405,7 +405,7 @@ fn run(cli: Cli) -> Result<(), AppError> {
                     None => {
                         // Pre-validate before showing picker to avoid wasting user time
                         commands::claude_pre_validate(&ctx)?;
-                        pick_task(&ctx.graph(), TaskFilter::Active)?
+                        pick_task(&ctx.graph(), TaskFilter::Ready)?
                     }
                 };
                 commands::claude(&ctx, &resolved_id)
