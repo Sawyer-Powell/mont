@@ -1,6 +1,10 @@
 ---
 id: create-task-bug
 title: Bug when creating a task with editor
+status: complete
+gates:
+  - interview-validator: passed
+  - test: passed
 ---
 
 Probably occurs for 'mont task' mont jot and mont gate

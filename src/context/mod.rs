@@ -114,7 +114,13 @@ impl MontContext {
             };
 
             match parse(&content) {
-                Ok(parsed) => tasks.push(parsed),
+                Ok(parsed) => {
+                    if parsed.id.is_empty() {
+                        errors.add_parse_error(path, ParseError::EmptyId);
+                    } else {
+                        tasks.push(parsed);
+                    }
+                }
                 Err(e) => {
                     errors.add_parse_error(path, e);
                 }
@@ -307,7 +313,7 @@ impl MontContext {
     }
 
     /// Generate a unique task ID using petname.
-    fn generate_id(&self, graph: &TaskGraph) -> Result<String, TransactionError> {
+    pub fn generate_id(&self, graph: &TaskGraph) -> Result<String, TransactionError> {
         const MAX_ATTEMPTS: u32 = 100;
 
         for _ in 0..MAX_ATTEMPTS {

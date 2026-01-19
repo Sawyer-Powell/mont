@@ -249,6 +249,15 @@ fn format_parse_error(error: &ParseError, file_path: &str) -> String {
             out.push('\n');
             out.push_str(&format!("  {}\n", yaml_err.to_string().dimmed()));
         }
+        ParseError::EmptyId => {
+            out.push_str(&format!("task id cannot be empty in {}\n", file_path.cyan()));
+            out.push('\n');
+            out.push_str(&format!("  {}\n", "Every task requires a non-empty id field.".dimmed()));
+            out.push('\n');
+            out.push_str(&format!("  {}:\n", "To fix this".bold()));
+            out.push_str(&format!("    Add an id to the frontmatter, or remove the {} line\n", "id:".cyan()));
+            out.push_str("    to let one be generated automatically.\n");
+        }
         ParseError::GateWithAfter(task_id) => {
             out.push_str(&format!(
                 "gate '{}' has after dependencies\n",

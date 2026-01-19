@@ -321,17 +321,28 @@ pub fn create_via_editor(
     let mut txn = ctx.begin();
     let mut created_ids = Vec::new();
 
-    for task in &tasks {
-        // Check for duplicate ID before adding to transaction
-        if !task.id.is_empty() && ctx.graph().contains(&task.id) {
+    for task in tasks {
+        let mut task = task;
+
+        // Generate ID if empty
+        if task.id.is_empty() {
+            task.id = ctx.generate_id(&ctx.graph())
+                .map_err(|e| AppError::TempValidationFailed {
+                    error: Box::new(e.into()),
+                    temp_path: temp_path_str.clone(),
+                    editor_name: editor_name.map(String::from),
+                })?;
+        } else if ctx.graph().contains(&task.id) {
+            // Check for duplicate ID
             return Err(AppError::TempValidationFailed {
                 error: Box::new(AppError::IdAlreadyExists(task.id.clone())),
                 temp_path: temp_path_str,
                 editor_name: editor_name.map(String::from),
             });
         }
+
         created_ids.push(task.id.clone());
-        txn.insert(task.clone());
+        txn.insert(task);
     }
 
     // Commit atomically

@@ -82,6 +82,8 @@ pub enum ParseError {
     MissingFrontmatter,
     #[error("invalid yaml: {0}")]
     InvalidYaml(#[from] serde_yaml::Error),
+    #[error("task id cannot be empty")]
+    EmptyId,
     #[error("gate '{0}' must not have after dependencies")]
     GateWithAfter(String),
     #[error("gate '{0}' cannot be marked complete")]
@@ -153,7 +155,9 @@ impl Task {
     pub fn to_markdown(&self) -> String {
         let mut content = String::new();
         content.push_str("---\n");
-        content.push_str(&format!("id: {}\n", self.id));
+        if !self.id.is_empty() {
+            content.push_str(&format!("id: {}\n", self.id));
+        }
 
         if let Some(t) = &self.title {
             content.push_str(&format!("title: {}\n", t));
