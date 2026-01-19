@@ -218,6 +218,7 @@ fn generate_in_progress_prompt(
 
                 prompt.push_str("\nOnce verified, mark the gate as passed:\n");
                 prompt.push_str(&format!("`mont unlock {} --passed {}`\n", task.id, next_gate_id));
+                prompt.push_str("\nOnce the gate is passed, run mont llm prompt again:\n");
             }
         }
 
