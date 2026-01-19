@@ -21,7 +21,7 @@ pub enum TaskGraphState {
     },
     /// A task is in progress with the given sub-state.
     TaskInProgress {
-        task: Task,
+        task: Box<Task>,
         state: InProgressState,
     },
 }
@@ -74,7 +74,7 @@ pub fn detect_state(ctx: &MontContext) -> Result<TaskGraphState, AppError> {
     // Determine the in-progress state
     let state = detect_in_progress_state(ctx, &task)?;
 
-    Ok(TaskGraphState::TaskInProgress { task, state })
+    Ok(TaskGraphState::TaskInProgress { task: Box::new(task), state })
 }
 
 /// Detect the state of an in-progress task.
@@ -254,6 +254,32 @@ pub fn start(ctx: &MontContext, task_id: &str) -> Result<(), AppError> {
 
     println!();
     print!("{}", prompt);
+
+    Ok(())
+}
+
+/// System prompt for Claude Code sessions.
+const CLAUDE_SYSTEM_PROMPT: &str = r#"After completing your current work, always run `mont llm prompt` to get the next task or instructions. This ensures you stay synchronized with the task graph and receive appropriate guidance for your next steps."#;
+
+/// Run the `mont llm claude` command.
+/// Launches Claude Code with a generated prompt based on current task state.
+pub fn claude(ctx: &MontContext) -> Result<(), AppError> {
+    let state = detect_state(ctx)?;
+    let prompt = generate_prompt(ctx, &state)?;
+
+    let status = std::process::Command::new("claude")
+        .arg("--append-system-prompt")
+        .arg(CLAUDE_SYSTEM_PROMPT)
+        .arg(&prompt)
+        .stdin(std::process::Stdio::inherit())
+        .stdout(std::process::Stdio::inherit())
+        .stderr(std::process::Stdio::inherit())
+        .status()
+        .map_err(|e| AppError::CommandFailed(format!("failed to launch claude: {}", e)))?;
+
+    if !status.success() {
+        return Err(AppError::CommandFailed("claude exited with error".to_string()));
+    }
 
     Ok(())
 }

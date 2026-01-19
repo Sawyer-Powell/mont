@@ -1,3 +1,3 @@
 default_gates:
-  - test
   - interview-validator
+  - test

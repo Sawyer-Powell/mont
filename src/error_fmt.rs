@@ -78,6 +78,8 @@ pub enum AppError {
     MultipleInProgressTasksInDiff(Vec<String>),
     /// Template rendering error
     TemplateError(String),
+    /// External command failed
+    CommandFailed(String),
 }
 
 impl fmt::Display for AppError {
@@ -164,6 +166,9 @@ impl fmt::Display for AppError {
             }
             AppError::TemplateError(msg) => {
                 write!(f, "{}", format_template_error(msg))
+            }
+            AppError::CommandFailed(msg) => {
+                write!(f, "{}", format_command_failed(msg))
             }
         }
     }
@@ -1031,6 +1036,15 @@ fn format_template_error(msg: &str) -> String {
 
     out.push_str(&format!("{}: ", "error".red().bold()));
     out.push_str(&format!("template error: {}\n", msg));
+
+    out
+}
+
+fn format_command_failed(msg: &str) -> String {
+    let mut out = String::new();
+
+    out.push_str(&format!("{}: ", "error".red().bold()));
+    out.push_str(&format!("{}\n", msg));
 
     out
 }

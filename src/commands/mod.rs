@@ -26,7 +26,7 @@ pub use done::done;
 pub use edit::edit;
 pub use jot::jot;
 pub use list::list;
-pub use llm::{prompt as llm_prompt, start as llm_start};
+pub use llm::{claude as llm_claude, prompt as llm_prompt, start as llm_start};
 pub use new::new;
 pub use ready::ready;
 pub use show::show;

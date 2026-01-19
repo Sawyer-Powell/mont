@@ -177,6 +177,8 @@ enum LlmCommands {
         /// Task ID to start. If not provided, opens interactive picker.
         id: Option<String>,
     },
+    /// Launch Claude Code with generated prompt
+    Claude,
 }
 
 fn parse_task_type(s: &str) -> Result<TaskType, String> {
@@ -346,6 +348,7 @@ fn run(cli: Cli) -> Result<(), AppError> {
                 };
                 commands::llm_start(&ctx, &resolved_id)
             }
+            LlmCommands::Claude => commands::llm_claude(&ctx),
         },
     }
 }
