@@ -24,7 +24,7 @@ pub struct CommitResult {
 /// Checks if the current working copy revision is empty (has no changes).
 pub fn is_working_copy_empty() -> Result<bool, JJError> {
     let output = Command::new("jj")
-        .args(["diff", "--stat"])
+        .args(["diff"])
         .output()?;
 
     if !output.status.success() {
