@@ -26,7 +26,7 @@ pub use done::done;
 pub use edit::edit;
 pub use jot::jot;
 pub use list::list;
-pub use llm::{claude, prompt};
+pub use llm::{claude, claude_ignore, claude_pre_validate, prompt};
 pub use new::new;
 pub use ready::ready;
 pub use show::show;

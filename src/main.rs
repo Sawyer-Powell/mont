@@ -333,11 +333,21 @@ fn run(cli: Cli) -> Result<(), AppError> {
         Commands::Done { id, message } => commands::done(&ctx, id.as_deref(), message.as_deref()),
         Commands::Prompt => commands::prompt(&ctx),
         Commands::Claude { id, ignore } => {
-            let resolved_id = match id {
-                Some(id) => id,
-                None => pick_task(&ctx.graph(), TaskFilter::Active)?,
-            };
-            commands::claude(&ctx, &resolved_id, ignore)
+            if ignore {
+                // --ignore: bypass all validation, just spawn claude with current prompt
+                commands::claude_ignore(&ctx)
+            } else {
+                // Need a task id - from arg or picker
+                let resolved_id = match id {
+                    Some(id) => id,
+                    None => {
+                        // Pre-validate before showing picker to avoid wasting user time
+                        commands::claude_pre_validate(&ctx)?;
+                        pick_task(&ctx.graph(), TaskFilter::Active)?
+                    }
+                };
+                commands::claude(&ctx, &resolved_id)
+            }
         }
     }
 }

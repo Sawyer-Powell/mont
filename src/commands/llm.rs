@@ -246,12 +246,49 @@ pub fn prompt(ctx: &MontContext) -> Result<(), AppError> {
 /// System prompt for Claude Code sessions.
 const CLAUDE_SYSTEM_PROMPT: &str = r#"After completing your current work, always run `mont prompt` to get the next task or instructions. This ensures you stay synchronized with the task graph and receive appropriate guidance for your next steps."#;
 
-/// Run the `mont claude` command.
-/// Launches Claude Code with a generated prompt based on current task state.
+/// Pre-validate before showing the picker for `mont claude`.
 ///
-/// - `task_id`: The task to work on
-/// - `ignore`: If true, bypass the uncommitted changes validation
-pub fn claude(ctx: &MontContext, task_id: &str, ignore: bool) -> Result<(), AppError> {
+/// This checks if we should error before wasting user time with the picker.
+/// Only called when no task id is provided and --ignore is not set.
+///
+/// - If uncommitted changes and no in-progress task → error
+/// - Otherwise → safe to show picker
+pub fn claude_pre_validate(ctx: &MontContext) -> Result<(), AppError> {
+    let graph = ctx.graph();
+
+    // Check for uncommitted changes
+    let has_changes = !jj::is_working_copy_empty()
+        .map_err(|e| AppError::JJError(e.to_string()))?;
+
+    if !has_changes {
+        return Ok(());
+    }
+
+    // Has uncommitted changes - check if there's an in-progress task
+    let in_progress_task = graph.values().find(|t| t.is_in_progress());
+
+    if in_progress_task.is_none() {
+        return Err(AppError::CommandFailed(
+            "There are uncommitted changes but no task is in progress.\n\
+             Either commit your changes first, or run:\n  \
+             mont claude --ignore (to start anyway)".to_string()
+        ));
+    }
+
+    Ok(())
+}
+
+/// Run `mont claude --ignore`.
+/// Bypasses all validation and task selection - just spawns claude with current prompt.
+pub fn claude_ignore(ctx: &MontContext) -> Result<(), AppError> {
+    let state = detect_state(ctx)?;
+    let prompt = generate_prompt(ctx, &state)?;
+    spawn_claude(&prompt)
+}
+
+/// Run the `mont claude` command with a specific task.
+/// Validates the task against current state, starts it if needed, then spawns claude.
+pub fn claude(ctx: &MontContext, task_id: &str) -> Result<(), AppError> {
     let graph = ctx.graph();
 
     // Check if the task exists
@@ -266,7 +303,7 @@ pub fn claude(ctx: &MontContext, task_id: &str, ignore: bool) -> Result<(), AppE
     let has_changes = !jj::is_working_copy_empty()
         .map_err(|e| AppError::JJError(e.to_string()))?;
 
-    if has_changes && !ignore {
+    if has_changes {
         // Check if the requested task is the one in progress
         let in_progress_task = graph.values().find(|t| t.is_in_progress());
 
@@ -278,18 +315,16 @@ pub fn claude(ctx: &MontContext, task_id: &str, ignore: bool) -> Result<(), AppE
                 return Err(AppError::CommandFailed(format!(
                     "There are uncommitted changes, but task '{}' is in progress (not '{}').\n\
                      Either commit your changes first, or run:\n  \
-                     mont claude {} (to continue the in-progress task)\n  \
-                     mont claude {} --ignore (to start anyway)",
-                    in_progress.id, task_id, in_progress.id, task_id
+                     mont claude {} (to continue the in-progress task)",
+                    in_progress.id, task_id, in_progress.id
                 )));
             }
             None => {
-                return Err(AppError::CommandFailed(format!(
+                return Err(AppError::CommandFailed(
                     "There are uncommitted changes but no task is in progress.\n\
                      Either commit your changes first, or run:\n  \
-                     mont claude {} --ignore (to start anyway)",
-                    task_id
-                )));
+                     mont claude --ignore (to start anyway)".to_string()
+                ));
             }
         }
     }
@@ -302,11 +337,16 @@ pub fn claude(ctx: &MontContext, task_id: &str, ignore: bool) -> Result<(), AppE
     // Generate prompt based on current state
     let state = detect_state(ctx)?;
     let prompt = generate_prompt(ctx, &state)?;
+    spawn_claude(&prompt)
+}
 
+/// Spawn claude with the given prompt.
+fn spawn_claude(prompt: &str) -> Result<(), AppError> {
     let status = std::process::Command::new("claude")
+        .arg("--permission-mode=acceptEdits")
         .arg("--append-system-prompt")
         .arg(CLAUDE_SYSTEM_PROMPT)
-        .arg(&prompt)
+        .arg(prompt)
         .stdin(std::process::Stdio::inherit())
         .stdout(std::process::Stdio::inherit())
         .stderr(std::process::Stdio::inherit())

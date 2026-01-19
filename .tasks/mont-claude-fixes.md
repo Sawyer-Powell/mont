@@ -1,6 +1,10 @@
 ---
 id: mont-claude-fixes
 title: Fix picker dispatching for mont claude
+status: complete
+gates:
+  - test: passed
+  - interview-validator: passed
 ---
 
 Right now the picker dispatches before we know if we can launch mont claude.
