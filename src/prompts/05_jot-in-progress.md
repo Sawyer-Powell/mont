@@ -22,13 +22,14 @@ Your goal is to help distill this jot into one or more well-defined tasks.
 
 1. Review the jot content above
 2. Identify the concrete work items or tasks implied by this idea
-3. For each task, consider:
+3. Use `mont list` to identify how these tasks might or might not be related to existing tasks
+4. For each task, consider:
    - A clear, actionable title
    - What needs to be done (description)
    - Dependencies between tasks (if multiple)
-4. Use `mont list` to identify how these tasks might or might not be dependent on existing tasks
-4. Communicate your breakdown to the user to confirm
-5. Use `mont distill {{ jot_id }}` to convert this jot into tasks
+   - Dependencies to existing tasks
+5. Communicate your breakdown to the user to confirm
+6. Use `mont distill {{ jot_id }}` to convert this jot into tasks
 
 When running `mont distill`, you can provide tasks directly using YAML.
 **Important:** Use `=` to attach the YAML value (required because YAML starts with `-`):
