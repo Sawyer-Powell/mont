@@ -76,6 +76,7 @@ pub fn render_task_graph(graph: &TaskGraph, show_completed: bool) -> String {
 fn render_section(graph: &TaskGraph) -> String {
     let components = graph.connected_components();
     let mut output = String::new();
+    let mut prev_was_multi = false;
 
     for component_ids in components {
         // Build sub-graph for this component
@@ -84,7 +85,15 @@ fn render_section(graph: &TaskGraph) -> String {
             .filter_map(|&id| graph.get(id).cloned())
             .collect();
 
+        let is_multi = component.len() > 1;
+
+        // Add blank line before multi-task groups, or after previous multi-task group
+        if !output.is_empty() && (is_multi || prev_was_multi) {
+            output.push('\n');
+        }
+
         output.push_str(&render_component(&component));
+        prev_was_multi = is_multi;
     }
 
     output
