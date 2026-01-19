@@ -96,6 +96,16 @@ pub fn pick_task(graph: &TaskGraph, filter: TaskFilter) -> Result<String, AppErr
     let output = child.wait_with_output()
         .with_context("failed to wait for fzf")?;
 
+    // Reset terminal state after fzf exits - fzf uses /dev/tty for input and may
+    // leave the terminal in an altered state that prevents subsequent TUI apps
+    // (like Claude) from working properly
+    let _ = Command::new("stty")
+        .arg("sane")
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+
     if !output.status.success() {
         return Err(AppError::PickerCancelled);
     }

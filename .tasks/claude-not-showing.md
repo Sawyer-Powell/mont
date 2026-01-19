@@ -1,6 +1,10 @@
 ---
-id: claude-not-showing 
+id: claude-not-showing
 title: Bug in mont claude when not using --ignore flag
+status: complete
+gates:
+  - interview-validator: passed
+  - test: passed
 ---
 
 There is a bug in running mont claude when not using ignore flag,
