@@ -7,31 +7,24 @@ use std::process::{Command, Stdio};
 use crate::error_fmt::{AppError, IoResultExt, ParseResultExt};
 use crate::{parse, resolve_editor, MontContext, Task, TaskGraph};
 
+/// Filter options for interactive task picker.
+#[derive(Clone, Copy)]
+pub enum TaskFilter {
+    /// Only non-complete tasks (default for most commands)
+    Active,
+    /// Only in-progress tasks
+    InProgress,
+    /// All tasks including complete
+    All,
+}
+
 /// Pick a task interactively using fzf.
 ///
 /// Returns the selected task ID, or an error if:
 /// - fzf is not installed
 /// - User cancelled the picker
-/// - No active tasks exist
-pub fn pick_task(graph: &TaskGraph) -> Result<String, AppError> {
-    pick_task_filtered(graph, |t| !t.is_complete())
-}
-
-/// Pick an in-progress task interactively using fzf.
-///
-/// Returns the selected task ID, or an error if:
-/// - fzf is not installed
-/// - User cancelled the picker
-/// - No in-progress tasks exist
-pub fn pick_in_progress_task(graph: &TaskGraph) -> Result<String, AppError> {
-    pick_task_filtered(graph, |t| t.is_in_progress())
-}
-
-/// Pick a task interactively using fzf with a custom filter.
-fn pick_task_filtered<F>(graph: &TaskGraph, filter: F) -> Result<String, AppError>
-where
-    F: Fn(&Task) -> bool,
-{
+/// - No matching tasks exist
+pub fn pick_task(graph: &TaskGraph, filter: TaskFilter) -> Result<String, AppError> {
     // Check if fzf is installed
     if Command::new("fzf")
         .arg("--version")
@@ -46,7 +39,11 @@ where
     // Get filtered tasks
     let mut tasks: Vec<_> = graph
         .values()
-        .filter(|t| filter(t))
+        .filter(|t| match filter {
+            TaskFilter::Active => !t.is_complete(),
+            TaskFilter::InProgress => t.is_in_progress(),
+            TaskFilter::All => true,
+        })
         .collect();
 
     if tasks.is_empty() {

@@ -2,7 +2,7 @@ use clap::{Args, Parser, Subcommand};
 use std::path::PathBuf;
 
 use mont::commands;
-use mont::commands::shared::{pick_in_progress_task, pick_task};
+use mont::commands::shared::{pick_task, TaskFilter};
 use mont::error_fmt::AppError;
 use mont::{MontContext, TaskType};
 
@@ -245,7 +245,7 @@ fn run(cli: Cli) -> Result<(), AppError> {
         } => {
             let resolved_id = match id {
                 Some(id) => id,
-                None => pick_task(&ctx.graph())?,
+                None => pick_task(&ctx.graph(), TaskFilter::Active)?,
             };
             commands::edit(
                 &ctx,
@@ -266,7 +266,7 @@ fn run(cli: Cli) -> Result<(), AppError> {
         Commands::Delete { id, force } => {
             let resolved_id = match id {
                 Some(id) => id,
-                None => pick_task(&ctx.graph())?,
+                None => pick_task(&ctx.graph(), TaskFilter::Active)?,
             };
             commands::delete(&ctx, &resolved_id, force)
         }
@@ -293,21 +293,21 @@ fn run(cli: Cli) -> Result<(), AppError> {
         Commands::Distill { id } => {
             let resolved_id = match id {
                 Some(id) => id,
-                None => pick_task(&ctx.graph())?,
+                None => pick_task(&ctx.graph(), TaskFilter::Active)?,
             };
             commands::distill(&ctx, &resolved_id)
         }
         Commands::Show { id, short, editor } => {
             let resolved_id = match id {
                 Some(id) => id,
-                None => pick_task(&ctx.graph())?,
+                None => pick_task(&ctx.graph(), TaskFilter::All)?,
             };
             commands::show(&ctx, &resolved_id, short, editor)
         }
         Commands::Unlock { id, passed, skipped } => {
             let resolved_id = match id {
                 Some(id) => id,
-                None => pick_in_progress_task(&ctx.graph())?,
+                None => pick_task(&ctx.graph(), TaskFilter::InProgress)?,
             };
             commands::unlock(
                 &ctx,
@@ -321,7 +321,7 @@ fn run(cli: Cli) -> Result<(), AppError> {
         Commands::Lock { id, gates } => {
             let resolved_id = match id {
                 Some(id) => id,
-                None => pick_in_progress_task(&ctx.graph())?,
+                None => pick_task(&ctx.graph(), TaskFilter::InProgress)?,
             };
             commands::unlock::lock(
                 &ctx,
@@ -334,7 +334,7 @@ fn run(cli: Cli) -> Result<(), AppError> {
         Commands::Start { id } => {
             let resolved_id = match id {
                 Some(id) => id,
-                None => pick_task(&ctx.graph())?,
+                None => pick_task(&ctx.graph(), TaskFilter::Active)?,
             };
             commands::start(&ctx, &resolved_id)
         }
@@ -344,7 +344,7 @@ fn run(cli: Cli) -> Result<(), AppError> {
             LlmCommands::Start { id } => {
                 let resolved_id = match id {
                     Some(id) => id,
-                    None => pick_task(&ctx.graph())?,
+                    None => pick_task(&ctx.graph(), TaskFilter::Active)?,
                 };
                 commands::llm_start(&ctx, &resolved_id)
             }
