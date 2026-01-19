@@ -42,7 +42,7 @@ pub fn ready(ctx: &MontContext) {
     let max_id_len = all_tasks.iter().map(|t| t.id.len()).max().unwrap_or(0);
 
     for task in all_tasks {
-        print_ready_task(&task, max_id_len);
+        print_ready_task(task, max_id_len);
     }
 }
 

@@ -4,7 +4,7 @@ use owo_colors::OwoColorize;
 use renderdag::{Ancestor, GraphRowRenderer, Renderer};
 
 use crate::context::graph;
-use crate::{Task, TaskGraph, TaskType};
+use crate::{Task, TaskGraph};
 
 type BoxRenderer = renderdag::BoxDrawingRenderer<String, GraphRowRenderer<String>>;
 
@@ -237,7 +237,7 @@ pub fn truncate_to(title: &str, max_len: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Task;
+    use crate::{Task, TaskType};
 
     fn make_task(id: &str) -> Task {
         Task {

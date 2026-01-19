@@ -8,6 +8,7 @@
 //! - Validation logic for ensuring graph integrity
 
 pub(crate) mod graph;
+mod settings;
 mod task;
 mod transaction;
 pub(crate) mod validations;
@@ -18,14 +19,26 @@ use std::sync::RwLock;
 
 // Re-export public types
 pub use graph::{GraphReadError, TaskGraph};
+pub use settings::{GlobalConfig, SettingsError};
 pub use task::{parse, ParseError, Status, Task, TaskType, ValidationItem, ValidationStatus};
 pub use transaction::{Op, Transaction};
 pub use validations::ValidationError;
 pub use view::{GraphView, ValidationView};
 
+/// Errors that can occur when loading a MontContext.
+#[derive(Debug, thiserror::Error)]
+pub enum LoadError {
+    #[error("failed to load task graph")]
+    Graph(#[source] GraphReadError),
+
+    #[error("failed to load config.yml")]
+    Settings(#[source] SettingsError),
+}
+
 /// Internal state protected by RwLock.
 struct ContextInner {
     graph: TaskGraph,
+    config: GlobalConfig,
     version: u64,
 }
 
@@ -56,6 +69,7 @@ impl MontContext {
         Self {
             inner: RwLock::new(ContextInner {
                 graph: TaskGraph::new(),
+                config: GlobalConfig::default(),
                 version: 0,
             }),
             tasks_dir,
@@ -67,7 +81,7 @@ impl MontContext {
     /// Reads all .md files from the directory, parses them, and validates
     /// the resulting graph. Uses batch error collection - all errors are
     /// gathered and returned together rather than failing on the first error.
-    pub fn load(tasks_dir: PathBuf) -> Result<Self, GraphReadError> {
+    pub fn load(tasks_dir: PathBuf) -> Result<Self, LoadError> {
         let mut errors = GraphReadError::new();
         let mut tasks = Vec::new();
 
@@ -76,7 +90,7 @@ impl MontContext {
             Ok(entries) => entries,
             Err(e) => {
                 errors.add_io_error(tasks_dir.clone(), e);
-                return Err(errors);
+                return Err(LoadError::Graph(errors));
             }
         };
 
@@ -108,20 +122,27 @@ impl MontContext {
 
         // If we have IO or parse errors, return them before validation
         if !errors.is_empty() {
-            return Err(errors);
+            return Err(LoadError::Graph(errors));
         }
 
         // Validate and form the graph
-        match graph::form_graph(tasks) {
-            Ok(graph) => Ok(Self {
-                inner: RwLock::new(ContextInner { graph, version: 0 }),
-                tasks_dir,
-            }),
+        let graph = match graph::form_graph(tasks) {
+            Ok(graph) => graph,
             Err(e) => {
                 errors.add_validation_error(e);
-                Err(errors)
+                return Err(LoadError::Graph(errors));
             }
-        }
+        };
+
+        // Load and validate global config
+        let config_path = tasks_dir.join("config.yml");
+        let config = GlobalConfig::load(&config_path).map_err(LoadError::Settings)?;
+        config.validate(&graph).map_err(LoadError::Settings)?;
+
+        Ok(Self {
+            inner: RwLock::new(ContextInner { graph, config, version: 0 }),
+            tasks_dir,
+        })
     }
 
     /// Begin a new transaction.
@@ -199,6 +220,12 @@ impl MontContext {
     /// Get the tasks directory path.
     pub fn tasks_dir(&self) -> &PathBuf {
         &self.tasks_dir
+    }
+
+    /// Get a clone of the global config.
+    #[allow(clippy::expect_used)] // RwLock poisoning is a bug
+    pub fn config(&self) -> GlobalConfig {
+        self.inner.read().expect("lock poisoned").config.clone()
     }
 
     /// Delete a task and remove all references to it from other tasks.

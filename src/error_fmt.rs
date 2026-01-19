@@ -3,8 +3,8 @@ use std::io;
 
 use owo_colors::OwoColorize;
 
+use crate::context::{GraphReadError, LoadError, SettingsError};
 use crate::{ParseError, TransactionError, ValidationError};
-use crate::context::GraphReadError;
 use crate::EditorError;
 
 /// Application error with context for actionable error messages.
@@ -47,8 +47,8 @@ pub enum AppError {
     },
     /// Task is not a jot (for distill command)
     NotAJot(String),
-    /// Graph read error (loading tasks)
-    GraphRead(GraphReadError),
+    /// Load error (loading tasks or config)
+    Load(LoadError),
     /// fzf not found
     FzfNotFound,
     /// User cancelled picker
@@ -100,8 +100,8 @@ impl fmt::Display for AppError {
             AppError::NotAJot(id) => {
                 write!(f, "{}", format_not_a_jot(id))
             }
-            AppError::GraphRead(e) => {
-                write!(f, "{}", format_graph_read_error(e))
+            AppError::Load(e) => {
+                write!(f, "{}", format_load_error(e))
             }
             AppError::FzfNotFound => {
                 write!(f, "{}", format_fzf_not_found())
@@ -683,6 +683,13 @@ fn format_not_a_jot(id: &str) -> String {
     out
 }
 
+fn format_load_error(error: &LoadError) -> String {
+    match error {
+        LoadError::Graph(e) => format_graph_read_error(e),
+        LoadError::Settings(e) => format_settings_error(e),
+    }
+}
+
 fn format_graph_read_error(error: &GraphReadError) -> String {
     let mut out = String::new();
 
@@ -710,6 +717,16 @@ fn format_graph_read_error(error: &GraphReadError) -> String {
     for val_err in &error.validation_errors {
         out.push_str(&format!("  {} {:?}\n", "•".red(), val_err));
     }
+
+    out
+}
+
+fn format_settings_error(error: &SettingsError) -> String {
+    let mut out = String::new();
+
+    out.push_str(&format!("{}: ", "error".red().bold()));
+    out.push_str("failed to load config.yml\n");
+    out.push_str(&format!("  {} {}\n", "•".red(), error));
 
     out
 }
@@ -759,9 +776,9 @@ impl From<EditorError> for AppError {
     }
 }
 
-impl From<GraphReadError> for AppError {
-    fn from(e: GraphReadError) -> Self {
-        AppError::GraphRead(e)
+impl From<LoadError> for AppError {
+    fn from(e: LoadError) -> Self {
+        AppError::Load(e)
     }
 }
 

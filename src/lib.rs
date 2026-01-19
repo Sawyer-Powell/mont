@@ -6,8 +6,9 @@ pub mod render;
 
 // Re-export commonly used types from context module for convenience
 pub use context::{
-    parse, GraphReadError, MontContext, Op, ParseError, Status, Task, TaskGraph, TaskType,
-    Transaction, TransactionError, ValidationError, ValidationItem, ValidationStatus,
+    parse, GlobalConfig, GraphReadError, LoadError, MontContext, Op, ParseError, SettingsError,
+    Status, Task, TaskGraph, TaskType, Transaction, TransactionError, ValidationError,
+    ValidationItem, ValidationStatus,
 };
 
 // Re-export graph functions for binary
