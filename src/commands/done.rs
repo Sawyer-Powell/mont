@@ -30,6 +30,11 @@ pub fn done(ctx: &MontContext, id: Option<&str>, message: Option<&str>) -> Resul
         return Err(AppError::TaskNotInProgress(task_id.clone()));
     }
 
+    // Jots cannot be completed - they must be distilled into tasks first
+    if task.is_jot() {
+        return Err(AppError::CannotCompleteJot(task_id.clone()));
+    }
+
     // Check all gates are passed or skipped
     let all_gate_ids = ctx.all_gate_ids(task);
     let mut blocking_gates: Vec<(String, GateStatus)> = Vec::new();

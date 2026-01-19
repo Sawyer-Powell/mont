@@ -1,13 +1,17 @@
 //! Distill command - converts a jot into one or more proper tasks.
 
 use owo_colors::OwoColorize;
+use serde::Deserialize;
 
 use super::shared::{find_temp_files, make_temp_file, parse_temp_file, remove_temp_file};
 use crate::error_fmt::{AppError, IoResultExt};
 use crate::{jj, resolve_editor, MontContext, Task, TaskType};
 
 /// Distill a jot into one or more proper tasks.
-pub fn distill(ctx: &MontContext, id: &str) -> Result<(), AppError> {
+///
+/// If `tasks_yaml` is provided, uses those task definitions directly (LLM-friendly mode).
+/// Otherwise, opens the editor for interactive task definition.
+pub fn distill(ctx: &MontContext, id: &str, tasks_yaml: Option<&str>) -> Result<(), AppError> {
     // Get the jot task
     let jot_task = ctx
         .graph()
@@ -23,21 +27,31 @@ pub fn distill(ctx: &MontContext, id: &str) -> Result<(), AppError> {
         return Err(AppError::NotAJot(id.to_string()));
     }
 
-    // Create temp file with template
-    let suffix = format!("distill_{}", id);
-    let comment = build_distill_comment(&jot_task);
-    let starter_task = build_starter_task(&jot_task);
-    let path = make_temp_file(&suffix, &[starter_task], Some(&comment))?;
+    // Get new tasks either from YAML parameter or editor workflow
+    let (new_tasks, temp_path) = if let Some(yaml) = tasks_yaml {
+        // LLM-friendly mode: parse tasks from YAML parameter
+        let tasks = parse_tasks_yaml(yaml)?;
+        (tasks, None)
+    } else {
+        // Editor mode: create temp file with template
+        let suffix = format!("distill_{}", id);
+        let comment = build_distill_comment(&jot_task);
+        let starter_task = build_starter_task(&jot_task);
+        let path = make_temp_file(&suffix, &[starter_task], Some(&comment))?;
 
-    let mut cmd = resolve_editor(None, &path)?;
-    cmd.status().with_context("failed to run editor")?;
+        let mut cmd = resolve_editor(None, &path)?;
+        cmd.status().with_context("failed to run editor")?;
 
-    // Parse the edited content
-    let new_tasks = parse_temp_file(&path)?;
+        // Parse the edited content
+        let tasks = parse_temp_file(&path)?;
+        (tasks, Some(path))
+    };
 
     if new_tasks.is_empty() {
         println!("No tasks defined, aborting distill.");
-        remove_temp_file(&path)?;
+        if let Some(ref path) = temp_path {
+            remove_temp_file(path)?;
+        }
         return Ok(());
     }
 
@@ -67,8 +81,10 @@ pub fn distill(ctx: &MontContext, id: &str) -> Result<(), AppError> {
     }
     println!("{} {}", "deleted jot:".yellow(), id.bright_yellow());
 
-    // Clean up temp file
-    remove_temp_file(&path)?;
+    // Clean up temp file (if editor mode was used)
+    if let Some(ref path) = temp_path {
+        remove_temp_file(path)?;
+    }
 
     // Auto-commit with jj
     let commit_msg = format!("Distilled jot '{}' into tasks: {}", id, created_ids.join(", "));
@@ -128,4 +144,40 @@ fn build_starter_task(jot: &Task) -> Task {
         status: None,
         deleted: false,
     }
+}
+
+/// Task definition from YAML input for LLM-friendly distill.
+#[derive(Debug, Deserialize)]
+struct TaskDef {
+    id: String,
+    title: String,
+    #[serde(default)]
+    description: String,
+    #[serde(default)]
+    before: Vec<String>,
+    #[serde(default)]
+    after: Vec<String>,
+}
+
+/// Parse tasks from YAML input (LLM-friendly mode).
+fn parse_tasks_yaml(yaml: &str) -> Result<Vec<Task>, AppError> {
+    let defs: Vec<TaskDef> = serde_yaml::from_str(yaml)
+        .map_err(|e| AppError::CommandFailed(format!("invalid tasks YAML: {}", e)))?;
+
+    let tasks = defs
+        .into_iter()
+        .map(|def| Task {
+            id: def.id,
+            title: Some(def.title),
+            description: def.description,
+            before: def.before,
+            after: def.after,
+            gates: vec![],
+            task_type: TaskType::Task,
+            status: None,
+            deleted: false,
+        })
+        .collect();
+
+    Ok(tasks)
 }

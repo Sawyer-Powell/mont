@@ -208,9 +208,9 @@ pub fn format_gate_status(gate_id: &str, status: GateStatus) -> (String, String)
 
 /// Print a gates section for a task.
 /// Shows all gates (task gates + default gates) with their status.
-/// Does nothing for gate-type tasks.
+/// Does nothing for gate-type or jot-type tasks.
 pub fn print_gates_section(task: &Task, all_gate_ids: &[String], indent: &str, label_width: usize) {
-    if task.is_gate() {
+    if task.is_gate() || task.is_jot() {
         return;
     }
 

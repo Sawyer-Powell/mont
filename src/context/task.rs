@@ -88,6 +88,8 @@ pub enum ParseError {
     GateWithAfter(String),
     #[error("gate '{0}' cannot be marked complete")]
     GateMarkedComplete(String),
+    #[error("jot '{0}' cannot have gates")]
+    JotWithGates(String),
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
@@ -338,6 +340,10 @@ pub fn parse(content: &str) -> Result<Task, ParseError> {
         return Err(ParseError::GateMarkedComplete(task.id));
     }
 
+    if task.is_jot() && !task.gates.is_empty() {
+        return Err(ParseError::JotWithGates(task.id));
+    }
+
     Ok(task)
 }
 
@@ -422,6 +428,24 @@ Should fail.
         assert!(matches!(
             result,
             Err(ParseError::GateMarkedComplete(id)) if id == "complete-gate"
+        ));
+    }
+
+    #[test]
+    fn test_parse_jot_with_gates_fails() {
+        let content = r#"---
+id: bad-jot
+type: jot
+gates:
+  - some-gate
+---
+
+Jots cannot have gates.
+"#;
+        let result = parse(content);
+        assert!(matches!(
+            result,
+            Err(ParseError::JotWithGates(id)) if id == "bad-jot"
         ));
     }
 
@@ -703,6 +727,7 @@ Task description.
 
     #[test]
     fn test_to_markdown_roundtrip_full() {
+        // Use Task type since jots cannot have gates
         let task = Task {
             id: "full-task".to_string(),
             before: vec!["parent1".to_string(), "parent2".to_string()],
@@ -723,7 +748,7 @@ Task description.
             ],
             title: Some("Full Task Title".to_string()),
             status: Some(Status::InProgress),
-            task_type: TaskType::Jot,
+            task_type: TaskType::Task,
             description: "This is the description.".to_string(),
             deleted: false,
         };
@@ -732,7 +757,7 @@ Task description.
 
         assert_eq!(parsed.id, task.id);
         assert_eq!(parsed.title, task.title);
-        assert_eq!(parsed.task_type, TaskType::Jot);
+        assert_eq!(parsed.task_type, TaskType::Task);
         assert_eq!(parsed.status, Some(Status::InProgress));
         assert_eq!(parsed.before, task.before);
         assert_eq!(parsed.after, task.after);

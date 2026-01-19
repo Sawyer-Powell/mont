@@ -11,6 +11,7 @@ const TEMPLATE_NO_CODE_CHANGES: &str = include_str!("../prompts/01_no-code-chang
 const TEMPLATE_HAS_CODE_CHANGES: &str = include_str!("../prompts/02_has-code-changes.md");
 const TEMPLATE_SOME_GATES_UNLOCKED: &str = include_str!("../prompts/03_some-gates-unlocked.md");
 const TEMPLATE_ALL_GATES_UNLOCKED: &str = include_str!("../prompts/04_all-gates-unlocked.md");
+const TEMPLATE_JOT_IN_PROGRESS: &str = include_str!("../prompts/05_jot-in-progress.md");
 
 /// State of the task graph from the LLM's perspective.
 #[derive(Debug)]
@@ -23,6 +24,10 @@ pub enum TaskGraphState {
     TaskInProgress {
         task: Box<Task>,
         state: InProgressState,
+    },
+    /// A jot is in progress - needs to be distilled into tasks.
+    JotInProgress {
+        jot: Box<Task>,
     },
 }
 
@@ -70,6 +75,11 @@ pub fn detect_state(ctx: &MontContext) -> Result<TaskGraphState, AppError> {
 
     // For now, just use the first in-progress task
     let task = in_progress[0].clone();
+
+    // If it's a jot, use the JotInProgress state
+    if task.is_jot() {
+        return Ok(TaskGraphState::JotInProgress { jot: Box::new(task) });
+    }
 
     // Determine the in-progress state
     let state = detect_in_progress_state(ctx, &task)?;
@@ -147,6 +157,8 @@ pub fn generate_prompt(_ctx: &MontContext, state: &TaskGraphState) -> Result<Str
         .map_err(|e| AppError::TemplateError(e.to_string()))?;
     env.add_template("all-gates-unlocked", TEMPLATE_ALL_GATES_UNLOCKED)
         .map_err(|e| AppError::TemplateError(e.to_string()))?;
+    env.add_template("jot-in-progress", TEMPLATE_JOT_IN_PROGRESS)
+        .map_err(|e| AppError::TemplateError(e.to_string()))?;
 
     match state {
         TaskGraphState::NoTaskInProgress { has_uncommitted_changes } => {
@@ -157,6 +169,16 @@ pub fn generate_prompt(_ctx: &MontContext, state: &TaskGraphState) -> Result<Str
         }
         TaskGraphState::TaskInProgress { task, state } => {
             render_in_progress_prompt(&env, task, state)
+        }
+        TaskGraphState::JotInProgress { jot } => {
+            let tmpl = env.get_template("jot-in-progress")
+                .map_err(|e| AppError::TemplateError(e.to_string()))?;
+            tmpl.render(context! {
+                jot_id => &jot.id,
+                jot_title => jot.title.as_deref().unwrap_or(""),
+                jot_description => &jot.description,
+            })
+            .map_err(|e| AppError::TemplateError(e.to_string()))
         }
     }
 }

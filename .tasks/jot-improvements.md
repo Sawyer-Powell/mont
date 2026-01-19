@@ -1,6 +1,10 @@
 ---
 id: jot-improvements
 title: Across the board improvements for jots
+status: complete
+gates:
+  - interview-validator: passed
+  - test: passed
 ---
 
 If a jot is marked in progress, our prompts should be different.

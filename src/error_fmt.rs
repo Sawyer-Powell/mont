@@ -80,6 +80,8 @@ pub enum AppError {
     TemplateError(String),
     /// External command failed
     CommandFailed(String),
+    /// Cannot complete a jot (must be distilled first)
+    CannotCompleteJot(String),
 }
 
 impl fmt::Display for AppError {
@@ -169,6 +171,9 @@ impl fmt::Display for AppError {
             }
             AppError::CommandFailed(msg) => {
                 write!(f, "{}", format_command_failed(msg))
+            }
+            AppError::CannotCompleteJot(id) => {
+                write!(f, "{}", format_cannot_complete_jot(id))
             }
         }
     }
@@ -296,6 +301,26 @@ fn format_parse_error(error: &ParseError, file_path: &str) -> String {
             out.push_str(&format!(
                 "    2. Or change {} to make this a regular task\n",
                 "type: gate".cyan()
+            ));
+        }
+        ParseError::JotWithGates(task_id) => {
+            out.push_str(&format!(
+                "jot '{}' has gates\n",
+                task_id.yellow()
+            ));
+            out.push('\n');
+            out.push_str(&format!("  {}\n", "Jots are quick ideas that cannot have gates.".dimmed()));
+            out.push_str(&format!("  {}\n", "Use `mont distill` to convert the jot into proper tasks with gates.".dimmed()));
+            out.push('\n');
+            out.push_str(&format!("  {}:\n", "To fix this".bold()));
+            out.push_str(&format!(
+                "    1. Remove the {} field from {}\n",
+                "gates".cyan(),
+                file_path.cyan()
+            ));
+            out.push_str(&format!(
+                "    2. Or change {} to make this a regular task\n",
+                "type: jot".cyan()
             ));
         }
     }
@@ -1054,6 +1079,24 @@ fn format_command_failed(msg: &str) -> String {
 
     out.push_str(&format!("{}: ", "error".red().bold()));
     out.push_str(&format!("{}\n", msg));
+
+    out
+}
+
+fn format_cannot_complete_jot(id: &str) -> String {
+    let mut out = String::new();
+
+    out.push_str(&format!("{}: ", "error".red().bold()));
+    out.push_str(&format!("cannot complete jot '{}'\n", id.yellow()));
+    out.push('\n');
+    out.push_str(&format!("  {}\n", "Jots are quick ideas that must be distilled into tasks before completion.".dimmed()));
+    out.push('\n');
+    out.push_str(&format!("  {}:\n", "To fix this".bold()));
+    out.push_str(&format!(
+        "    1. Distill the jot into tasks: {}\n",
+        format!("mont distill {}", id).cyan()
+    ));
+    out.push_str("    2. Then complete the resulting tasks with 'mont done'\n");
 
     out
 }

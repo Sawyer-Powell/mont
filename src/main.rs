@@ -133,20 +133,20 @@ enum Commands {
         /// After dependency task IDs (comma-separated)
         #[arg(long, value_delimiter = ',')]
         after: Vec<String>,
-        /// Validation task IDs (comma-separated)
-        #[arg(long, value_delimiter = ',')]
-        gate: Vec<String>,
         /// Open in editor after creation
         #[arg(long, short)]
         editor: Option<Option<String>>,
-        /// Resume editing a temp file from a previous failed gate
-        #[arg(long, conflicts_with_all = ["title", "description", "before", "after", "gate"])]
+        /// Resume editing a temp file from a previous failed operation
+        #[arg(long, conflicts_with_all = ["title", "description", "before", "after"])]
         resume: Option<PathBuf>,
     },
     /// Distill a jot into one or more proper tasks
     Distill {
         /// Jot task ID to distill. If not provided, opens interactive picker.
         id: Option<String>,
+        /// YAML-formatted task definitions (bypasses editor workflow)
+        #[arg(long)]
+        tasks: Option<String>,
     },
     /// Show details for a single task
     Show {
@@ -329,7 +329,6 @@ fn run(cli: Cli) -> Result<(), AppError> {
             description,
             before,
             after,
-            gate,
             editor,
             resume,
         } => commands::jot(
@@ -339,17 +338,16 @@ fn run(cli: Cli) -> Result<(), AppError> {
                 description,
                 before,
                 after,
-                gates: gate,
                 editor,
                 resume,
             },
         ),
-        Commands::Distill { id } => {
+        Commands::Distill { id, tasks } => {
             let resolved_id = match id {
                 Some(id) => id,
                 None => pick_task(&ctx.graph(), TaskFilter::Active)?,
             };
-            commands::distill(&ctx, &resolved_id)
+            commands::distill(&ctx, &resolved_id, tasks.as_deref())
         }
         Commands::Show { id, short, editor } => {
             let resolved_id = match id {
