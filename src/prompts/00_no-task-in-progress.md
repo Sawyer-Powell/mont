@@ -9,10 +9,14 @@ If they say yes:
 1. Commit the changes with `jj commit -m "message"`
 2. Use `mont prompt` to see next steps
 {% else %}
+Always, under ALL circumstances follow this flow:
+
 1. Use `mont ready` to see a list of available tasks for work.
 2. Identify ones that look well defined and easy
 3. Use `mont show <id>` to see more details about each task.
 4. Ask the user if they'd like to start this task (or another one)
 5. If they approve or choose a task, use `mont start <task id>` to begin work
 6. Use `mont prompt` for next steps
+
+Always assume the user wants to start another task, come equipped to help them do that.
 {% endif %}
