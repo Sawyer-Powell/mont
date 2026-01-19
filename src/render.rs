@@ -161,49 +161,51 @@ pub fn format_task_line_short(task: &Task, graph: &TaskGraph) -> String {
     format_task_line_impl(task, graph, false)
 }
 
-fn format_task_line_impl(task: &Task, graph: &TaskGraph, show_gate_suffix: bool) -> String {
+fn format_task_line_impl(task: &Task, graph: &TaskGraph, _show_gate_suffix: bool) -> String {
     let is_available = !task.is_complete() && !task.is_gate() && graph::is_available(task, graph);
     let is_in_progress = task.is_in_progress();
     let is_jot = task.is_jot();
 
-    let id_display = if task.is_complete() {
-        task.id.bright_black().bold().to_string()
+    // Format: [type] id title
+    let (type_tag, id_display, title_display) = if task.is_complete() {
+        (
+            "[done]".bright_black().to_string(),
+            task.id.bright_black().bold().to_string(),
+            truncate_title(task.title.as_deref().unwrap_or("")).bright_black().to_string(),
+        )
     } else if task.is_gate() {
-        task.id.purple().bold().to_string()
-    } else if is_jot || is_in_progress {
-        task.id.yellow().bold().to_string()
+        (
+            "[gate]".purple().to_string(),
+            task.id.purple().bold().to_string(),
+            truncate_title(task.title.as_deref().unwrap_or("")).purple().to_string(),
+        )
+    } else if is_jot {
+        (
+            "[jot] ".yellow().to_string(),
+            task.id.yellow().bold().to_string(),
+            truncate_title(task.title.as_deref().unwrap_or("")).yellow().to_string(),
+        )
+    } else if is_in_progress {
+        (
+            "[work]".yellow().to_string(),
+            task.id.yellow().bold().to_string(),
+            truncate_title(task.title.as_deref().unwrap_or("")).yellow().to_string(),
+        )
     } else if is_available {
-        task.id.bright_green().bold().to_string()
+        (
+            "[task]".bright_green().to_string(),
+            task.id.bright_green().bold().to_string(),
+            truncate_title(task.title.as_deref().unwrap_or("")).bright_green().to_string(),
+        )
     } else {
-        task.id.bright_black().bold().to_string()
+        (
+            "[wait]".bright_black().to_string(),
+            task.id.bright_black().bold().to_string(),
+            truncate_title(task.title.as_deref().unwrap_or("")).bright_black().to_string(),
+        )
     };
 
-    let title_raw = task.title.as_deref().unwrap_or("");
-    let title_truncated = truncate_title(title_raw);
-
-    let type_suffix = match task.task_type {
-        TaskType::Jot => format!(" {}", "[jot]".yellow()),
-        TaskType::Task => String::new(),
-        TaskType::Gate => String::new(),
-    };
-
-    let title_formatted = if task.is_complete() {
-        format!("{}{}", title_truncated.bright_black(), type_suffix)
-    } else if task.is_gate() {
-        if show_gate_suffix {
-            format!("{} {}{}", title_truncated, "[gate]".purple(), type_suffix)
-        } else {
-            format!("{}{}", title_truncated.purple(), type_suffix)
-        }
-    } else if is_jot || is_in_progress {
-        format!("{}{}", title_truncated.yellow(), type_suffix)
-    } else if is_available {
-        format!("{}{}", title_truncated.bright_green(), type_suffix)
-    } else {
-        format!("{}{}", title_truncated.bright_black(), type_suffix)
-    };
-
-    format!("{} {}", id_display, title_formatted)
+    format!("{} {} {}", type_tag, id_display, title_display)
 }
 
 /// Truncate a title to fit within MAX_TITLE_LEN.
