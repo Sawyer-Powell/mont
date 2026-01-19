@@ -311,48 +311,57 @@ pub fn claude_ignore(ctx: &MontContext) -> Result<(), AppError> {
 /// Run the `mont claude` command with a specific task.
 /// Validates the task against current state, starts it if needed, then spawns claude.
 pub fn claude(ctx: &MontContext, task_id: &str) -> Result<(), AppError> {
-    let graph = ctx.graph();
+    // Check for uncommitted changes and validate task state
+    // We need to be careful to drop the graph lock before calling start()
+    let (task_exists, task_in_progress, should_start) = {
+        let graph = ctx.graph();
 
-    // Check if the task exists
-    let task = graph
-        .get(task_id)
-        .ok_or_else(|| AppError::TaskNotFound {
-            task_id: task_id.to_string(),
-            tasks_dir: ctx.tasks_dir().to_string_lossy().to_string(),
-        })?;
+        // Check if the task exists
+        let task = graph
+            .get(task_id)
+            .ok_or_else(|| AppError::TaskNotFound {
+                task_id: task_id.to_string(),
+                tasks_dir: ctx.tasks_dir().to_string_lossy().to_string(),
+            })?;
 
-    // Check for uncommitted changes
-    let has_changes = !jj::is_working_copy_empty()
-        .map_err(|e| AppError::JJError(e.to_string()))?;
+        // Check for uncommitted changes
+        let has_changes = !jj::is_working_copy_empty()
+            .map_err(|e| AppError::JJError(e.to_string()))?;
 
-    if has_changes {
-        // Check if the requested task is the one in progress
-        let in_progress_task = graph.values().find(|t| t.is_in_progress());
+        if has_changes {
+            // Check if the requested task is the one in progress
+            let in_progress_task = graph.values().find(|t| t.is_in_progress());
 
-        match in_progress_task {
-            Some(in_progress) if in_progress.id == task_id => {
-                // The requested task is already in progress, proceed
-            }
-            Some(in_progress) => {
-                return Err(AppError::CommandFailed(format!(
-                    "There are uncommitted changes, but task '{}' is in progress (not '{}').\n\
-                     Either commit your changes first, or run:\n  \
-                     mont claude {} (to continue the in-progress task)",
-                    in_progress.id, task_id, in_progress.id
-                )));
-            }
-            None => {
-                return Err(AppError::CommandFailed(
-                    "There are uncommitted changes but no task is in progress.\n\
-                     Either commit your changes first, or run:\n  \
-                     mont claude --ignore (to start anyway)".to_string()
-                ));
+            match in_progress_task {
+                Some(in_progress) if in_progress.id == task_id => {
+                    // The requested task is already in progress, proceed
+                }
+                Some(in_progress) => {
+                    return Err(AppError::CommandFailed(format!(
+                        "There are uncommitted changes, but task '{}' is in progress (not '{}').\n\
+                         Either commit your changes first, or run:\n  \
+                         mont claude {} (to continue the in-progress task)",
+                        in_progress.id, task_id, in_progress.id
+                    )));
+                }
+                None => {
+                    return Err(AppError::CommandFailed(
+                        "There are uncommitted changes but no task is in progress.\n\
+                         Either commit your changes first, or run:\n  \
+                         mont claude --ignore (to start anyway)".to_string()
+                    ));
+                }
             }
         }
-    }
+
+        let should_start = !task.is_in_progress();
+        (true, task.is_in_progress(), should_start)
+    }; // graph lock released here
+
+    let _ = (task_exists, task_in_progress); // suppress unused warnings
 
     // Start the task if it's not already in progress
-    if !task.is_in_progress() {
+    if should_start {
         crate::commands::start(ctx, task_id)?;
     }
 

@@ -211,6 +211,34 @@ impl MontContext {
     ///
     /// Returns a guard that holds a read lock. The graph cannot be
     /// modified while this guard exists.
+    ///
+    /// # Deadlock Warning
+    ///
+    /// You MUST drop this guard before calling any mutating method on
+    /// MontContext (`update`, `insert`, `delete`, `commit`) or any function
+    /// that calls them (like `commands::start`). Use a block scope or explicit
+    /// `drop(graph)` to release the lock before mutation:
+    ///
+    /// ```ignore
+    /// // GOOD: Block scope releases lock automatically
+    /// let should_update = {
+    ///     let graph = ctx.graph();
+    ///     graph.get(id).is_some()
+    /// }; // lock released here
+    /// if should_update {
+    ///     ctx.update(id, task)?;
+    /// }
+    ///
+    /// // GOOD: Explicit drop before mutation
+    /// let graph = ctx.graph();
+    /// let task = graph.get(id).cloned();
+    /// drop(graph);
+    /// ctx.update(id, task.unwrap())?;
+    ///
+    /// // BAD: Deadlock - holding read lock while trying to write
+    /// let graph = ctx.graph();
+    /// ctx.update(id, task)?;  // DEADLOCK!
+    /// ```
     #[allow(clippy::expect_used)] // RwLock poisoning is a bug
     pub fn graph(&self) -> impl std::ops::Deref<Target = TaskGraph> + '_ {
         struct GraphGuard<'a>(std::sync::RwLockReadGuard<'a, ContextInner>);
