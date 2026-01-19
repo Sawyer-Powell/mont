@@ -14,7 +14,6 @@ mod transaction;
 pub(crate) mod validations;
 mod view;
 
-use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::RwLock;
 
@@ -235,13 +234,33 @@ impl MontContext {
         self.inner.read().expect("lock poisoned").config.clone()
     }
 
-    /// Get all valid gate IDs for a task (task's gates + default gates from config).
+    /// Get all valid gate IDs for a task (default gates from config + task's gates).
+    ///
+    /// Returns gates in order: default gates first (in config.yml order),
+    /// then task-specific gates (in task definition order).
+    /// Duplicates are removed, keeping the first occurrence.
     #[allow(clippy::expect_used)] // RwLock poisoning is a bug
-    pub fn all_gate_ids(&self, task: &Task) -> HashSet<String> {
+    pub fn all_gate_ids(&self, task: &Task) -> Vec<String> {
         let inner = self.inner.read().expect("lock poisoned");
-        let task_gate_ids = task.gate_ids().map(|s| s.to_string());
-        let default_gate_ids = inner.config.default_gates.iter().cloned();
-        task_gate_ids.chain(default_gate_ids).collect()
+        let mut seen = std::collections::HashSet::new();
+        let mut result = Vec::new();
+
+        // Default gates first (from config.yml order)
+        for gate_id in &inner.config.default_gates {
+            if seen.insert(gate_id.clone()) {
+                result.push(gate_id.clone());
+            }
+        }
+
+        // Then task-specific gates (in task definition order)
+        for gate_id in task.gate_ids() {
+            let gate_id = gate_id.to_string();
+            if seen.insert(gate_id.clone()) {
+                result.push(gate_id);
+            }
+        }
+
+        result
     }
 
     /// Delete a task and remove all references to it from other tasks.

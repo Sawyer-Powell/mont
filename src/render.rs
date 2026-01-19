@@ -209,7 +209,7 @@ pub fn format_gate_status(gate_id: &str, status: GateStatus) -> (String, String)
 /// Print a gates section for a task.
 /// Shows all gates (task gates + default gates) with their status.
 /// Does nothing for gate-type tasks.
-pub fn print_gates_section(task: &Task, all_gate_ids: &HashSet<String>, indent: &str, label_width: usize) {
+pub fn print_gates_section(task: &Task, all_gate_ids: &[String], indent: &str, label_width: usize) {
     if task.is_gate() {
         return;
     }
@@ -225,14 +225,13 @@ pub fn print_gates_section(task: &Task, all_gate_ids: &HashSet<String>, indent: 
         .map(|g| (g.id.as_str(), g.status))
         .collect();
 
-    // Sort for consistent output
-    let mut gates: Vec<&str> = all_gate_ids.iter().map(|s| s.as_str()).collect();
-    gates.sort();
+    // Gates are already in correct order from all_gate_ids():
+    // default gates first (config.yml order), then task-specific gates
 
-    for (i, gate_id) in gates.iter().enumerate() {
+    for (i, gate_id) in all_gate_ids.iter().enumerate() {
         let label = if i == 0 { "Gates" } else { "" };
         let status = gate_status_map
-            .get(*gate_id)
+            .get(gate_id.as_str())
             .copied()
             .unwrap_or(GateStatus::Pending);
         let (icon, gate_display) = format_gate_status(gate_id, status);

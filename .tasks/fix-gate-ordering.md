@@ -1,6 +1,10 @@
 ---
 id: fix-gate-ordering
 title: Fix gate ordering issue when using mont prompt
+status: complete
+gates:
+  - interview-validator: passed
+  - test: passed
 ---
 
 Right now, we don't enforce ordering well on gates when using mont prompt.
