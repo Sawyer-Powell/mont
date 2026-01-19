@@ -1,9 +1,108 @@
 //! Shared utilities for commands, particularly temp file management.
 
+use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 
 use crate::error_fmt::{AppError, IoResultExt, ParseResultExt};
-use crate::{parse, resolve_editor, MontContext, Task};
+use crate::{parse, resolve_editor, MontContext, Task, TaskGraph};
+
+/// Pick a task interactively using fzf.
+///
+/// Returns the selected task ID, or an error if:
+/// - fzf is not installed
+/// - User cancelled the picker
+/// - No active tasks exist
+pub fn pick_task(graph: &TaskGraph) -> Result<String, AppError> {
+    // Check if fzf is installed
+    if Command::new("fzf")
+        .arg("--version")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_err()
+    {
+        return Err(AppError::FzfNotFound);
+    }
+
+    // Get all active (non-completed) tasks with display info
+    let mut tasks: Vec<_> = graph
+        .values()
+        .filter(|t| !t.is_complete())
+        .collect();
+
+    if tasks.is_empty() {
+        return Err(AppError::NoActiveTasks);
+    }
+
+    tasks.sort_by(|a, b| a.id.cmp(&b.id));
+
+    // Calculate column widths for aligned table
+    let max_id_len = tasks.iter().map(|t| t.id.len()).max().unwrap_or(0);
+
+    // Build the input for fzf as aligned table: [type]  id  title
+    let lines: Vec<String> = tasks
+        .iter()
+        .map(|t| {
+            let type_tag = match t.task_type {
+                crate::TaskType::Task => "[task]",
+                crate::TaskType::Jot => "[jot] ",
+                crate::TaskType::Gate => "[gate]",
+            };
+            let title = t.title.as_deref().unwrap_or("");
+            format!("{}  {:max_id_len$}  {}", type_tag, t.id, title)
+        })
+        .collect();
+
+    let input = lines.join("\n");
+
+    // Run fzf with preview
+    // Use {2} to extract the ID (second field) for the preview command
+    let mut child = Command::new("fzf")
+        .args([
+            "--preview", "mont show {2}",
+            "--preview-window", "right:60%:wrap",
+            "--height", "80%",
+            "--layout", "reverse",
+            "--border",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .with_context("failed to spawn fzf")?;
+
+    // Write task lines to fzf's stdin
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(input.as_bytes())
+            .with_context("failed to write to fzf stdin")?;
+    }
+
+    let output = child.wait_with_output()
+        .with_context("failed to wait for fzf")?;
+
+    if !output.status.success() {
+        return Err(AppError::PickerCancelled);
+    }
+
+    let selected_line = String::from_utf8_lossy(&output.stdout)
+        .trim()
+        .to_string();
+
+    if selected_line.is_empty() {
+        return Err(AppError::PickerCancelled);
+    }
+
+    // Extract the ID from the selected line: "[type] id - title"
+    // The ID is the second space-separated field
+    let id = selected_line
+        .split_whitespace()
+        .nth(1)
+        .ok_or(AppError::PickerCancelled)?
+        .to_string();
+
+    Ok(id)
+}
 
 /// Create a temp file containing one or more tasks.
 ///

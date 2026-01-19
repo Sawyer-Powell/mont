@@ -49,6 +49,12 @@ pub enum AppError {
     NotAJot(String),
     /// Graph read error (loading tasks)
     GraphRead(GraphReadError),
+    /// fzf not found
+    FzfNotFound,
+    /// User cancelled picker
+    PickerCancelled,
+    /// No active tasks to pick from
+    NoActiveTasks,
 }
 
 impl fmt::Display for AppError {
@@ -96,6 +102,15 @@ impl fmt::Display for AppError {
             }
             AppError::GraphRead(e) => {
                 write!(f, "{}", format_graph_read_error(e))
+            }
+            AppError::FzfNotFound => {
+                write!(f, "{}", format_fzf_not_found())
+            }
+            AppError::PickerCancelled => {
+                write!(f, "{}", format_picker_cancelled())
+            }
+            AppError::NoActiveTasks => {
+                write!(f, "{}", format_no_active_tasks())
             }
         }
     }
@@ -695,6 +710,45 @@ fn format_graph_read_error(error: &GraphReadError) -> String {
     for val_err in &error.validation_errors {
         out.push_str(&format!("  {} {:?}\n", "•".red(), val_err));
     }
+
+    out
+}
+
+fn format_fzf_not_found() -> String {
+    let mut out = String::new();
+
+    out.push_str(&format!("{}: ", "error".red().bold()));
+    out.push_str("fzf not found\n");
+    out.push('\n');
+    out.push_str(&format!("  {}\n", "The interactive picker requires fzf to be installed.".dimmed()));
+    out.push('\n');
+    out.push_str(&format!("  {}:\n", "To fix this".bold()));
+    out.push_str(&format!(
+        "    1. Install fzf: {}\n",
+        "brew install fzf".cyan()
+    ));
+    out.push_str("    2. Or provide a task ID directly as an argument\n");
+
+    out
+}
+
+fn format_picker_cancelled() -> String {
+    "Cancelled\n".to_string()
+}
+
+fn format_no_active_tasks() -> String {
+    let mut out = String::new();
+
+    out.push_str(&format!("{}: ", "error".red().bold()));
+    out.push_str("no active tasks\n");
+    out.push('\n');
+    out.push_str(&format!("  {}\n", "There are no non-completed tasks to pick from.".dimmed()));
+    out.push('\n');
+    out.push_str(&format!("  {}:\n", "To fix this".bold()));
+    out.push_str(&format!(
+        "    Create a new task: {}\n",
+        "mont new --title \"My task\"".cyan()
+    ));
 
     out
 }

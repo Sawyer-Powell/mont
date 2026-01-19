@@ -2,6 +2,7 @@ use clap::{Args, Parser, Subcommand};
 use std::path::PathBuf;
 
 use mont::commands;
+use mont::commands::shared::pick_task;
 use mont::error_fmt::AppError;
 use mont::{MontContext, TaskType};
 
@@ -67,8 +68,8 @@ enum Commands {
     },
     /// Edit an existing task
     Edit {
-        /// Task ID to edit (original ID when using --resume)
-        id: String,
+        /// Task ID to edit (original ID when using --resume). If not provided, opens interactive picker.
+        id: Option<String>,
         /// New task ID (renames the task and updates references)
         #[arg(long)]
         new_id: Option<String>,
@@ -80,8 +81,8 @@ enum Commands {
     },
     /// Delete a task and remove all references to it
     Delete {
-        /// Task ID to delete
-        id: String,
+        /// Task ID to delete. If not provided, opens interactive picker.
+        id: Option<String>,
         /// Force deletion without confirmation prompt
         #[arg(long, short)]
         force: bool,
@@ -112,13 +113,13 @@ enum Commands {
     },
     /// Distill a jot into one or more proper tasks
     Distill {
-        /// Jot task ID to distill
-        id: String,
+        /// Jot task ID to distill. If not provided, opens interactive picker.
+        id: Option<String>,
     },
     /// Show details for a single task
     Show {
-        /// Task ID to show
-        id: String,
+        /// Task ID to show. If not provided, opens interactive picker.
+        id: Option<String>,
         /// Show shortened version (omit description)
         #[arg(long, short)]
         short: bool,
@@ -143,16 +144,17 @@ fn parse_task_type(s: &str) -> Result<TaskType, String> {
 fn main() {
     let cli = Cli::parse();
 
-    // Load context once for all commands
-    let ctx = match MontContext::load(PathBuf::from(".tasks")) {
-        Ok(ctx) => ctx,
-        Err(e) => {
-            eprint!("{}", AppError::from(e));
-            std::process::exit(1);
-        }
-    };
+    if let Err(e) = run(cli) {
+        eprint!("{}", e);
+        std::process::exit(1);
+    }
+}
 
-    let result: Result<(), AppError> = match cli.command {
+fn run(cli: Cli) -> Result<(), AppError> {
+    // Load context once for all commands
+    let ctx = MontContext::load(PathBuf::from(".tasks"))?;
+
+    match cli.command {
         Commands::List { show_completed } => {
             commands::list(&ctx, show_completed);
             Ok(())
@@ -181,22 +183,34 @@ fn main() {
             new_id,
             fields,
             resume,
-        } => commands::edit(
-            &ctx,
-            commands::edit::EditArgs {
-                id,
-                new_id,
-                title: fields.title,
-                description: fields.description,
-                before: fields.before,
-                after: fields.after,
-                validations: fields.validation,
-                task_type: fields.r#type,
-                editor: fields.editor,
-                resume,
-            },
-        ),
-        Commands::Delete { id, force } => commands::delete(&ctx, &id, force),
+        } => {
+            let resolved_id = match id {
+                Some(id) => id,
+                None => pick_task(&ctx.graph())?,
+            };
+            commands::edit(
+                &ctx,
+                commands::edit::EditArgs {
+                    id: resolved_id,
+                    new_id,
+                    title: fields.title,
+                    description: fields.description,
+                    before: fields.before,
+                    after: fields.after,
+                    validations: fields.validation,
+                    task_type: fields.r#type,
+                    editor: fields.editor,
+                    resume,
+                },
+            )
+        }
+        Commands::Delete { id, force } => {
+            let resolved_id = match id {
+                Some(id) => id,
+                None => pick_task(&ctx.graph())?,
+            };
+            commands::delete(&ctx, &resolved_id, force)
+        }
         Commands::Jot {
             title,
             description,
@@ -217,13 +231,20 @@ fn main() {
                 resume,
             },
         ),
-        Commands::Distill { id } => commands::distill(&ctx, &id),
-        Commands::Show { id, short, editor } => commands::show(&ctx, &id, short, editor),
-    };
-
-    if let Err(e) = result {
-        eprint!("{}", e);
-        std::process::exit(1);
+        Commands::Distill { id } => {
+            let resolved_id = match id {
+                Some(id) => id,
+                None => pick_task(&ctx.graph())?,
+            };
+            commands::distill(&ctx, &resolved_id)
+        }
+        Commands::Show { id, short, editor } => {
+            let resolved_id = match id {
+                Some(id) => id,
+                None => pick_task(&ctx.graph())?,
+            };
+            commands::show(&ctx, &resolved_id, short, editor)
+        }
     }
 }
 
