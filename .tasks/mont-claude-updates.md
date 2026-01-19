@@ -1,6 +1,10 @@
 ---
 id: mont-claude-updates
 title: Updates to mont llm claude
+status: complete
+gates:
+  - interview-validator: passed
+  - test: passed
 ---
 
 Let's do a few updates here:

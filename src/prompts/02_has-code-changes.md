@@ -31,5 +31,5 @@ Once all criteria are met for verification, mark the gate as passed:
 `mont unlock {{ task_id }} --passed {{ gate_id }}`
 
 Then, get the next step using
-`mont llm prompt`
+`mont prompt`
 {% endif %}

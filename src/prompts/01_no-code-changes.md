@@ -20,4 +20,4 @@ No code changes have been made yet. Read the task description below and begin im
 
 1. Implement the task as described
 2. Keep changes focused and minimal
-3. When implementation is complete, run `mont llm prompt` for next steps
+3. When implementation is complete, run `mont prompt` for next steps

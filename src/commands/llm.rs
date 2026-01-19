@@ -235,7 +235,7 @@ fn render_in_progress_prompt(
     }
 }
 
-/// Run the `mont llm prompt` command.
+/// Run the `mont prompt` command.
 pub fn prompt(ctx: &MontContext) -> Result<(), AppError> {
     let state = detect_state(ctx)?;
     let prompt = generate_prompt(ctx, &state)?;
@@ -243,31 +243,68 @@ pub fn prompt(ctx: &MontContext) -> Result<(), AppError> {
     Ok(())
 }
 
-/// Run the `mont llm start` command.
-pub fn start(ctx: &MontContext, task_id: &str) -> Result<(), AppError> {
-    // First, start the task using the regular start command
-    crate::commands::start(ctx, task_id)?;
-
-    // Then generate and print the initial prompt
-    let state = detect_state(ctx)?;
-    let prompt = generate_prompt(ctx, &state)?;
-
-    println!();
-    print!("{}", prompt);
-
-    Ok(())
-}
-
 /// System prompt for Claude Code sessions.
-const CLAUDE_SYSTEM_PROMPT: &str = r#"After completing your current work, always run `mont llm prompt` to get the next task or instructions. This ensures you stay synchronized with the task graph and receive appropriate guidance for your next steps."#;
+const CLAUDE_SYSTEM_PROMPT: &str = r#"After completing your current work, always run `mont prompt` to get the next task or instructions. This ensures you stay synchronized with the task graph and receive appropriate guidance for your next steps."#;
 
-/// Run the `mont llm claude` command.
+/// Run the `mont claude` command.
 /// Launches Claude Code with a generated prompt based on current task state.
-pub fn claude(ctx: &MontContext) -> Result<(), AppError> {
+///
+/// - `task_id`: The task to work on
+/// - `ignore`: If true, bypass the uncommitted changes validation
+pub fn claude(ctx: &MontContext, task_id: &str, ignore: bool) -> Result<(), AppError> {
+    let graph = ctx.graph();
+
+    // Check if the task exists
+    let task = graph
+        .get(task_id)
+        .ok_or_else(|| AppError::TaskNotFound {
+            task_id: task_id.to_string(),
+            tasks_dir: ctx.tasks_dir().to_string_lossy().to_string(),
+        })?;
+
+    // Check for uncommitted changes
+    let has_changes = !jj::is_working_copy_empty()
+        .map_err(|e| AppError::JJError(e.to_string()))?;
+
+    if has_changes && !ignore {
+        // Check if the requested task is the one in progress
+        let in_progress_task = graph.values().find(|t| t.is_in_progress());
+
+        match in_progress_task {
+            Some(in_progress) if in_progress.id == task_id => {
+                // The requested task is already in progress, proceed
+            }
+            Some(in_progress) => {
+                return Err(AppError::CommandFailed(format!(
+                    "There are uncommitted changes, but task '{}' is in progress (not '{}').\n\
+                     Either commit your changes first, or run:\n  \
+                     mont claude {} (to continue the in-progress task)\n  \
+                     mont claude {} --ignore (to start anyway)",
+                    in_progress.id, task_id, in_progress.id, task_id
+                )));
+            }
+            None => {
+                return Err(AppError::CommandFailed(format!(
+                    "There are uncommitted changes but no task is in progress.\n\
+                     Either commit your changes first, or run:\n  \
+                     mont claude {} --ignore (to start anyway)",
+                    task_id
+                )));
+            }
+        }
+    }
+
+    // Start the task if it's not already in progress
+    if !task.is_in_progress() {
+        crate::commands::start(ctx, task_id)?;
+    }
+
+    // Generate prompt based on current state
     let state = detect_state(ctx)?;
     let prompt = generate_prompt(ctx, &state)?;
 
     let status = std::process::Command::new("claude")
+        .arg("--permission-mode=acceptEdits")
         .arg("--append-system-prompt")
         .arg(CLAUDE_SYSTEM_PROMPT)
         .arg(&prompt)

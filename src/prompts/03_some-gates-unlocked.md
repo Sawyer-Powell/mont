@@ -21,5 +21,5 @@ Gates remaining: {{ gates_pending }}
 Once verified, mark the gate as passed:
 `mont unlock {{ task_id }} --passed {{ gate_id }}`
 
-Once the gate is passed, run `mont llm prompt` again.
+Once the gate is passed, run `mont prompt` again.
 {% endif %}
