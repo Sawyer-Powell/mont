@@ -1,6 +1,10 @@
 ---
 id: replace-mont-new
 title: Rename mont new to mont task and mont gate
+status: complete
+gates:
+  - interview-validator: passed
+  - test: passed
 ---
 
 Mont new should no longer be used, instead we should completely remove it (breaking change)
