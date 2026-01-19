@@ -5,7 +5,7 @@ before:
   - display-refactor
 after:
   - display-symbols
-validations:
+gates:
   - test
 status: complete
 ---

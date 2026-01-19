@@ -14,13 +14,14 @@ mod transaction;
 pub(crate) mod validations;
 mod view;
 
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::RwLock;
 
 // Re-export public types
 pub use graph::{GraphReadError, TaskGraph};
 pub use settings::{GlobalConfig, SettingsError};
-pub use task::{parse, ParseError, Status, Task, TaskType, ValidationItem, ValidationStatus};
+pub use task::{parse, ParseError, Status, Task, TaskType, GateItem, GateStatus};
 pub use transaction::{Op, Transaction};
 pub use validations::ValidationError;
 pub use view::{GraphView, ValidationView};
@@ -228,6 +229,14 @@ impl MontContext {
         self.inner.read().expect("lock poisoned").config.clone()
     }
 
+    /// Get all valid gate IDs for a task (task's gates + default gates from config).
+    pub fn all_gate_ids(&self, task: &Task) -> HashSet<String> {
+        let inner = self.inner.read().expect("lock poisoned");
+        let task_gate_ids = task.gate_ids().map(|s| s.to_string());
+        let default_gate_ids = inner.config.default_gates.iter().cloned();
+        task_gate_ids.chain(default_gate_ids).collect()
+    }
+
     /// Delete a task and remove all references to it from other tasks.
     ///
     /// Returns an error if the task doesn't exist.
@@ -368,7 +377,7 @@ mod tests {
             id: id.to_string(),
             before: vec![],
             after: vec![],
-            validations: vec![],
+            gates: vec![],
             title: Some(format!("{} title", id)),
             status: None,
             task_type: TaskType::Task,

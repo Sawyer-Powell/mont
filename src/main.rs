@@ -2,7 +2,7 @@ use clap::{Args, Parser, Subcommand};
 use std::path::PathBuf;
 
 use mont::commands;
-use mont::commands::shared::pick_task;
+use mont::commands::shared::{pick_in_progress_task, pick_task};
 use mont::error_fmt::AppError;
 use mont::{MontContext, TaskType};
 
@@ -11,7 +11,7 @@ use mont::{MontContext, TaskType};
 #[command(about = "Task management and agent coordination")]
 struct Cli {
     #[command(subcommand)]
-    command: Commands,
+    command: Option<Commands>,
 }
 
 /// Shared task field arguments used by both `new` and `edit` commands
@@ -29,9 +29,9 @@ struct TaskFields {
     /// After dependency task IDs (comma-separated or repeat flag)
     #[arg(long, value_delimiter = ',')]
     after: Vec<String>,
-    /// Validation task IDs (comma-separated or repeat flag)
+    /// Gate task IDs (comma-separated or repeat flag)
     #[arg(long, value_delimiter = ',')]
-    validation: Vec<String>,
+    gate: Vec<String>,
     /// Task type (feature, bug)
     #[arg(long, short = 'T', value_parser = parse_task_type)]
     r#type: Option<TaskType>,
@@ -42,6 +42,8 @@ struct TaskFields {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Show status of in-progress tasks (default command)
+    Status,
     /// List all tasks in the task graph
     List {
         /// Show completed tasks (hidden by default)
@@ -62,8 +64,8 @@ enum Commands {
         id: Option<String>,
         #[command(flatten)]
         fields: TaskFields,
-        /// Resume editing a temp file from a previous failed validation
-        #[arg(long, conflicts_with_all = ["id", "title", "description", "before", "after", "validation", "type"])]
+        /// Resume editing a temp file from a previous failed gate
+        #[arg(long, conflicts_with_all = ["id", "title", "description", "before", "after", "gate", "type"])]
         resume: Option<PathBuf>,
     },
     /// Edit an existing task
@@ -75,8 +77,8 @@ enum Commands {
         new_id: Option<String>,
         #[command(flatten)]
         fields: TaskFields,
-        /// Resume editing a temp file from a previous failed validation
-        #[arg(long, conflicts_with_all = ["new_id", "title", "description", "before", "after", "validation", "type"])]
+        /// Resume editing a temp file from a previous failed gate
+        #[arg(long, conflicts_with_all = ["new_id", "title", "description", "before", "after", "gate", "type"])]
         resume: Option<PathBuf>,
     },
     /// Delete a task and remove all references to it
@@ -103,12 +105,12 @@ enum Commands {
         after: Vec<String>,
         /// Validation task IDs (comma-separated)
         #[arg(long, value_delimiter = ',')]
-        validation: Vec<String>,
+        gate: Vec<String>,
         /// Open in editor after creation
         #[arg(long, short)]
         editor: Option<Option<String>>,
-        /// Resume editing a temp file from a previous failed validation
-        #[arg(long, conflicts_with_all = ["title", "description", "before", "after", "validation"])]
+        /// Resume editing a temp file from a previous failed gate
+        #[arg(long, conflicts_with_all = ["title", "description", "before", "after", "gate"])]
         resume: Option<PathBuf>,
     },
     /// Distill a jot into one or more proper tasks
@@ -126,6 +128,25 @@ enum Commands {
         /// Open in editor (optionally specify editor command)
         #[arg(long, short)]
         editor: Option<Option<String>>,
+    },
+    /// Mark gates as passed or skipped
+    Unlock {
+        /// Task ID. If not provided, opens interactive picker.
+        id: Option<String>,
+        /// Gates to mark as passed (comma-separated)
+        #[arg(long, short, value_delimiter = ',')]
+        passed: Vec<String>,
+        /// Gates to mark as skipped (comma-separated)
+        #[arg(long, short, value_delimiter = ',')]
+        skipped: Vec<String>,
+    },
+    /// Reset gates back to pending
+    Lock {
+        /// Task ID. If not provided, opens interactive picker.
+        id: Option<String>,
+        /// Gates to reset to pending (comma-separated)
+        #[arg(long, short, value_delimiter = ',')]
+        gates: Vec<String>,
     },
 }
 
@@ -154,7 +175,14 @@ fn run(cli: Cli) -> Result<(), AppError> {
     // Load context once for all commands
     let ctx = MontContext::load(PathBuf::from(".tasks"))?;
 
-    match cli.command {
+    // Default to Status if no command is provided
+    let command = cli.command.unwrap_or(Commands::Status);
+
+    match command {
+        Commands::Status => {
+            commands::status(&ctx);
+            Ok(())
+        }
         Commands::List { show_completed } => {
             commands::list(&ctx, show_completed);
             Ok(())
@@ -172,7 +200,7 @@ fn run(cli: Cli) -> Result<(), AppError> {
                 description: fields.description,
                 before: fields.before,
                 after: fields.after,
-                validations: fields.validation,
+                gates: fields.gate,
                 task_type: fields.r#type,
                 editor: fields.editor,
                 resume,
@@ -197,7 +225,7 @@ fn run(cli: Cli) -> Result<(), AppError> {
                     description: fields.description,
                     before: fields.before,
                     after: fields.after,
-                    validations: fields.validation,
+                    gates: fields.gate,
                     task_type: fields.r#type,
                     editor: fields.editor,
                     resume,
@@ -216,7 +244,7 @@ fn run(cli: Cli) -> Result<(), AppError> {
             description,
             before,
             after,
-            validation,
+            gate,
             editor,
             resume,
         } => commands::jot(
@@ -226,7 +254,7 @@ fn run(cli: Cli) -> Result<(), AppError> {
                 description,
                 before,
                 after,
-                validations: validation,
+                gates: gate,
                 editor,
                 resume,
             },
@@ -244,6 +272,33 @@ fn run(cli: Cli) -> Result<(), AppError> {
                 None => pick_task(&ctx.graph())?,
             };
             commands::show(&ctx, &resolved_id, short, editor)
+        }
+        Commands::Unlock { id, passed, skipped } => {
+            let resolved_id = match id {
+                Some(id) => id,
+                None => pick_in_progress_task(&ctx.graph())?,
+            };
+            commands::unlock(
+                &ctx,
+                commands::unlock::UnlockArgs {
+                    id: resolved_id,
+                    passed,
+                    skipped,
+                },
+            )
+        }
+        Commands::Lock { id, gates } => {
+            let resolved_id = match id {
+                Some(id) => id,
+                None => pick_in_progress_task(&ctx.graph())?,
+            };
+            commands::unlock::lock(
+                &ctx,
+                commands::unlock::LockArgs {
+                    id: resolved_id,
+                    gates,
+                },
+            )
         }
     }
 }
@@ -272,7 +327,7 @@ mod tests {
             description: None,
             before: vec![],
             after: vec![],
-            validations: vec![],
+            gates: vec![],
             task_type: None,
             editor: None,
             resume: None,
@@ -300,7 +355,7 @@ mod tests {
             description: None,
             before: vec![],
             after: vec![],
-            validations: vec![],
+            gates: vec![],
             task_type: None,
             editor: None,
             resume: None,
@@ -314,7 +369,7 @@ mod tests {
             description: None,
             before: vec![],
             after: vec![],
-            validations: vec![],
+            gates: vec![],
             task_type: None,
             editor: None,
             resume: None,
@@ -335,7 +390,7 @@ mod tests {
             description: None,
             before: vec![],
             after: vec![],
-            validations: vec![],
+            gates: vec![],
             task_type: None,
             editor: None,
             resume: None,
@@ -350,7 +405,7 @@ mod tests {
             description: None,
             before: vec![],
             after: vec![],
-            validations: vec![],
+            gates: vec![],
             task_type: None,
             editor: None,
             resume: None,
@@ -373,7 +428,7 @@ mod tests {
             description: None,
             before: vec![],
             after: vec![],
-            validations: vec![],
+            gates: vec![],
             task_type: None,
             editor: None,
             resume: None,
@@ -387,7 +442,7 @@ mod tests {
             description: None,
             before: vec!["parent-task".to_string()],
             after: vec![],
-            validations: vec![],
+            gates: vec![],
             task_type: None,
             editor: None,
             resume: None,
@@ -402,7 +457,7 @@ mod tests {
             description: None,
             before: vec![],
             after: vec![],
-            validations: vec![],
+            gates: vec![],
             task_type: None,
             editor: None,
             resume: None,

@@ -6,7 +6,7 @@ before:
 after:
   - display-layout
 status: complete
-validations:
+gates:
   - test
 ---
 

@@ -14,6 +14,24 @@ use crate::{parse, resolve_editor, MontContext, Task, TaskGraph};
 /// - User cancelled the picker
 /// - No active tasks exist
 pub fn pick_task(graph: &TaskGraph) -> Result<String, AppError> {
+    pick_task_filtered(graph, |t| !t.is_complete())
+}
+
+/// Pick an in-progress task interactively using fzf.
+///
+/// Returns the selected task ID, or an error if:
+/// - fzf is not installed
+/// - User cancelled the picker
+/// - No in-progress tasks exist
+pub fn pick_in_progress_task(graph: &TaskGraph) -> Result<String, AppError> {
+    pick_task_filtered(graph, |t| t.is_in_progress())
+}
+
+/// Pick a task interactively using fzf with a custom filter.
+fn pick_task_filtered<F>(graph: &TaskGraph, filter: F) -> Result<String, AppError>
+where
+    F: Fn(&Task) -> bool,
+{
     // Check if fzf is installed
     if Command::new("fzf")
         .arg("--version")
@@ -25,10 +43,10 @@ pub fn pick_task(graph: &TaskGraph) -> Result<String, AppError> {
         return Err(AppError::FzfNotFound);
     }
 
-    // Get all active (non-completed) tasks with display info
+    // Get filtered tasks
     let mut tasks: Vec<_> = graph
         .values()
-        .filter(|t| !t.is_complete())
+        .filter(|t| filter(t))
         .collect();
 
     if tasks.is_empty() {
@@ -405,7 +423,7 @@ mod tests {
             description: "Test description".to_string(),
             before: vec![],
             after: vec![],
-            validations: vec![],
+            gates: vec![],
             task_type: TaskType::Task,
             status: None,
             deleted: false,
@@ -431,7 +449,7 @@ mod tests {
                 description: "First description".to_string(),
                 before: vec![],
                 after: vec![],
-                validations: vec![],
+                gates: vec![],
                 task_type: TaskType::Task,
                 status: None,
                 deleted: false,
@@ -442,7 +460,7 @@ mod tests {
                 description: "Second description".to_string(),
                 before: vec![],
                 after: vec!["task-one".to_string()],
-                validations: vec![],
+                gates: vec![],
                 task_type: TaskType::Task,
                 status: None,
                 deleted: false,
@@ -468,7 +486,7 @@ mod tests {
             description: String::new(),
             before: vec![],
             after: vec![],
-            validations: vec![],
+            gates: vec![],
             task_type: TaskType::Task,
             status: None,
             deleted: false,

@@ -92,7 +92,7 @@ fn validate_task_in_view<V: GraphView>(task: &Task, view: &V) -> Result<(), Vali
         }
     }
 
-    for validation in &task.validations {
+    for validation in &task.gates {
         let Some(gate) = view.get(&validation.id) else {
             return Err(ValidationError::ValidationNotFound {
                 task_id: task.id.clone(),
@@ -170,14 +170,14 @@ fn dfs_cycle<V: GraphView>(view: &V, task_id: &str, colors: &mut HashMap<String,
 mod tests {
     use super::*;
     use crate::context::graph::TaskGraph;
-    use crate::context::task::{TaskType, ValidationItem, ValidationStatus};
+    use crate::context::task::{TaskType, GateItem, GateStatus};
 
     fn make_task(id: &str) -> Task {
         Task {
             id: id.to_string(),
             before: vec![],
             after: vec![],
-            validations: vec![],
+            gates: vec![],
             title: None,
             status: None,
             task_type: TaskType::Task,
@@ -191,7 +191,7 @@ mod tests {
             id: id.to_string(),
             before: vec![],
             after: vec![],
-            validations: vec![],
+            gates: vec![],
             title: None,
             status: None,
             task_type: TaskType::Gate,
@@ -206,9 +206,9 @@ mod tests {
         let gate = make_gate("gate");
         let mut task = make_task("task");
         task.before = vec!["before-target".to_string()];
-        task.validations = vec![ValidationItem {
+        task.gates = vec![GateItem {
             id: "gate".to_string(),
-            status: ValidationStatus::Pending,
+            status: GateStatus::Pending,
         }];
 
         let mut graph = TaskGraph::new();
@@ -361,9 +361,9 @@ mod tests {
         gate.deleted = true;
 
         let mut task = make_task("task");
-        task.validations = vec![ValidationItem {
+        task.gates = vec![GateItem {
             id: "gate".to_string(),
-            status: ValidationStatus::Pending,
+            status: GateStatus::Pending,
         }];
 
         let mut graph = TaskGraph::new();

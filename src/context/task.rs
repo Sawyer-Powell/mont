@@ -21,7 +21,7 @@ pub enum Status {
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
-pub enum ValidationStatus {
+pub enum GateStatus {
     #[default]
     Pending,
     Passed,
@@ -30,49 +30,49 @@ pub enum ValidationStatus {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ValidationItem {
+pub struct GateItem {
     pub id: String,
-    pub status: ValidationStatus,
+    pub status: GateStatus,
 }
 
-impl<'de> Deserialize<'de> for ValidationItem {
+impl<'de> Deserialize<'de> for GateItem {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
         use serde::de::{self, MapAccess, Visitor};
 
-        struct ValidationItemVisitor;
+        struct GateItemVisitor;
 
-        impl<'de> Visitor<'de> for ValidationItemVisitor {
-            type Value = ValidationItem;
+        impl<'de> Visitor<'de> for GateItemVisitor {
+            type Value = GateItem;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
                 formatter.write_str("a string or a map with {id: status}")
             }
 
-            fn visit_str<E>(self, value: &str) -> Result<ValidationItem, E>
+            fn visit_str<E>(self, value: &str) -> Result<GateItem, E>
             where
                 E: de::Error,
             {
-                Ok(ValidationItem {
+                Ok(GateItem {
                     id: value.to_string(),
-                    status: ValidationStatus::Pending,
+                    status: GateStatus::Pending,
                 })
             }
 
-            fn visit_map<M>(self, mut map: M) -> Result<ValidationItem, M::Error>
+            fn visit_map<M>(self, mut map: M) -> Result<GateItem, M::Error>
             where
                 M: MapAccess<'de>,
             {
-                let Some((id, status)) = map.next_entry::<String, ValidationStatus>()? else {
+                let Some((id, status)) = map.next_entry::<String, GateStatus>()? else {
                     return Err(de::Error::custom("expected a single key-value pair"));
                 };
-                Ok(ValidationItem { id, status })
+                Ok(GateItem { id, status })
             }
         }
 
-        deserializer.deserialize_any(ValidationItemVisitor)
+        deserializer.deserialize_any(GateItemVisitor)
     }
 }
 
@@ -98,7 +98,7 @@ pub struct Task {
     #[serde(default)]
     pub after: Vec<String>,
     #[serde(default)]
-    pub validations: Vec<ValidationItem>,
+    pub gates: Vec<GateItem>,
     pub title: Option<String>,
     /// Task status: None means pending (ready if no blockers), Some(status) for explicit state
     #[serde(default)]
@@ -113,8 +113,8 @@ pub struct Task {
 }
 
 impl Task {
-    pub fn validation_ids(&self) -> impl Iterator<Item = &str> {
-        self.validations.iter().map(|v| v.id.as_str())
+    pub fn gate_ids(&self) -> impl Iterator<Item = &str> {
+        self.gates.iter().map(|v| v.id.as_str())
     }
 
     /// Returns true if this task is a gate (validator)
@@ -188,20 +188,20 @@ impl Task {
             }
         }
 
-        if !self.validations.is_empty() {
-            content.push_str("validations:\n");
-            for val in &self.validations {
+        if !self.gates.is_empty() {
+            content.push_str("gates:\n");
+            for val in &self.gates {
                 match val.status {
-                    ValidationStatus::Pending => {
+                    GateStatus::Pending => {
                         content.push_str(&format!("  - {}\n", val.id));
                     }
-                    ValidationStatus::Passed => {
+                    GateStatus::Passed => {
                         content.push_str(&format!("  - {}: passed\n", val.id));
                     }
-                    ValidationStatus::Failed => {
+                    GateStatus::Failed => {
                         content.push_str(&format!("  - {}: failed\n", val.id));
                     }
-                    ValidationStatus::Skipped => {
+                    GateStatus::Skipped => {
                         content.push_str(&format!("  - {}: skipped\n", val.id));
                     }
                 }
@@ -225,7 +225,7 @@ impl Task {
 ///
 /// Parsing a valid task:
 /// ```
-/// use mont::{parse, ParseError, ValidationStatus};
+/// use mont::{parse, ParseError, GateStatus};
 ///
 /// let content = r#"---
 /// id: test-task
@@ -233,7 +233,7 @@ impl Task {
 ///   - parent1
 /// after:
 ///   - pre1
-/// validations:
+/// gates:
 ///   - val1
 /// title: Test Task
 /// ---
@@ -245,9 +245,9 @@ impl Task {
 /// assert_eq!(task.id, "test-task");
 /// assert_eq!(task.before, vec!["parent1".to_string()]);
 /// assert_eq!(task.after, vec!["pre1"]);
-/// assert_eq!(task.validations.len(), 1);
-/// assert_eq!(task.validations[0].id, "val1");
-/// assert_eq!(task.validations[0].status, ValidationStatus::Pending);
+/// assert_eq!(task.gates.len(), 1);
+/// assert_eq!(task.gates[0].id, "val1");
+/// assert_eq!(task.gates[0].status, GateStatus::Pending);
 /// assert_eq!(task.title, Some("Test Task".to_string()));
 /// assert!(!task.is_gate());
 /// assert_eq!(task.description, "This is the task description.");
@@ -349,7 +349,7 @@ before:
   - task1
 after:
   - dep1
-validations:
+gates:
   - val1
 title: Test Task
 ---
@@ -360,9 +360,9 @@ Task description here.
         assert_eq!(task.id, "test-task");
         assert_eq!(task.before, vec!["task1".to_string()]);
         assert_eq!(task.after, vec!["dep1"]);
-        assert_eq!(task.validations.len(), 1);
-        assert_eq!(task.validations[0].id, "val1");
-        assert_eq!(task.validations[0].status, ValidationStatus::Pending);
+        assert_eq!(task.gates.len(), 1);
+        assert_eq!(task.gates[0].id, "val1");
+        assert_eq!(task.gates[0].status, GateStatus::Pending);
         assert_eq!(task.title, Some("Test Task".to_string()));
         assert!(!task.is_gate());
         assert_eq!(task.description, "Task description here.");
@@ -458,7 +458,7 @@ Minimal task.
         assert_eq!(task.id, "minimal");
         assert!(task.before.is_empty());
         assert!(task.after.is_empty());
-        assert!(task.validations.is_empty());
+        assert!(task.gates.is_empty());
         assert!(task.title.is_none());
         assert!(!task.is_gate());
         assert!(!task.is_complete());
@@ -587,55 +587,55 @@ Just a quick idea to capture.
     fn test_parse_validation_with_status_passed() {
         let content = r#"---
 id: test-task
-validations:
+gates:
   - val1: passed
 ---
 
 Task with passed validation.
 "#;
         let task = parse(content).unwrap();
-        assert_eq!(task.validations.len(), 1);
-        assert_eq!(task.validations[0].id, "val1");
-        assert_eq!(task.validations[0].status, ValidationStatus::Passed);
+        assert_eq!(task.gates.len(), 1);
+        assert_eq!(task.gates[0].id, "val1");
+        assert_eq!(task.gates[0].status, GateStatus::Passed);
     }
 
     #[test]
     fn test_parse_validation_with_status_failed() {
         let content = r#"---
 id: test-task
-validations:
+gates:
   - val1: failed
 ---
 
 Task with failed validation.
 "#;
         let task = parse(content).unwrap();
-        assert_eq!(task.validations.len(), 1);
-        assert_eq!(task.validations[0].id, "val1");
-        assert_eq!(task.validations[0].status, ValidationStatus::Failed);
+        assert_eq!(task.gates.len(), 1);
+        assert_eq!(task.gates[0].id, "val1");
+        assert_eq!(task.gates[0].status, GateStatus::Failed);
     }
 
     #[test]
     fn test_parse_validation_with_status_skipped() {
         let content = r#"---
 id: test-task
-validations:
+gates:
   - val1: skipped
 ---
 
 Task with skipped validation.
 "#;
         let task = parse(content).unwrap();
-        assert_eq!(task.validations.len(), 1);
-        assert_eq!(task.validations[0].id, "val1");
-        assert_eq!(task.validations[0].status, ValidationStatus::Skipped);
+        assert_eq!(task.gates.len(), 1);
+        assert_eq!(task.gates[0].id, "val1");
+        assert_eq!(task.gates[0].status, GateStatus::Skipped);
     }
 
     #[test]
-    fn test_parse_mixed_validations() {
+    fn test_parse_mixed_gates() {
         let content = r#"---
 id: test-task
-validations:
+gates:
   - val1
   - val2: passed
   - val3: failed
@@ -645,26 +645,26 @@ validations:
 Task with mixed validation statuses.
 "#;
         let task = parse(content).unwrap();
-        assert_eq!(task.validations.len(), 4);
+        assert_eq!(task.gates.len(), 4);
 
-        assert_eq!(task.validations[0].id, "val1");
-        assert_eq!(task.validations[0].status, ValidationStatus::Pending);
+        assert_eq!(task.gates[0].id, "val1");
+        assert_eq!(task.gates[0].status, GateStatus::Pending);
 
-        assert_eq!(task.validations[1].id, "val2");
-        assert_eq!(task.validations[1].status, ValidationStatus::Passed);
+        assert_eq!(task.gates[1].id, "val2");
+        assert_eq!(task.gates[1].status, GateStatus::Passed);
 
-        assert_eq!(task.validations[2].id, "val3");
-        assert_eq!(task.validations[2].status, ValidationStatus::Failed);
+        assert_eq!(task.gates[2].id, "val3");
+        assert_eq!(task.gates[2].status, GateStatus::Failed);
 
-        assert_eq!(task.validations[3].id, "val4");
-        assert_eq!(task.validations[3].status, ValidationStatus::Skipped);
+        assert_eq!(task.gates[3].id, "val4");
+        assert_eq!(task.gates[3].status, GateStatus::Skipped);
     }
 
     #[test]
-    fn test_validation_ids_helper() {
+    fn test_gate_ids_helper() {
         let content = r#"---
 id: test-task
-validations:
+gates:
   - val1
   - val2: passed
   - val3: failed
@@ -673,7 +673,7 @@ validations:
 Task description.
 "#;
         let task = parse(content).unwrap();
-        let ids: Vec<&str> = task.validation_ids().collect();
+        let ids: Vec<&str> = task.gate_ids().collect();
         assert_eq!(ids, vec!["val1", "val2", "val3"]);
     }
 
@@ -683,7 +683,7 @@ Task description.
             id: "minimal".to_string(),
             before: vec![],
             after: vec![],
-            validations: vec![],
+            gates: vec![],
             title: None,
             status: None,
             task_type: TaskType::Task,
@@ -703,18 +703,18 @@ Task description.
             id: "full-task".to_string(),
             before: vec!["parent1".to_string(), "parent2".to_string()],
             after: vec!["dep1".to_string()],
-            validations: vec![
-                ValidationItem {
+            gates: vec![
+                GateItem {
                     id: "val1".to_string(),
-                    status: ValidationStatus::Pending,
+                    status: GateStatus::Pending,
                 },
-                ValidationItem {
+                GateItem {
                     id: "val2".to_string(),
-                    status: ValidationStatus::Passed,
+                    status: GateStatus::Passed,
                 },
-                ValidationItem {
+                GateItem {
                     id: "val3".to_string(),
-                    status: ValidationStatus::Failed,
+                    status: GateStatus::Failed,
                 },
             ],
             title: Some("Full Task Title".to_string()),
@@ -732,10 +732,10 @@ Task description.
         assert_eq!(parsed.status, Some(Status::InProgress));
         assert_eq!(parsed.before, task.before);
         assert_eq!(parsed.after, task.after);
-        assert_eq!(parsed.validations.len(), 3);
-        assert_eq!(parsed.validations[0].status, ValidationStatus::Pending);
-        assert_eq!(parsed.validations[1].status, ValidationStatus::Passed);
-        assert_eq!(parsed.validations[2].status, ValidationStatus::Failed);
+        assert_eq!(parsed.gates.len(), 3);
+        assert_eq!(parsed.gates[0].status, GateStatus::Pending);
+        assert_eq!(parsed.gates[1].status, GateStatus::Passed);
+        assert_eq!(parsed.gates[2].status, GateStatus::Failed);
         assert_eq!(parsed.description, task.description);
     }
 
@@ -745,7 +745,7 @@ Task description.
             id: "my-gate".to_string(),
             before: vec!["consumer".to_string()],
             after: vec![],
-            validations: vec![],
+            gates: vec![],
             title: Some("Gate Title".to_string()),
             status: None,
             task_type: TaskType::Gate,
@@ -764,7 +764,7 @@ Task description.
             id: "done-task".to_string(),
             before: vec![],
             after: vec![],
-            validations: vec![],
+            gates: vec![],
             title: Some("Completed Task".to_string()),
             status: Some(Status::Complete),
             task_type: TaskType::Task,
@@ -782,7 +782,7 @@ Task description.
             id: "stopped-task".to_string(),
             before: vec![],
             after: vec![],
-            validations: vec![],
+            gates: vec![],
             title: None,
             status: Some(Status::Stopped),
             task_type: TaskType::Task,

@@ -6,7 +6,7 @@ use owo_colors::OwoColorize;
 
 use super::shared::{make_temp_file, update_via_editor, UpdateResult};
 use crate::error_fmt::AppError;
-use crate::{MontContext, Task, TaskType, ValidationItem, ValidationStatus};
+use crate::{MontContext, Task, TaskType, GateItem, GateStatus};
 
 /// Arguments for editing a task.
 pub struct EditArgs {
@@ -16,7 +16,7 @@ pub struct EditArgs {
     pub description: Option<String>,
     pub before: Vec<String>,
     pub after: Vec<String>,
-    pub validations: Vec<String>,
+    pub gates: Vec<String>,
     pub task_type: Option<TaskType>,
     pub editor: Option<Option<String>>,
     pub resume: Option<PathBuf>,
@@ -54,7 +54,7 @@ pub fn edit(ctx: &MontContext, args: EditArgs) -> Result<(), AppError> {
         || args.description.is_some()
         || !args.before.is_empty()
         || !args.after.is_empty()
-        || !args.validations.is_empty()
+        || !args.gates.is_empty()
         || args.task_type.is_some();
 
     if !has_changes {
@@ -99,14 +99,14 @@ fn merge_task(original: &Task, new_id: &str, args: &EditArgs) -> Task {
         } else {
             args.after.clone()
         },
-        validations: if args.validations.is_empty() {
-            original.validations.clone()
+        gates: if args.gates.is_empty() {
+            original.gates.clone()
         } else {
-            args.validations
+            args.gates
                 .iter()
-                .map(|id| ValidationItem {
+                .map(|id| GateItem {
                     id: id.clone(),
-                    status: ValidationStatus::Pending,
+                    status: GateStatus::Pending,
                 })
                 .collect()
         },

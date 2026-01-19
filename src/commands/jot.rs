@@ -6,7 +6,7 @@ use owo_colors::OwoColorize;
 
 use super::shared::{create_via_editor, make_temp_file};
 use crate::error_fmt::AppError;
-use crate::{MontContext, Task, TaskType, ValidationItem, ValidationStatus};
+use crate::{MontContext, Task, TaskType, GateItem, GateStatus};
 
 /// Arguments for creating a jot.
 pub struct JotArgs {
@@ -14,7 +14,7 @@ pub struct JotArgs {
     pub description: Option<String>,
     pub before: Vec<String>,
     pub after: Vec<String>,
-    pub validations: Vec<String>,
+    pub gates: Vec<String>,
     pub editor: Option<Option<String>>,
     pub resume: Option<PathBuf>,
 }
@@ -39,12 +39,12 @@ pub fn jot(ctx: &MontContext, args: JotArgs) -> Result<(), AppError> {
         description: args.description.unwrap_or_default(),
         before: args.before,
         after: args.after,
-        validations: args
-            .validations
+        gates: args
+            .gates
             .into_iter()
-            .map(|id| ValidationItem {
+            .map(|id| GateItem {
                 id,
-                status: ValidationStatus::Pending,
+                status: GateStatus::Pending,
             })
             .collect(),
         task_type: TaskType::Jot,

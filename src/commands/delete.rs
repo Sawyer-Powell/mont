@@ -86,7 +86,7 @@ fn find_references(ctx: &MontContext, id: &str) -> Vec<(String, String)> {
             }
         }
 
-        for val in &task.validations {
+        for val in &task.gates {
             if val.id == id {
                 references.push((task.id.clone(), "validation".to_string()));
             }

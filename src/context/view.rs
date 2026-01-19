@@ -159,7 +159,7 @@ mod tests {
             id: id.to_string(),
             before: vec![],
             after: vec![],
-            validations: vec![],
+            gates: vec![],
             title: Some(format!("{} title", id)),
             status: None,
             task_type: TaskType::Task,

@@ -14,7 +14,7 @@ If you're a coding agent reading this, we need to brainstorm this first.
 - **Format**: Mixed list in YAML where strings are pending, objects track status
 - **Example**:
   ```yaml
-  validations:
+  gates:
     - val1          # pending (string format)
     - val2: passed  # passed
     - val3: failed  # failed

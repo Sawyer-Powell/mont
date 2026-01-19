@@ -6,7 +6,7 @@ use owo_colors::OwoColorize;
 
 use super::shared::{create_via_editor, make_temp_file};
 use crate::error_fmt::AppError;
-use crate::{MontContext, Task, TaskType, ValidationItem, ValidationStatus};
+use crate::{MontContext, Task, TaskType, GateItem, GateStatus};
 
 /// Arguments for creating a new task.
 pub struct NewArgs {
@@ -15,7 +15,7 @@ pub struct NewArgs {
     pub description: Option<String>,
     pub before: Vec<String>,
     pub after: Vec<String>,
-    pub validations: Vec<String>,
+    pub gates: Vec<String>,
     pub task_type: Option<TaskType>,
     pub editor: Option<Option<String>>,
     pub resume: Option<PathBuf>,
@@ -36,7 +36,7 @@ pub fn new(ctx: &MontContext, args: NewArgs) -> Result<(), AppError> {
         args.description,
         args.before,
         args.after,
-        args.validations,
+        args.gates,
         args.task_type,
     );
 
@@ -66,7 +66,7 @@ fn build_task_from_args(
     description: Option<String>,
     before: Vec<String>,
     after: Vec<String>,
-    validations: Vec<String>,
+    gates: Vec<String>,
     task_type: Option<TaskType>,
 ) -> Task {
     Task {
@@ -75,11 +75,11 @@ fn build_task_from_args(
         description: description.unwrap_or_default(),
         before,
         after,
-        validations: validations
+        gates: gates
             .into_iter()
-            .map(|id| ValidationItem {
+            .map(|id| GateItem {
                 id,
-                status: ValidationStatus::Pending,
+                status: GateStatus::Pending,
             })
             .collect(),
         task_type: task_type.unwrap_or(TaskType::Task),

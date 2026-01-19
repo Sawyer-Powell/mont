@@ -5,7 +5,7 @@ status: complete
 after:
   - editor-resolution
   - mont-check
-validations:
+gates:
   - test
   - readme-validator
 ---

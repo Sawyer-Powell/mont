@@ -8,7 +8,7 @@ pub mod render;
 pub use context::{
     parse, GlobalConfig, GraphReadError, LoadError, MontContext, Op, ParseError, SettingsError,
     Status, Task, TaskGraph, TaskType, Transaction, TransactionError, ValidationError,
-    ValidationItem, ValidationStatus,
+    GateItem, GateStatus,
 };
 
 // Re-export graph functions for binary

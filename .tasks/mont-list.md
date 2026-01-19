@@ -2,7 +2,7 @@
 id: mont-list
 title: Implement mont list command
 status: complete
-validations:
+gates:
   - test
 ---
 

@@ -1,10 +1,13 @@
 ---
 id: mont-edit-passed
 title: Add --passed argument to mont edit
+status: complete
 before:
   - mont-start
 after:
   - global-settings
+gates:
+  - test: passed
 ---
 
 Using the --passed argument, you can specify a list of gates which have passed validations.

@@ -55,6 +55,8 @@ pub enum AppError {
     PickerCancelled,
     /// No active tasks to pick from
     NoActiveTasks,
+    /// Gate not valid for this task
+    GateNotValid { gate_id: String, task_id: String },
 }
 
 impl fmt::Display for AppError {
@@ -111,6 +113,9 @@ impl fmt::Display for AppError {
             }
             AppError::NoActiveTasks => {
                 write!(f, "{}", format_no_active_tasks())
+            }
+            AppError::GateNotValid { gate_id, task_id } => {
+                write!(f, "{}", format_gate_not_valid(gate_id, task_id))
             }
         }
     }
@@ -312,7 +317,7 @@ fn format_validation_error(error: &ValidationError, tasks_dir: &str) -> String {
             out.push('\n');
             out.push_str(&format!("  {}:\n", "To fix this".bold()));
             out.push_str(&format!(
-                "    In {}/{}.md, move '{}' from after to validations:\n",
+                "    In {}/{}.md, move '{}' from after to gates:\n",
                 tasks_dir.cyan(),
                 task_id.cyan(),
                 after_id.cyan()
@@ -765,6 +770,40 @@ fn format_no_active_tasks() -> String {
     out.push_str(&format!(
         "    Create a new task: {}\n",
         "mont new --title \"My task\"".cyan()
+    ));
+
+    out
+}
+
+fn format_gate_not_valid(gate_id: &str, task_id: &str) -> String {
+    let mut out = String::new();
+
+    out.push_str(&format!("{}: ", "error".red().bold()));
+    out.push_str(&format!(
+        "gate '{}' is not valid for task '{}'\n",
+        gate_id.yellow(),
+        task_id.yellow()
+    ));
+    out.push('\n');
+    out.push_str(&format!(
+        "  {}\n",
+        "The gate must be either in the task's validations list or in default_gates.".dimmed()
+    ));
+    out.push('\n');
+    out.push_str(&format!("  {}:\n", "To fix this".bold()));
+    out.push_str(&format!(
+        "    1. Add '{}' to the task's gates: {}\n",
+        gate_id.cyan(),
+        format!("mont edit {} --validation {}", task_id, gate_id).cyan()
+    ));
+    out.push_str(&format!(
+        "    2. Add '{}' to default_gates in {}\n",
+        gate_id.cyan(),
+        ".tasks/config.yml".cyan()
+    ));
+    out.push_str(&format!(
+        "    3. Check spelling: {}\n",
+        "mont list".cyan()
     ));
 
     out

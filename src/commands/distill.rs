@@ -123,7 +123,7 @@ fn build_starter_task(jot: &Task) -> Task {
         description: jot.description.clone(),
         before: vec![],
         after: vec![],
-        validations: vec![],
+        gates: vec![],
         task_type: TaskType::Task,
         status: None,
         deleted: false,

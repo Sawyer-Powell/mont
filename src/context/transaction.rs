@@ -89,7 +89,7 @@ impl Transaction {
 
             let has_ref = task.before.iter().any(|b| b == old_id)
                 || task.after.iter().any(|a| a == old_id)
-                || task.validations.iter().any(|v| v.id == old_id);
+                || task.gates.iter().any(|v| v.id == old_id);
 
             if has_ref {
                 let mut updated = task.clone();
@@ -105,7 +105,7 @@ impl Transaction {
                                 *after = new.to_string();
                             }
                         }
-                        for validation in &mut updated.validations {
+                        for validation in &mut updated.gates {
                             if validation.id == old_id {
                                 validation.id = new.to_string();
                             }
@@ -114,7 +114,7 @@ impl Transaction {
                     None => {
                         updated.before.retain(|b| b != old_id);
                         updated.after.retain(|a| a != old_id);
-                        updated.validations.retain(|v| v.id != old_id);
+                        updated.gates.retain(|v| v.id != old_id);
                     }
                 }
                 self.update(&task.id, updated);

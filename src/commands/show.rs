@@ -4,8 +4,8 @@ use owo_colors::OwoColorize;
 
 use super::shared::{make_temp_file, update_via_editor, UpdateResult};
 use crate::error_fmt::AppError;
-use crate::render;
-use crate::{MontContext, Task, TaskGraph, TaskType};
+use crate::render::{print_gates_section, TaskDisplayView};
+use crate::{MontContext, Task, TaskType};
 
 /// Show details for a single task.
 pub fn show(
@@ -29,56 +29,33 @@ pub fn show(
         return edit_with_editor(ctx, id, &task, editor_name);
     }
 
-    // Build a TaskGraph for rendering validators
-    let graph = ctx.graph();
-    print_task_details(&task, &graph, short);
+    // Print task details using shared helpers
+    print_task_details(ctx, &task, short);
 
     Ok(())
 }
 
-fn print_task_details(task: &Task, graph: &TaskGraph, short: bool) {
-    let is_in_progress = task.is_in_progress();
-    let is_jot = task.is_jot();
-    let is_gate = task.is_gate();
-    let is_complete = task.is_complete();
+fn print_task_details(ctx: &MontContext, task: &Task, short: bool) {
+    let graph = ctx.graph();
+    let config = ctx.config();
+    let view = TaskDisplayView::from_task(task, &graph, &config.default_gates);
 
     const LABEL_WIDTH: usize = 14;
 
     // Task ID
-    let id_display = if is_complete {
-        task.id.bright_black().bold().to_string()
-    } else if is_gate {
-        task.id.purple().bold().to_string()
-    } else if is_jot || is_in_progress {
-        task.id.yellow().bold().to_string()
-    } else {
-        task.id.bright_green().bold().to_string()
-    };
-    println!("{:LABEL_WIDTH$} {}", "Id".bold(), id_display);
+    println!("{:LABEL_WIDTH$} {}", "Id".bold(), view.id_colored());
 
     // Title
-    if let Some(ref title) = task.title {
-        let title_display = if is_complete {
-            title.bright_black().to_string()
-        } else if is_gate {
-            title.purple().to_string()
-        } else if is_jot || is_in_progress {
-            title.yellow().to_string()
-        } else {
-            title.bright_green().to_string()
-        };
-        println!("{:LABEL_WIDTH$} {}", "Title".bold(), title_display);
+    if task.title.is_some() {
+        println!(
+            "{:LABEL_WIDTH$} {}",
+            "Title".bold(),
+            view.title_colored(usize::MAX)
+        );
     }
 
     // Status
-    let status_value = if is_complete {
-        "complete".bright_black().to_string()
-    } else if is_in_progress {
-        "in progress".yellow().to_string()
-    } else {
-        "incomplete".white().to_string()
-    };
-    println!("{:LABEL_WIDTH$} {}", "Status".bold(), status_value);
+    println!("{:LABEL_WIDTH$} {}", "Status".bold(), view.status_colored());
 
     // Type
     let type_value = match task.task_type {
@@ -106,25 +83,9 @@ fn print_task_details(task: &Task, graph: &TaskGraph, short: bool) {
         );
     }
 
-    // Validations
-    if !task.validations.is_empty() {
-        for (i, val_item) in task.validations.iter().enumerate() {
-            let label = if i == 0 { "Validations" } else { "" };
-            if let Some(val_task) = graph.get(&val_item.id) {
-                let marker = render::task_marker(val_task, graph);
-                let line = render::format_task_line_short(val_task, graph);
-                println!("{:LABEL_WIDTH$} {} {}", label.bold(), marker, line);
-            } else {
-                // Validator not found in graph, show ID only
-                println!(
-                    "{:LABEL_WIDTH$} {} {}",
-                    label.bold(),
-                    "?".bright_black(),
-                    val_item.id.bright_black()
-                );
-            }
-        }
-    }
+    // Gates section using shared helper
+    let all_gate_ids = ctx.all_gate_ids(task);
+    print_gates_section(task, &all_gate_ids, "", LABEL_WIDTH);
 
     // Description (unless short mode)
     if !short && !task.description.is_empty() {

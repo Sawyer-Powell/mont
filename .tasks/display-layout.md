@@ -4,7 +4,7 @@ title: Types + level assignment + positioning + grid construction
 before:
   - display-refactor
 status: complete
-validations:
+gates:
   - test
 ---
 

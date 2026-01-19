@@ -377,7 +377,7 @@ impl TaskGraph {
                 }
             }
 
-            for validation in &task.validations {
+            for validation in &task.gates {
                 if let Some(&val_idx) = id_to_idx.get(validation.id.as_str()) {
                     union(&mut parent, task_idx, val_idx);
                 }
@@ -503,14 +503,14 @@ pub fn form_graph(tasks: Vec<Task>) -> Result<TaskGraph, ValidationError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::super::task::{TaskType, ValidationItem, ValidationStatus};
+    use super::super::task::{TaskType, GateItem, GateStatus};
 
     fn make_task(id: &str) -> Task {
         Task {
             id: id.to_string(),
             before: vec![],
             after: vec![],
-            validations: vec![],
+            gates: vec![],
             title: None,
             status: None,
             task_type: TaskType::Task,
@@ -524,7 +524,7 @@ mod tests {
             id: id.to_string(),
             before: vec![],
             after: vec![],
-            validations: vec![],
+            gates: vec![],
             title: None,
             status: None,
             task_type: TaskType::Gate,
@@ -533,10 +533,10 @@ mod tests {
         }
     }
 
-    fn validation(id: &str) -> ValidationItem {
-        ValidationItem {
+    fn validation(id: &str) -> GateItem {
+        GateItem {
             id: id.to_string(),
-            status: ValidationStatus::Pending,
+            status: GateStatus::Pending,
         }
     }
 
@@ -636,7 +636,7 @@ mod tests {
     fn test_valid_validation() {
         let gate = make_gate("gate");
         let mut task = make_task("task");
-        task.validations = vec![validation("gate")];
+        task.gates = vec![validation("gate")];
 
         let result = form_graph(vec![gate, task]);
         assert!(result.is_ok());
@@ -645,7 +645,7 @@ mod tests {
     #[test]
     fn test_validation_points_to_nonexistent() {
         let mut task = make_task("task");
-        task.validations = vec![validation("nonexistent")];
+        task.gates = vec![validation("nonexistent")];
 
         let result = form_graph(vec![task]);
         assert_eq!(
@@ -661,7 +661,7 @@ mod tests {
     fn test_validation_points_to_non_validator() {
         let not_validator = make_task("not-validator");
         let mut task = make_task("task");
-        task.validations = vec![validation("not-validator")];
+        task.gates = vec![validation("not-validator")];
 
         let result = form_graph(vec![not_validator, task]);
         assert_eq!(
@@ -679,7 +679,7 @@ mod tests {
         let mut gate = make_gate("gate");
         gate.before = vec!["before-target".to_string()];
         let mut task = make_task("task");
-        task.validations = vec![validation("gate")];
+        task.gates = vec![validation("gate")];
 
         let result = form_graph(vec![before_target, gate, task]);
         assert_eq!(
@@ -774,7 +774,7 @@ mod tests {
         let mut task1 = make_task("task1");
         task1.before = vec!["task2".to_string()];
         task1.after = vec!["task3".to_string()];
-        task1.validations = vec![validation("gate1"), validation("gate2")];
+        task1.gates = vec![validation("gate1"), validation("gate2")];
 
         let result = form_graph(vec![gate1, gate2, task2, task3, task1]);
         assert!(result.is_ok());
