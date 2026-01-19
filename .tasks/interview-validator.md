@@ -4,7 +4,7 @@ title: Conduct interview to confirm changes
 type: gate
 ---
 
-Review and collate all decisinos you made while working on this task.
+Review and collate all decisions you made while working on this task.
 Identify specifically:
 - Any architectural or structural decisions you made
 - Any new libraries or techniques you used
