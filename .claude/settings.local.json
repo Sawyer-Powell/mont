@@ -45,7 +45,8 @@
       "Bash(mont ready:*)",
       "Bash(mont show:*)",
       "Bash(mont start:*)",
-      "Bash(mont prompt:*)"
+      "Bash(mont prompt:*)",
+      "Bash(mont distill punctual-rottweiler --tasks='- id: next-detect-completion\n  title: Detect last completed task from jj history\n  description: Walk back jj revision history to find the most recent commit that changed a task status to complete. Return the completed task ID.\n- id: next-identify-unblocked\n  title: Identify tasks unblocked by completion\n  description: Use the TaskGraph after transitive reduction to find tasks that were directly blocked by the completed task and are now ready \\(all blockers complete\\).\n  after:\n    - next-detect-completion\n- id: next-annotate-display\n  title: Annotate and boost next tasks in list/ready output\n  description: Update mont list and mont ready to clearly mark \"\"next\"\" tasks \\(recently unblocked by the last completion\\) with a visual indicator. Boost task groups containing \"\"next\"\" items higher in mont list output.\n  after:\n    - next-identify-unblocked')"
     ]
   }
 }
