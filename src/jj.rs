@@ -121,6 +121,21 @@ pub fn commit(message: &str) -> Result<CommitResult, JJError> {
     Ok(CommitResult { stdout, stderr })
 }
 
+/// Gets the output of `jj status`.
+pub fn status() -> Result<String, JJError> {
+    let output = Command::new("jj")
+        .args(["status"])
+        .output()?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        return Err(JJError::CommandFailed(stderr));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Ok(stdout)
+}
+
 /// A single revision with its diff.
 #[derive(Debug)]
 pub struct RevisionDiff {

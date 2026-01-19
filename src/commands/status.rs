@@ -4,6 +4,7 @@ use std::collections::HashSet;
 
 use owo_colors::OwoColorize;
 
+use crate::jj;
 use crate::render::{format_task_line, print_gates_section, task_marker_for_state, TaskDisplayView};
 use crate::{MontContext, Task, TaskGraph, TaskType};
 
@@ -23,36 +24,41 @@ pub fn status(ctx: &MontContext) {
         .filter(|t| t.is_in_progress())
         .collect();
 
-    // Tasks in Progress section
-    println!("{}", "Tasks in Progress".bold());
-    if in_progress.is_empty() {
-        println!("  {}", "None".bright_black());
-    } else {
+    // Track if we've printed a section (for spacing)
+    let mut has_printed_section = false;
+
+    // Tasks in Progress section (only shown if there are tasks)
+    if !in_progress.is_empty() {
+        println!("{}", "Tasks in Progress".bold());
         for (i, task) in in_progress.iter().enumerate() {
             if i > 0 {
                 println!();
             }
             print_task_details(ctx, task);
         }
+        has_printed_section = true;
     }
 
-    // Up Next section
+    // Up Next section (only shown if there are tasks)
     let up_next = find_up_next(&in_progress, &graph);
-    println!();
-    println!("{}", "Up Next".bold());
-    if up_next.is_empty() {
-        println!("  {}", "None".bright_black());
-    } else {
+    if !up_next.is_empty() {
+        if has_printed_section {
+            println!();
+        }
+        println!("{}", "Up Next".bold());
         for task in up_next {
             let view = TaskDisplayView::from_task(task, &graph, &config.default_gates);
             let marker = task_marker_for_state(view.state);
             let line = format_task_line(task, &graph, &config.default_gates);
             println!("  {} {}", marker.bright_black(), line.bright_black());
         }
+        has_printed_section = true;
     }
 
     // Info section
-    println!();
+    if has_printed_section {
+        println!();
+    }
     println!("{}", "Info".bold());
     let ready_count = count_ready_tasks(&graph);
     let jot_count = graph.values().filter(|t| t.is_jot() && !t.is_complete()).count();
@@ -65,6 +71,17 @@ pub fn status(ctx: &MontContext) {
     println!("  {:<4} jots needing distillation", jot_count.to_string().yellow());
     println!("  {:<4} gates", gate_count.to_string().purple());
     println!("  {:<4} completed", completed_count.to_string().bright_black());
+
+    // Working Copy section (jj status)
+    if let Ok(jj_status) = jj::status()
+        && !jj_status.is_empty()
+    {
+        println!();
+        println!("{}", "Working Copy".bold());
+        for line in jj_status.lines() {
+            println!("  {}", line);
+        }
+    }
 }
 
 fn print_task_details(ctx: &MontContext, task: &Task) {
