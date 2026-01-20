@@ -4,19 +4,20 @@ A task tracker to help you and your agent write robust, reliable code.
 Built on jj-vcs.
 
 ```bash
-# Describe some gates, a task describing some form of quality control
-# Gates should have a clear success state
+# Describe some gates, a task describing some form of
+# quality control. Gates should have a clear success state
 % mont gate "Tests pass" \
     --description "Run 'make lint' then 'make test'. \
                    Mark as passed if no errors."
 created: .tasks/festive-bengal.md
 
-# If you want to use an agent, you can create a gate for doing a code review with you
+# If you want to use an agent, you can create a gate for 
+# doing a code review with you
 % mont gate "Implementation interview" \
     --description "Scan your changes using 'jj diff', \
                    and then conduct an interview with the user \
                    to confirm implementation details"
-created: .tasks/festive-bengal.md
+created: .tasks/bouncy-fox.md
 
 # Jot down an unstructured idea for your codebase
 % mont jot "Add user authentication"
