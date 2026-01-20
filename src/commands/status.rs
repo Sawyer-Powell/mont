@@ -72,8 +72,9 @@ pub fn status(ctx: &MontContext) {
     println!("  {:<4} gates", gate_count.to_string().purple());
     println!("  {:<4} completed", completed_count.to_string().bright_black());
 
-    // Working Copy section (jj status)
-    if let Ok(jj_status) = jj::status()
+    // Working Copy section (jj status) - skip if jj is disabled
+    if config.jj.enabled
+        && let Ok(jj_status) = jj::status()
         && !jj_status.is_empty()
     {
         println!();

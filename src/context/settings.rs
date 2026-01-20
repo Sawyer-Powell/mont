@@ -9,6 +9,21 @@ use serde::Deserialize;
 
 use super::TaskGraph;
 
+/// Configuration for jj (Jujutsu) VCS integration.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct JjConfig {
+    /// Whether jj operations are enabled. When false, all jj functions
+    /// return no-op/happy-path results. Default: true.
+    pub enabled: bool,
+}
+
+impl Default for JjConfig {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
+}
+
 /// Global configuration loaded from `.tasks/config.yml`.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -16,6 +31,10 @@ pub struct GlobalConfig {
     /// Gate IDs that must pass for all tasks.
     #[serde(default)]
     pub default_gates: Vec<String>,
+
+    /// Configuration for jj VCS integration.
+    #[serde(default)]
+    pub jj: JjConfig,
 }
 
 /// Errors that can occur when loading or validating settings.
@@ -147,6 +166,7 @@ mod tests {
 
         let config = GlobalConfig {
             default_gates: vec!["test-gate".to_string(), "lint-gate".to_string()],
+            ..Default::default()
         };
 
         assert!(config.validate(&graph).is_ok());
@@ -158,6 +178,7 @@ mod tests {
 
         let config = GlobalConfig {
             default_gates: vec!["nonexistent".to_string()],
+            ..Default::default()
         };
 
         let err = config.validate(&graph).unwrap_err();
@@ -171,6 +192,7 @@ mod tests {
 
         let config = GlobalConfig {
             default_gates: vec!["regular-task".to_string()],
+            ..Default::default()
         };
 
         let err = config.validate(&graph).unwrap_err();

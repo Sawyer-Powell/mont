@@ -1,6 +1,10 @@
 ---
 id: awake-satyr
 title: Add jj disabled mode via global config
+status: complete
+gates:
+  - interview-validator: passed
+  - test: passed
 ---
 
 Add a jj configuration section to GlobalConfig with an enabled field (default true).

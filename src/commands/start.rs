@@ -25,10 +25,13 @@ pub fn start(ctx: &MontContext, id: &str) -> Result<(), AppError> {
         return Err(AppError::TaskAlreadyInProgress(id.to_string()));
     }
 
-    // Check if working copy is empty
-    let is_empty = jj::is_working_copy_empty().map_err(|e| AppError::JJError(e.to_string()))?;
-    if !is_empty {
-        return Err(AppError::WorkingCopyNotEmpty);
+    // Check if working copy is empty (skip if jj is disabled)
+    let jj_enabled = ctx.config().jj.enabled;
+    if jj_enabled {
+        let is_empty = jj::is_working_copy_empty().map_err(|e| AppError::JJError(e.to_string()))?;
+        if !is_empty {
+            return Err(AppError::WorkingCopyNotEmpty);
+        }
     }
 
     // Update task status to in-progress

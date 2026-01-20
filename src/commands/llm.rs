@@ -66,8 +66,12 @@ pub fn detect_state(ctx: &MontContext) -> Result<TaskGraphState, AppError> {
     let in_progress: Vec<_> = graph.values().filter(|t| t.is_in_progress()).collect();
 
     if in_progress.is_empty() {
-        let has_changes = !jj::is_working_copy_empty()
-            .map_err(|e| AppError::JJError(e.to_string()))?;
+        let jj_enabled = ctx.config().jj.enabled;
+        let has_changes = if jj_enabled {
+            !jj::is_working_copy_empty().map_err(|e| AppError::JJError(e.to_string()))?
+        } else {
+            false // Assume no uncommitted changes when jj is disabled
+        };
         return Ok(TaskGraphState::NoTaskInProgress {
             has_uncommitted_changes: has_changes,
         });
@@ -125,8 +129,12 @@ fn detect_in_progress_state(ctx: &MontContext, task: &Task) -> Result<InProgress
     }
 
     // Check for code changes
-    let has_code_changes = jj::has_code_changes()
-        .map_err(|e| AppError::JJError(e.to_string()))?;
+    let jj_enabled = ctx.config().jj.enabled;
+    let has_code_changes = if jj_enabled {
+        jj::has_code_changes().map_err(|e| AppError::JJError(e.to_string()))?
+    } else {
+        false // Assume no code changes when jj is disabled
+    };
 
     if !has_code_changes {
         return Ok(InProgressState::NoCodeChanges);
@@ -278,7 +286,11 @@ const CLAUDE_SYSTEM_PROMPT: &str = r#"After completing your current work, always
 pub fn claude_pre_validate(ctx: &MontContext) -> Result<(), AppError> {
     let graph = ctx.graph();
 
-    // Check for uncommitted changes
+    // Check for uncommitted changes (skip validation if jj is disabled)
+    let jj_enabled = ctx.config().jj.enabled;
+    if !jj_enabled {
+        return Ok(());
+    }
     let has_changes = !jj::is_working_copy_empty()
         .map_err(|e| AppError::JJError(e.to_string()))?;
 
@@ -324,9 +336,13 @@ pub fn claude(ctx: &MontContext, task_id: &str) -> Result<(), AppError> {
                 tasks_dir: ctx.tasks_dir().to_string_lossy().to_string(),
             })?;
 
-        // Check for uncommitted changes
-        let has_changes = !jj::is_working_copy_empty()
-            .map_err(|e| AppError::JJError(e.to_string()))?;
+        // Check for uncommitted changes (skip if jj is disabled)
+        let jj_enabled = ctx.config().jj.enabled;
+        let has_changes = if jj_enabled {
+            !jj::is_working_copy_empty().map_err(|e| AppError::JJError(e.to_string()))?
+        } else {
+            false
+        };
 
         if has_changes {
             // Check if the requested task is the one in progress

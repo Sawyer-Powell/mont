@@ -71,13 +71,16 @@ pub fn done(ctx: &MontContext, id: Option<&str>, message: Option<&str>) -> Resul
     println!("Marked '{}' as complete", task_id.green());
     println!();
 
-    // Run jj commit
-    match message {
-        Some(msg) => {
-            jj::commit(msg).map_err(|e| AppError::JJError(e.to_string()))?;
-        }
-        None => {
-            jj::commit_interactive().map_err(|e| AppError::JJError(e.to_string()))?;
+    // Run jj commit (skip if jj is disabled)
+    let jj_enabled = ctx.config().jj.enabled;
+    if jj_enabled {
+        match message {
+            Some(msg) => {
+                jj::commit(msg).map_err(|e| AppError::JJError(e.to_string()))?;
+            }
+            None => {
+                jj::commit_interactive().map_err(|e| AppError::JJError(e.to_string()))?;
+            }
         }
     }
 
@@ -87,7 +90,12 @@ pub fn done(ctx: &MontContext, id: Option<&str>, message: Option<&str>) -> Resul
 /// Detect the in-progress task from the current JJ revision's diff.
 ///
 /// Looks for .tasks/*.md files in the diff that have `status: inprogress`.
-fn detect_in_progress_task(_ctx: &MontContext) -> Result<String, AppError> {
+/// If jj is disabled, returns an error since we can't detect from diff.
+fn detect_in_progress_task(ctx: &MontContext) -> Result<String, AppError> {
+    let jj_enabled = ctx.config().jj.enabled;
+    if !jj_enabled {
+        return Err(AppError::NoInProgressTaskInDiff);
+    }
     let patch = jj::working_copy_diff().map_err(|e| AppError::JJError(e.to_string()))?;
 
     let mut found_tasks: Vec<String> = Vec::new();

@@ -86,12 +86,14 @@ pub fn distill(ctx: &MontContext, id: &str, tasks_yaml: Option<&str>) -> Result<
         remove_temp_file(path)?;
     }
 
-    // Auto-commit with jj
-    let commit_msg = format!("Distilled jot '{}' into tasks: {}", id, created_ids.join(", "));
-
-    match jj::commit(&commit_msg) {
-        Ok(_) => println!("{} {}", "committed:".bright_green(), commit_msg),
-        Err(e) => eprintln!("{} {}", "warning: jj commit failed:".yellow(), e),
+    // Auto-commit with jj (skip if jj is disabled)
+    let jj_enabled = ctx.config().jj.enabled;
+    if jj_enabled {
+        let commit_msg = format!("Distilled jot '{}' into tasks: {}", id, created_ids.join(", "));
+        match jj::commit(&commit_msg) {
+            Ok(_) => println!("{} {}", "committed:".bright_green(), commit_msg),
+            Err(e) => eprintln!("{} {}", "warning: jj commit failed:".yellow(), e),
+        }
     }
 
     Ok(())

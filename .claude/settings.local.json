@@ -52,7 +52,8 @@
       "Bash(mont distill:*)",
       "Bash(mont edit:*)",
       "Bash(mont delete:*)",
-      "Bash(mont task:*)"
+      "Bash(mont task:*)",
+      "Bash(cargo clippy:*)"
     ]
   }
 }
