@@ -8,16 +8,16 @@ Built on jj-vcs.
 ## MacOS (manual compilation)
 ```bash
 # Ensure that you have jj-vcs installed
-% brew install jj
+brew install jj
 
 # Ensure that you have rust/cargo installed
-% curl https://sh.rustup.rs -sSf | sh
+curl https://sh.rustup.rs -sSf | sh
 
 # Clone this repo
-% git clone https://github.com/Sawyer-Powell/mont
+git clone https://github.com/Sawyer-Powell/mont
 
 # Compile and install
-% cargo install --path ./mont
+cargo install --path ./mont
 ```
 
 # Overview
