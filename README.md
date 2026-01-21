@@ -3,6 +3,25 @@
 A task tracker to help you and your agent write robust, reliable code.
 Built on jj-vcs.
 
+# Installation
+
+## MacOS (manual compilation)
+```bash
+# Ensure that you have jj-vcs installed
+% brew install jj
+
+# Ensure that you have rust/cargo installed
+% curl https://sh.rustup.rs -sSf | sh
+
+# Clone this repo
+% git clone https://github.com/Sawyer-Powell/mont
+
+# Compile and install
+% cargo install --path ./mont
+```
+
+# Overview
+
 ```bash
 # Describe some gates, a task describing some form of
 # quality control. Gates should have a clear success state
