@@ -48,6 +48,34 @@ fn read_stdin() -> Result<String, AppError> {
     Ok(content)
 }
 
+/// Resume editing from a temp file. Shared by task, jot, and distill commands.
+///
+/// - `suffix`: The temp file suffix (e.g., "task", "jot", "distill")
+/// - `resume_path`: Explicit path to resume from, or None to find most recent
+/// - `editor_name`: Optional editor override
+/// - `command_name`: Command name for resume messages
+fn resume_from_temp_file(
+    ctx: &MontContext,
+    suffix: &str,
+    resume_path: Option<PathBuf>,
+    editor_name: Option<&str>,
+    command_name: &str,
+) -> Result<(), AppError> {
+    let temp_path = if let Some(path) = resume_path {
+        path
+    } else {
+        find_most_recent_temp_file(suffix)
+            .ok_or_else(|| AppError::TempFileNotFound(format!("No recent {} temp file found", suffix)))?
+    };
+
+    if !temp_path.exists() {
+        return Err(AppError::TempFileNotFound(temp_path.display().to_string()));
+    }
+
+    // For resume, we can't determine original tasks, so treat all as new
+    run_editor_workflow(ctx, &temp_path, &[], &[], editor_name, command_name)
+}
+
 /// Run the unified task command.
 pub fn task(ctx: &MontContext, args: TaskArgs) -> Result<(), AppError> {
     // Resume mode: --resume or --resume-path
@@ -111,21 +139,7 @@ pub fn task(ctx: &MontContext, args: TaskArgs) -> Result<(), AppError> {
 
 /// Resume editing from a temp file.
 fn resume_mode(ctx: &MontContext, args: TaskArgs) -> Result<(), AppError> {
-    let temp_path = if let Some(path) = args.resume_path {
-        path
-    } else {
-        // Find most recent temp file
-        find_most_recent_temp_file("task")
-            .ok_or_else(|| AppError::TempFileNotFound("No recent task temp file found".to_string()))?
-    };
-
-    if !temp_path.exists() {
-        return Err(AppError::TempFileNotFound(temp_path.display().to_string()));
-    }
-
-    // Parse the temp file to get original tasks (if any)
-    // For resume, we can't determine original tasks, so treat all as new
-    run_editor_workflow(ctx, &temp_path, &[], args.editor.as_deref())
+    resume_from_temp_file(ctx, "task", args.resume_path, args.editor.as_deref(), "task")
 }
 
 /// Create tasks from direct content (skip editor).
@@ -399,10 +413,10 @@ fn create_mode(
         }
     };
 
-    let temp_path = make_temp_file("task", &[starter], Some(&comment))?;
+    let temp_path = make_temp_file("task", std::slice::from_ref(&starter), Some(&comment))?;
 
-    // No original tasks - all edits are inserts
-    run_editor_workflow(ctx, &temp_path, &[], editor_name)
+    // template = [starter] (for no-changes check), graph = [] (all inserts)
+    run_editor_workflow(ctx, &temp_path, std::slice::from_ref(&starter), &[], editor_name, "task")
 }
 
 /// Edit existing tasks.
@@ -428,15 +442,22 @@ fn edit_mode(
     let comment = build_multiedit_comment(MultiEditMode::Edit);
     let temp_path = make_temp_file("task", &original_tasks, Some(&comment))?;
 
-    run_editor_workflow(ctx, &temp_path, &original_tasks, editor_name)
+    // Both template and graph are the same for edit mode
+    run_editor_workflow(ctx, &temp_path, &original_tasks, &original_tasks, editor_name, "task")
 }
 
 /// Core editor workflow: open editor, parse result, compute diff, confirm, apply.
+///
+/// - `template_tasks`: What was written to temp file (for "no changes" detection)
+/// - `graph_tasks`: Tasks that exist in graph (for computing actual diff)
+/// - `command_name`: Command name for resume messages (e.g., "task", "jot", "distill")
 fn run_editor_workflow(
     ctx: &MontContext,
     temp_path: &PathBuf,
-    original_tasks: &[Task],
+    template_tasks: &[Task],
+    graph_tasks: &[Task],
     editor_name: Option<&str>,
+    command_name: &str,
 ) -> Result<(), AppError> {
     let temp_path_str = temp_path.display().to_string();
 
@@ -461,33 +482,47 @@ fn run_editor_workflow(
                 error: Box::new(e),
                 temp_path: temp_path_str,
                 editor_name: editor_name.map(String::from),
+                command_name: command_name.to_string(),
             });
         }
     };
 
     // Handle empty result (user deleted everything)
-    if edited.is_empty() && original_tasks.is_empty() {
+    if edited.is_empty() && template_tasks.is_empty() {
         println!("No tasks defined, aborting.");
         remove_temp_file(temp_path)?;
         return Ok(());
     }
 
-    // Compute diff
-    let diff = compute_diff(original_tasks, &edited);
-
-    if diff.is_empty() {
+    // Check for "no changes" - compare against what was in temp file
+    let template_diff = compute_diff(template_tasks, &edited);
+    if template_diff.is_empty() {
         println!("No changes.");
         remove_temp_file(temp_path)?;
         return Ok(());
     }
 
+    // For actual diff, only include tasks that exist in the graph
+    // Templates (like "new-task", "new-jot") become inserts, not updates
+    let diff = {
+        let graph = ctx.graph();
+        let real_originals: Vec<Task> = graph_tasks
+            .iter()
+            .filter(|t| graph.contains(&t.id))
+            .cloned()
+            .collect();
+        compute_diff(&real_originals, &edited)
+        // graph (read lock) is dropped here before apply_diff needs write lock
+    };
+
     // Show summary and confirm
-    print_diff_summary(&diff, original_tasks, &edited);
+    print_diff_summary(&diff, graph_tasks, &edited);
 
     if !confirm_changes()? {
         println!(
-            "Changes not applied. Resume with: {}",
-            format!("mont task --resume-path {}", temp_path_str).cyan()
+            "Changes not applied. Resume with: {} or {}",
+            format!("mont {} -r", command_name).cyan(),
+            format!("mont {} --resume-path {}", command_name, temp_path_str).dimmed()
         );
         return Ok(());
     }
@@ -505,6 +540,7 @@ fn run_editor_workflow(
                 error: Box::new(e),
                 temp_path: temp_path_str,
                 editor_name: editor_name.map(String::from),
+                command_name: command_name.to_string(),
             })
         }
     }
@@ -558,16 +594,21 @@ fn print_diff_summary(
         println!("  {}: {}", "deleted".bright_red(), deleted_info.join(", "));
     }
 
-    // Warning when creates == deletes (potential forgotten rename)
-    if !diff.inserts.is_empty()
-        && !diff.deletes.is_empty()
-        && diff.inserts.len() == diff.deletes.len()
-    {
-        println!(
-            "  {}: Did you mean to rename? Use {} field instead of changing id.",
-            "warning".yellow().bold(),
-            "new_id".cyan()
-        );
+    // Warning when creates == deletes and types match (potential forgotten rename)
+    // Skip if types differ (e.g., distilling jot to task is intentional)
+    if diff.inserts.len() == 1 && diff.deletes.len() == 1 {
+        let deleted_type = original.iter()
+            .find(|t| t.id == diff.deletes[0])
+            .map(|t| t.task_type);
+        let inserted_type = Some(diff.inserts[0].task_type);
+
+        if deleted_type == inserted_type {
+            println!(
+                "  {}: Did you mean to rename? Use {} field instead of changing id.",
+                "warning".yellow().bold(),
+                "new_id".cyan()
+            );
+        }
     }
 
     println!();
@@ -692,15 +733,36 @@ fn build_commit_message(result: &ApplyResult) -> String {
     parts.join(", ")
 }
 
-/// Quick jot command - creates a jot with optional pre-filled title.
-pub fn jot(ctx: &MontContext, title: Option<&str>, editor_name: Option<&str>) -> Result<(), AppError> {
-    let jot_title = title.unwrap_or("New Jot");
+/// Arguments for the jot command.
+pub struct JotArgs {
+    /// Optional title for the jot
+    pub title: Option<String>,
+    /// Skip editor and confirmation, create jot immediately
+    pub quick: bool,
+    /// Resume editing the most recent temp file
+    pub resume: bool,
+    /// Resume editing a specific temp file
+    pub resume_path: Option<PathBuf>,
+    /// Editor name override
+    pub editor: Option<String>,
+}
 
-    let starter = Task {
-        id: "new-jot".to_string(),
+/// Quick jot command - creates a jot with optional pre-filled title.
+pub fn jot(ctx: &MontContext, args: JotArgs) -> Result<(), AppError> {
+    // Resume mode
+    if args.resume || args.resume_path.is_some() {
+        return resume_from_temp_file(ctx, "jot", args.resume_path, args.editor.as_deref(), "jot");
+    }
+
+    // Generate a unique ID for the jot
+    let jot_id = ctx.generate_id(&ctx.graph())?;
+    let jot_title = args.title.clone().unwrap_or_else(|| jot_id.clone());
+
+    let jot = Task {
+        id: jot_id,
         new_id: None,
-        title: Some(jot_title.to_string()),
-        description: "Quick idea here.".to_string(),
+        title: Some(jot_title),
+        description: String::new(),
         before: vec![],
         after: vec![],
         gates: vec![],
@@ -709,8 +771,146 @@ pub fn jot(ctx: &MontContext, title: Option<&str>, editor_name: Option<&str>) ->
         deleted: false,
     };
 
-    let comment = build_multiedit_comment(MultiEditMode::CreateWithType(TaskType::Jot));
-    let temp_path = make_temp_file("task", &[starter], Some(&comment))?;
+    // Quick mode: skip editor and confirmation, create jot immediately
+    if args.quick {
+        let id = jot.id.clone();
+        ctx.insert(jot)?;
 
-    run_editor_workflow(ctx, &temp_path, &[], editor_name)
+        let file_path = ctx.tasks_dir().join(format!("{}.md", &id));
+        println!("created: {}", file_path.display().to_string().bright_green());
+
+        // Auto-commit
+        if ctx.config().jj.enabled {
+            let message = format!("Create jot {}", id);
+            match crate::jj::commit(&message, &[ctx.tasks_dir()]) {
+                Ok(_) => println!("{}", "committed".bright_green()),
+                Err(e) => eprintln!("{}: failed to auto-commit: {}", "warning".yellow(), e),
+            }
+        }
+
+        return Ok(());
+    }
+
+    let comment = build_multiedit_comment(MultiEditMode::CreateWithType(TaskType::Jot));
+    let temp_path = make_temp_file("jot", std::slice::from_ref(&jot), Some(&comment))?;
+
+    // template = [] so exiting without changes still creates the jot
+    // graph = [] since jot doesn't exist yet (all inserts)
+    run_editor_workflow(ctx, &temp_path, &[], &[], args.editor.as_deref(), "jot")
+}
+
+/// Arguments for the distill command.
+pub struct DistillArgs {
+    /// Jot ID to distill
+    pub jot_id: String,
+    /// Resume editing the most recent temp file
+    pub resume: bool,
+    /// Resume editing a specific temp file
+    pub resume_path: Option<PathBuf>,
+    /// Editor name override
+    pub editor: Option<String>,
+}
+
+/// Parse the jot ID from a distill temp file's comment header.
+///
+/// Looks for the pattern "# DISTILLING JOT: <jot-id>" in the file.
+fn parse_jot_id_from_distill_file(path: &PathBuf) -> Option<String> {
+    let content = std::fs::read_to_string(path).ok()?;
+    for line in content.lines() {
+        if let Some(rest) = line.strip_prefix("# DISTILLING JOT: ") {
+            return Some(rest.trim().to_string());
+        }
+    }
+    None
+}
+
+/// Distill a jot into concrete tasks.
+///
+/// Opens editor with the jot commented out and space for new tasks.
+/// When saved, the jot is deleted and new tasks are created.
+pub fn distill(ctx: &MontContext, args: DistillArgs) -> Result<(), AppError> {
+    // Resume mode - needs special handling to recover jot ID from temp file
+    if args.resume || args.resume_path.is_some() {
+        let temp_path = if let Some(path) = args.resume_path {
+            path
+        } else {
+            find_most_recent_temp_file("distill")
+                .ok_or_else(|| AppError::TempFileNotFound("No recent distill temp file found".to_string()))?
+        };
+
+        if !temp_path.exists() {
+            return Err(AppError::TempFileNotFound(temp_path.display().to_string()));
+        }
+
+        // Try to recover the jot ID from the temp file and include it in graph_tasks
+        let graph_tasks = if let Some(jot_id) = parse_jot_id_from_distill_file(&temp_path) {
+            if let Some(jot) = ctx.graph().get(&jot_id) {
+                vec![jot.clone()]
+            } else {
+                // Jot no longer exists (maybe already deleted), proceed without it
+                vec![]
+            }
+        } else {
+            vec![]
+        };
+
+        return run_editor_workflow(ctx, &temp_path, &[], &graph_tasks, args.editor.as_deref(), "distill");
+    }
+
+    // Load the jot
+    let jot = ctx
+        .graph()
+        .get(&args.jot_id)
+        .ok_or_else(|| AppError::TaskNotFound {
+            task_id: args.jot_id.clone(),
+            tasks_dir: ctx.tasks_dir().display().to_string(),
+        })?
+        .clone();
+
+    // Verify it's actually a jot
+    if !jot.is_jot() {
+        return Err(AppError::NotAJot(args.jot_id.clone()));
+    }
+
+    // Build comment with the original jot content for reference (no # prefix - make_temp_file adds it)
+    let jot_markdown = jot.to_markdown();
+    let jot_lines: String = jot_markdown
+        .lines()
+        .map(|line| format!("  {}", line))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let comment = format!(
+        r#"============================================================
+DISTILLING JOT: {}
+============================================================
+Original jot (for reference - will be deleted):
+
+{}
+
+Create replacement tasks below. The jot above will be deleted
+when you save and confirm.
+============================================================"#,
+        args.jot_id, jot_lines
+    );
+
+    // Create a starter task template
+    let starter = Task {
+        id: "new-task".to_string(),
+        new_id: None,
+        title: Some("New Task".to_string()),
+        description: "Description here.".to_string(),
+        before: vec![],
+        after: vec![],
+        gates: vec![],
+        task_type: TaskType::Task,
+        status: None,
+        deleted: false,
+    };
+
+    let temp_path = make_temp_file("distill", std::slice::from_ref(&starter), Some(&comment))?;
+
+    // template = [starter] (for no-changes check)
+    // graph = [jot] (jot exists in graph and will be deleted when user makes changes)
+    run_editor_workflow(ctx, &temp_path, std::slice::from_ref(&starter), std::slice::from_ref(&jot), args.editor.as_deref(), "distill")
 }

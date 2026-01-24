@@ -35,6 +35,8 @@ pub enum AppError {
         error: Box<AppError>,
         temp_path: String,
         editor_name: Option<String>,
+        /// Command name for resume message (e.g., "task", "jot", "distill")
+        command_name: String,
     },
     /// No changes provided to edit command
     NoChangesProvided,
@@ -86,6 +88,8 @@ pub enum AppError {
     MultiEditRequiresEditor,
     /// Invalid command arguments
     InvalidArgs(String),
+    /// ID required (use ? for picker)
+    IdRequired(String),
 }
 
 impl fmt::Display for AppError {
@@ -119,8 +123,8 @@ impl fmt::Display for AppError {
             AppError::IdAlreadyExists(id) => {
                 write!(f, "{}", format_id_already_exists(id))
             }
-            AppError::TempValidationFailed { error, temp_path, editor_name } => {
-                write!(f, "{}", format_temp_validation_failed(error, temp_path, editor_name.as_deref()))
+            AppError::TempValidationFailed { error, temp_path, editor_name, command_name } => {
+                write!(f, "{}", format_temp_validation_failed(error, temp_path, editor_name.as_deref(), command_name.as_str()))
             }
             AppError::NoChangesProvided => {
                 write!(f, "{}", format_no_changes_provided())
@@ -184,6 +188,19 @@ impl fmt::Display for AppError {
             }
             AppError::InvalidArgs(msg) => {
                 write!(f, "{}", format_cli_error(msg))
+            }
+            AppError::IdRequired(cmd) => {
+                write!(
+                    f,
+                    "{}: {} requires an ID argument\n\n  {}:\n    {} {}  # explicit ID\n    {} {}  # interactive picker\n",
+                    "error".red().bold(),
+                    cmd.cyan(),
+                    "Usage".bold(),
+                    format!("mont {}", cmd).cyan(),
+                    "<id>".dimmed(),
+                    format!("mont {}", cmd).cyan(),
+                    "?".cyan()
+                )
             }
         }
     }
@@ -709,7 +726,7 @@ fn format_id_already_exists(id: &str) -> String {
     out
 }
 
-fn format_temp_validation_failed(error: &AppError, temp_path: &str, editor_name: Option<&str>) -> String {
+fn format_temp_validation_failed(error: &AppError, temp_path: &str, editor_name: Option<&str>, command_name: &str) -> String {
     let mut out = String::new();
 
     // First, display the underlying error
@@ -717,14 +734,15 @@ fn format_temp_validation_failed(error: &AppError, temp_path: &str, editor_name:
     out.push('\n');
 
     // Then show how to resume
-    out.push_str(&format!("  {}\n", "Your task file has been saved to:".dimmed()));
-    out.push_str(&format!("    {}\n", temp_path.cyan()));
+    out.push_str(&format!("  {}\n", "Your task file has been saved.".dimmed()));
     out.push('\n');
     out.push_str(&format!("  {}:\n", "To fix and retry".bold()));
-
+    out.push_str(&format!("    {}  {}\n", format!("mont {} -r", command_name).cyan(), "(resume most recent)".dimmed()));
+    out.push('\n');
+    out.push_str(&format!("  {}:\n", "Or specify the file directly".dimmed()));
     let resume_cmd = match editor_name {
-        Some(name) => format!("mont task --resume-path {} --editor {}", temp_path, name),
-        None => format!("mont task --resume-path {}", temp_path),
+        Some(name) => format!("mont {} --resume-path {} --editor {}", command_name, temp_path, name),
+        None => format!("mont {} --resume-path {}", command_name, temp_path),
     };
     out.push_str(&format!("    {}\n", resume_cmd.cyan()));
 
@@ -756,11 +774,12 @@ fn format_edit_temp_validation_failed(error: &AppError, _original_id: &str, temp
     out.push('\n');
 
     // Then show how to resume editing
-    out.push_str(&format!("  {}\n", "Your task file has been saved to:".dimmed()));
-    out.push_str(&format!("    {}\n", temp_path.cyan()));
+    out.push_str(&format!("  {}\n", "Your task file has been saved.".dimmed()));
     out.push('\n');
     out.push_str(&format!("  {}:\n", "To fix and retry".bold()));
-
+    out.push_str(&format!("    {}  {}\n", "mont task -r".cyan(), "(resume most recent)".dimmed()));
+    out.push('\n');
+    out.push_str(&format!("  {}:\n", "Or specify the file directly".dimmed()));
     let resume_cmd = match editor_name {
         Some(name) => format!("mont task --resume-path {} --editor {}", temp_path, name),
         None => format!("mont task --resume-path {}", temp_path),

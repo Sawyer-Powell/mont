@@ -5,6 +5,7 @@ use std::io::Write;
 use owo_colors::OwoColorize;
 
 use crate::error_fmt::{AppError, IoResultExt};
+use crate::jj;
 use crate::MontContext;
 
 /// Delete a task and remove all references to it from other tasks.
@@ -62,6 +63,15 @@ pub fn delete(ctx: &MontContext, id: &str, force: bool) -> Result<(), AppError> 
     }
 
     println!("{} {}", "deleted:".red(), id.bright_yellow());
+
+    // Auto-commit if jj is enabled
+    if ctx.config().jj.enabled {
+        let message = format!("Delete task {}", id);
+        match jj::commit(&message, &[ctx.tasks_dir()]) {
+            Ok(_) => println!("{}", "committed".bright_green()),
+            Err(e) => eprintln!("{}: failed to auto-commit: {}", "warning".yellow(), e),
+        }
+    }
 
     Ok(())
 }

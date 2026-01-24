@@ -40,7 +40,7 @@ enum Commands {
         #[arg(long, short = 'T', value_parser = parse_task_type)]
         r#type: Option<TaskType>,
         /// Resume editing the most recent temp file
-        #[arg(long, conflicts_with_all = ["ids", "type", "content", "patch", "append"])]
+        #[arg(long, short = 'r', conflicts_with_all = ["ids", "type", "content", "patch", "append"])]
         resume: bool,
         /// Resume editing a specific temp file
         #[arg(long, conflicts_with_all = ["ids", "type", "content", "resume", "patch", "append"])]
@@ -67,7 +67,32 @@ enum Commands {
     /// Quick jot - shortcut for mont task --type jot
     Jot {
         /// Optional title for the jot
+        #[arg(conflicts_with_all = ["resume", "resume_path"])]
         title: Option<String>,
+        /// Skip editor and confirmation, create jot immediately
+        #[arg(long, short = 'q', conflicts_with_all = ["resume", "resume_path", "editor"])]
+        quick: bool,
+        /// Resume editing the most recent temp file
+        #[arg(long, short = 'r', conflicts_with_all = ["title", "resume_path", "quick"])]
+        resume: bool,
+        /// Resume editing a specific temp file
+        #[arg(long, conflicts_with_all = ["title", "resume", "quick"])]
+        resume_path: Option<PathBuf>,
+        /// Editor command to use
+        #[arg(long, short, conflicts_with = "quick")]
+        editor: Option<String>,
+    },
+    /// Convert a jot into concrete tasks
+    Distill {
+        /// Jot ID to distill. If not provided, opens interactive picker.
+        #[arg(conflicts_with_all = ["resume", "resume_path"])]
+        id: Option<String>,
+        /// Resume editing the most recent temp file
+        #[arg(long, short = 'r', conflicts_with_all = ["id", "resume_path"])]
+        resume: bool,
+        /// Resume editing a specific temp file
+        #[arg(long, conflicts_with_all = ["id", "resume"])]
+        resume_path: Option<PathBuf>,
         /// Editor command to use
         #[arg(long, short)]
         editor: Option<String>,
@@ -200,25 +225,66 @@ fn run(cli: Cli) -> Result<(), AppError> {
                 group,
             },
         ),
-        Commands::Jot { title, editor } => commands::jot(&ctx, title.as_deref(), editor.as_deref()),
+        Commands::Jot { title, quick, resume, resume_path, editor } => commands::jot(
+            &ctx,
+            commands::task_cmd::JotArgs {
+                title,
+                quick,
+                resume,
+                resume_path,
+                editor,
+            },
+        ),
+        Commands::Distill { id, resume, resume_path, editor } => {
+            // Resume mode doesn't need an ID
+            if resume || resume_path.is_some() {
+                return commands::distill(
+                    &ctx,
+                    commands::task_cmd::DistillArgs {
+                        jot_id: String::new(), // Not used in resume mode
+                        resume,
+                        resume_path,
+                        editor,
+                    },
+                );
+            }
+
+            let resolved_id = match id {
+                Some(id) if id == "?" => pick_task(&ctx.graph(), TaskFilter::Jots)?,
+                Some(id) => id,
+                None => return Err(AppError::IdRequired("distill".to_string())),
+            };
+            commands::distill(
+                &ctx,
+                commands::task_cmd::DistillArgs {
+                    jot_id: resolved_id,
+                    resume: false,
+                    resume_path: None,
+                    editor,
+                },
+            )
+        }
         Commands::Delete { id, force } => {
             let resolved_id = match id {
+                Some(id) if id == "?" => pick_task(&ctx.graph(), TaskFilter::Active)?,
                 Some(id) => id,
-                None => pick_task(&ctx.graph(), TaskFilter::Active)?,
+                None => return Err(AppError::IdRequired("delete".to_string())),
             };
             commands::delete(&ctx, &resolved_id, force)
         }
         Commands::Show { id, short } => {
             let resolved_id = match id {
+                Some(id) if id == "?" => pick_task(&ctx.graph(), TaskFilter::All)?,
                 Some(id) => id,
-                None => pick_task(&ctx.graph(), TaskFilter::All)?,
+                None => return Err(AppError::IdRequired("show".to_string())),
             };
             commands::show(&ctx, &resolved_id, short)
         }
         Commands::Unlock { id, passed, skipped } => {
             let resolved_id = match id {
+                Some(id) if id == "?" => pick_task(&ctx.graph(), TaskFilter::InProgress)?,
                 Some(id) => id,
-                None => pick_task(&ctx.graph(), TaskFilter::InProgress)?,
+                None => return Err(AppError::IdRequired("unlock".to_string())),
             };
             commands::unlock(
                 &ctx,
@@ -231,8 +297,9 @@ fn run(cli: Cli) -> Result<(), AppError> {
         }
         Commands::Lock { id, gates } => {
             let resolved_id = match id {
+                Some(id) if id == "?" => pick_task(&ctx.graph(), TaskFilter::InProgress)?,
                 Some(id) => id,
-                None => pick_task(&ctx.graph(), TaskFilter::InProgress)?,
+                None => return Err(AppError::IdRequired("lock".to_string())),
             };
             commands::unlock::lock(
                 &ctx,
@@ -244,8 +311,9 @@ fn run(cli: Cli) -> Result<(), AppError> {
         }
         Commands::Start { id } => {
             let resolved_id = match id {
+                Some(id) if id == "?" => pick_task(&ctx.graph(), TaskFilter::Active)?,
                 Some(id) => id,
-                None => pick_task(&ctx.graph(), TaskFilter::Active)?,
+                None => return Err(AppError::IdRequired("start".to_string())),
             };
             commands::start(&ctx, &resolved_id)
         }
@@ -258,12 +326,13 @@ fn run(cli: Cli) -> Result<(), AppError> {
             } else {
                 // Need a task id - from arg or picker
                 let resolved_id = match id {
-                    Some(id) => id,
-                    None => {
+                    Some(id) if id == "?" => {
                         // Pre-validate before showing picker to avoid wasting user time
                         commands::claude_pre_validate(&ctx)?;
                         pick_task(&ctx.graph(), TaskFilter::Ready)?
                     }
+                    Some(id) => id,
+                    None => return Err(AppError::IdRequired("claude".to_string())),
                 };
                 commands::claude(&ctx, &resolved_id)
             }

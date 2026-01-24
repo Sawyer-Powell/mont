@@ -1,7 +1,11 @@
 ---
 id: mont-distill-command
 title: Add mont distill command
-status: inprogress
+status: complete
+gates:
+  - user-qa: passed
+  - architecture-validator: passed
+  - test: passed
 ---
 
 Add `mont distill <jot-id>` command to convert jots to tasks:

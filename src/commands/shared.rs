@@ -19,6 +19,8 @@ pub enum TaskFilter {
     All,
     /// Only ready tasks (not complete, not gates, all dependencies complete)
     Ready,
+    /// Only jots (non-complete)
+    Jots,
 }
 
 /// Pick a task interactively using fzf.
@@ -47,6 +49,7 @@ pub fn pick_task(graph: &TaskGraph, filter: TaskFilter) -> Result<String, AppErr
             TaskFilter::InProgress => t.is_in_progress(),
             TaskFilter::All => true,
             TaskFilter::Ready => !t.is_complete() && !t.is_gate() && is_available(t, graph),
+            TaskFilter::Jots => !t.is_complete() && t.is_jot(),
         })
         .collect();
 
