@@ -1,5 +1,5 @@
 jj:
   enabled: true
 default_gates:
-  - interview-validator
+  - architecture-validator
   - test

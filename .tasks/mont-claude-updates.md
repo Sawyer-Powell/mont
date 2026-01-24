@@ -3,7 +3,7 @@ id: mont-claude-updates
 title: Updates to mont llm claude
 status: complete
 gates:
-  - interview-validator: passed
+  - architecture-validator: passed
   - test: passed
 ---
 

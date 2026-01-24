@@ -3,7 +3,7 @@ id: jot-improvements
 title: Across the board improvements for jots
 status: complete
 gates:
-  - interview-validator: passed
+  - architecture-validator: passed
   - test: passed
 ---
 

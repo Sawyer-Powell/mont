@@ -3,7 +3,7 @@ id: claude-not-showing
 title: Bug in mont claude when not using --ignore flag
 status: complete
 gates:
-  - interview-validator: passed
+  - architecture-validator: passed
   - test: passed
 ---
 

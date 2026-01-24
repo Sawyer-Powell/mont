@@ -3,7 +3,7 @@ id: mont-status-jj
 title: Include a jj status section for mont status
 status: complete
 gates:
-  - interview-validator: passed
+  - architecture-validator: passed
   - test: passed
 ---
 

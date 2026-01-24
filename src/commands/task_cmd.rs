@@ -7,7 +7,7 @@ use owo_colors::OwoColorize;
 
 use super::shared::{
     build_multiedit_comment, find_most_recent_temp_file, make_temp_file, MultiEditMode,
-    parse_multi_task_content, remove_temp_file,
+    parse_multi_task_content, remove_temp_file, resolve_ids, TaskFilter,
 };
 use crate::error_fmt::AppError;
 use crate::multieditor::{apply_diff, compute_diff, ApplyResult};
@@ -45,23 +45,30 @@ pub fn task(ctx: &MontContext, args: TaskArgs) -> Result<(), AppError> {
         return content_mode(ctx, &content, &args.ids);
     }
 
+    // Resolve `?` placeholders in IDs via interactive picker
+    let ids = if args.ids.iter().any(|id| id == "?") {
+        resolve_ids(&ctx.graph(), &args.ids, TaskFilter::Active)?
+    } else {
+        args.ids.clone()
+    };
+
     // Patch mode: --patch (JSON merge, single ID)
     if let Some(patch) = args.patch {
-        return patch_mode(ctx, &args.ids, &patch);
+        return patch_mode(ctx, &ids, &patch);
     }
 
     // Append mode: --append (add to description, single ID)
     if let Some(text) = args.append {
-        return append_mode(ctx, &args.ids, &text);
+        return append_mode(ctx, &ids, &text);
     }
 
     // Editor mode: open editor for creating/editing tasks
-    if args.ids.is_empty() {
+    if ids.is_empty() {
         // Empty multieditor - create new tasks
         create_mode(ctx, args.task_type, args.editor.as_deref())
     } else {
         // Edit specific tasks
-        edit_mode(ctx, &args.ids, args.editor.as_deref())
+        edit_mode(ctx, &ids, args.editor.as_deref())
     }
 }
 

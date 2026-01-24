@@ -3,7 +3,7 @@ id: awake-satyr
 title: Add jj disabled mode via global config
 status: complete
 gates:
-  - interview-validator: passed
+  - architecture-validator: passed
   - test: passed
 ---
 

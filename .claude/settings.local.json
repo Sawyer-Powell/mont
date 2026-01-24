@@ -54,7 +54,8 @@
       "Bash(mont delete:*)",
       "Bash(mont task:*)",
       "Bash(cargo clippy:*)",
-      "Bash(tree:*)"
+      "Bash(tree:*)",
+      "Bash(mont check:*)"
     ]
   }
 }

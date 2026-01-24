@@ -1,5 +1,5 @@
 ---
-id: interview-validator
+id: architecture-validator
 title: Conduct interview to confirm changes
 type: gate
 ---

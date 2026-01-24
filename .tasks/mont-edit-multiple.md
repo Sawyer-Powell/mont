@@ -3,7 +3,7 @@ id: mont-edit-multiple
 title: Need to update how mont edit works
 status: complete
 gates:
-  - interview-validator: passed
+  - architecture-validator: passed
   - test: passed
 ---
 
