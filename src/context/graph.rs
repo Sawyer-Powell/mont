@@ -399,6 +399,72 @@ impl TaskGraph {
 
         components
     }
+
+    /// Returns all task IDs reachable from the given seed IDs via before/after relationships.
+    ///
+    /// This collects the full subgraph containing the seeds - all tasks connected
+    /// through dependency relationships in either direction.
+    pub fn subgraph(&self, seeds: &[&str]) -> Vec<String> {
+        let mut visited: HashSet<String> = HashSet::new();
+        let mut stack: Vec<String> = seeds
+            .iter()
+            .filter(|id| self.tasks.contains_key(**id))
+            .map(|s| s.to_string())
+            .collect();
+
+        // Build reverse index: task_id -> tasks that reference it in before/after
+        let mut referenced_by: HashMap<String, Vec<String>> = HashMap::new();
+        for task in self.tasks.values() {
+            for before_id in &task.before {
+                referenced_by
+                    .entry(before_id.clone())
+                    .or_default()
+                    .push(task.id.clone());
+            }
+            for after_id in &task.after {
+                referenced_by
+                    .entry(after_id.clone())
+                    .or_default()
+                    .push(task.id.clone());
+            }
+        }
+
+        while let Some(id) = stack.pop() {
+            if visited.contains(&id) {
+                continue;
+            }
+            visited.insert(id.clone());
+
+            // Get the task and follow its relationships
+            if let Some(task) = self.tasks.get(&id) {
+                // Follow before references
+                for before_id in &task.before {
+                    if self.tasks.contains_key(before_id) && !visited.contains(before_id) {
+                        stack.push(before_id.clone());
+                    }
+                }
+                // Follow after references
+                for after_id in &task.after {
+                    if self.tasks.contains_key(after_id) && !visited.contains(after_id) {
+                        stack.push(after_id.clone());
+                    }
+                }
+            }
+
+            // Follow reverse references (tasks that point to this one)
+            if let Some(refs) = referenced_by.get(&id) {
+                for ref_id in refs {
+                    if !visited.contains(ref_id) {
+                        stack.push(ref_id.clone());
+                    }
+                }
+            }
+        }
+
+        let mut result: Vec<String> = visited.into_iter().collect();
+        result.sort();
+        result
+    }
 }
 
 impl PartialEq for TaskGraph {

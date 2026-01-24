@@ -13,3 +13,6 @@ Next, identify the key systems in the codebase
 Take your time to research the codebase and built a complete picture
 
 Finally, ask questions using the AskQuestion tool to confirm design decisions
+
+YOU MUST ask the user point blank if they are willing the unlock this gate.
+YOU CANNOT unlock this gate without EXPLICIT confirmation from the user.

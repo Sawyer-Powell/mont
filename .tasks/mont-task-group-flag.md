@@ -1,7 +1,12 @@
 ---
 id: mont-task-group-flag
 title: Add --group flag to mont task
+status: complete
+gates:
+  - architecture-validator: passed
+  - test: passed
 ---
+
 Add `-g` / `--group` flag to `mont task`:
 
 When enabled, for each task ID specified, also include all tasks in that task's subgraph.

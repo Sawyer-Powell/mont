@@ -34,6 +34,8 @@ pub struct TaskArgs {
     pub append: Option<String>,
     /// Editor name override
     pub editor: Option<String>,
+    /// Include full subgraph of each ID
+    pub group: bool,
 }
 
 /// Read all content from stdin.
@@ -65,11 +67,27 @@ pub fn task(ctx: &MontContext, args: TaskArgs) -> Result<(), AppError> {
     }
 
     // Resolve `?` placeholders in IDs via interactive picker
-    let ids = if args.ids.iter().any(|id| id == "?") {
+    let mut ids = if args.ids.iter().any(|id| id == "?") {
         resolve_ids(&ctx.graph(), &args.ids, TaskFilter::Active)?
     } else {
         args.ids.clone()
     };
+
+    // Group mode: expand each ID to include its full subgraph
+    if args.group && !ids.is_empty() {
+        let seeds: Vec<&str> = ids.iter().map(|s| s.as_str()).collect();
+        let subgraph_ids: std::collections::HashSet<String> =
+            ctx.graph().subgraph(&seeds).into_iter().collect();
+
+        // Get topological order and filter to just the subgraph
+        ids = ctx
+            .graph()
+            .topological_order()
+            .into_iter()
+            .filter(|id| subgraph_ids.contains(*id))
+            .map(|s| s.to_string())
+            .collect();
+    }
 
     // Patch mode: --patch (JSON merge, single ID)
     if let Some(patch) = args.patch {

@@ -60,6 +60,9 @@ enum Commands {
         /// Editor command to use
         #[arg(long, short)]
         editor: Option<String>,
+        /// Include full subgraph of each ID (all connected tasks via before/after)
+        #[arg(long, short)]
+        group: bool,
     },
     /// Delete a task and remove all references to it
     Delete {
@@ -173,6 +176,7 @@ fn run(cli: Cli) -> Result<(), AppError> {
             patch,
             append,
             editor,
+            group,
         } => commands::task(
             &ctx,
             commands::task_cmd::TaskArgs {
@@ -185,6 +189,7 @@ fn run(cli: Cli) -> Result<(), AppError> {
                 patch,
                 append,
                 editor,
+                group,
             },
         ),
         Commands::Delete { id, force } => {
@@ -292,6 +297,7 @@ Description here.
             patch: None,
             append: None,
             editor: None,
+            group: false,
         };
 
         let result = commands::task(&ctx, args);
@@ -337,6 +343,7 @@ title: Updated title
             patch: None,
             append: None,
             editor: None,
+            group: false,
         };
 
         let result = commands::task(&ctx, args);
@@ -398,6 +405,7 @@ title: Parent
             patch: None,
             append: None,
             editor: None,
+            group: false,
         };
 
         let result = commands::task(&ctx, args);
@@ -436,6 +444,7 @@ Gate description.
             patch: None,
             append: None,
             editor: None,
+            group: false,
         };
 
         let result = commands::task(&ctx, args);
