@@ -1,6 +1,7 @@
 ---
 id: multi-editor-bug-create-new
 title: Multi editor has bug detecting tasks which should be created
+status: inprogress
 ---
 
 Replication:
