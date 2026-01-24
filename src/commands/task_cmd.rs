@@ -253,6 +253,13 @@ fn patch_mode(ctx: &MontContext, ids: &[String], patch_yaml: &str) -> Result<(),
     // Update the task (this handles reference rewriting if ID changed)
     ctx.update(original_id, task.clone())?;
 
+    // Build result for auto-commit
+    let result = ApplyResult {
+        created: vec![],
+        updated: vec![(original_id.clone(), task.id.clone(), id_changed)],
+        deleted: vec![],
+    };
+
     if id_changed {
         println!(
             "renamed: {} -> {}",
@@ -263,6 +270,8 @@ fn patch_mode(ctx: &MontContext, ids: &[String], patch_yaml: &str) -> Result<(),
         let file_path = ctx.tasks_dir().join(format!("{}.md", original_id));
         println!("updated: {}", file_path.display().to_string().bright_blue());
     }
+
+    auto_commit(ctx, &result);
 
     Ok(())
 }
@@ -301,6 +310,14 @@ fn append_mode(ctx: &MontContext, ids: &[String], text: &str) -> Result<(), AppE
 
     let file_path = ctx.tasks_dir().join(format!("{}.md", id));
     println!("updated: {}", file_path.display().to_string().bright_blue());
+
+    // Auto-commit
+    let result = ApplyResult {
+        created: vec![],
+        updated: vec![(id.clone(), id.clone(), false)],
+        deleted: vec![],
+    };
+    auto_commit(ctx, &result);
 
     Ok(())
 }
