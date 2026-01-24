@@ -55,7 +55,8 @@
       "Bash(mont task:*)",
       "Bash(cargo clippy:*)",
       "Bash(tree:*)",
-      "Bash(mont check:*)"
+      "Bash(mont check:*)",
+      "Bash(git add:*)"
     ]
   }
 }
