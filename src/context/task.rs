@@ -1,6 +1,43 @@
 use serde::Deserialize;
 use thiserror::Error;
 
+/// Escape a string for safe YAML output.
+///
+/// Wraps the string in double quotes if it contains characters that could
+/// break YAML parsing (colons, quotes, brackets, etc.). Internal double
+/// quotes and backslashes are escaped.
+fn yaml_escape(s: &str) -> String {
+    // Characters that require quoting in YAML
+    let needs_quoting = s.contains(':')
+        || s.contains('#')
+        || s.contains('"')
+        || s.contains('\'')
+        || s.contains('[')
+        || s.contains(']')
+        || s.contains('{')
+        || s.contains('}')
+        || s.contains('&')
+        || s.contains('*')
+        || s.contains('!')
+        || s.contains('|')
+        || s.contains('>')
+        || s.contains('%')
+        || s.contains('@')
+        || s.contains('`')
+        || s.starts_with(' ')
+        || s.ends_with(' ')
+        || s.starts_with('-')
+        || s.starts_with('?');
+
+    if needs_quoting {
+        // Escape backslashes and double quotes, then wrap in double quotes
+        let escaped = s.replace('\\', "\\\\").replace('"', "\\\"");
+        format!("\"{}\"", escaped)
+    } else {
+        s.to_string()
+    }
+}
+
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum TaskType {
@@ -167,7 +204,7 @@ impl Task {
         }
 
         if let Some(t) = &self.title {
-            content.push_str(&format!("title: {}\n", t));
+            content.push_str(&format!("title: {}\n", yaml_escape(t)));
         }
 
         match self.task_type {
@@ -836,5 +873,49 @@ Task description.
         let markdown = task.to_markdown();
         let parsed = parse(&markdown).unwrap();
         assert!(parsed.is_stopped());
+    }
+
+    #[test]
+    fn test_to_markdown_title_with_colon() {
+        let task = Task {
+            id: "colon-task".to_string(),
+            new_id: None,
+            before: vec![],
+            after: vec![],
+            gates: vec![],
+            title: Some("Fix: something broken".to_string()),
+            status: None,
+            task_type: TaskType::Task,
+            description: String::new(),
+            deleted: false,
+        };
+        let markdown = task.to_markdown();
+        // Should contain quoted title
+        assert!(markdown.contains("title: \"Fix: something broken\""));
+        // Roundtrip should work
+        let parsed = parse(&markdown).unwrap();
+        assert_eq!(parsed.title, Some("Fix: something broken".to_string()));
+    }
+
+    #[test]
+    fn test_to_markdown_title_with_quotes() {
+        let task = Task {
+            id: "quote-task".to_string(),
+            new_id: None,
+            before: vec![],
+            after: vec![],
+            gates: vec![],
+            title: Some("Task with \"quotes\" inside".to_string()),
+            status: None,
+            task_type: TaskType::Task,
+            description: String::new(),
+            deleted: false,
+        };
+        let markdown = task.to_markdown();
+        // Should escape the quotes
+        assert!(markdown.contains(r#"title: "Task with \"quotes\" inside""#));
+        // Roundtrip should work
+        let parsed = parse(&markdown).unwrap();
+        assert_eq!(parsed.title, Some("Task with \"quotes\" inside".to_string()));
     }
 }
