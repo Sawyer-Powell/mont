@@ -1,7 +1,9 @@
 ---
 id: mont-distill-command
 title: Add mont distill command
+status: inprogress
 ---
+
 Add `mont distill <jot-id>` command to convert jots to tasks:
 
 1. Takes a jot ID as argument
