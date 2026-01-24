@@ -2,6 +2,8 @@
 id: mont-task-stdin
 title: Add stdin support to mont task for LLM usage
 status: inprogress
+gates:
+  - architecture-validator: passed
 ---
 
 The `--content` flag has issues when content starts with `---` (clap parsing confusion).
