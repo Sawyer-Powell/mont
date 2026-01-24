@@ -46,13 +46,16 @@ enum Commands {
         #[arg(long, conflicts_with_all = ["ids", "type", "content", "resume", "patch", "append"])]
         resume_path: Option<PathBuf>,
         /// Skip editor, use content directly (LLM/scripting)
-        #[arg(long, conflicts_with_all = ["type", "resume", "resume_path", "patch", "append"])]
+        #[arg(long, conflicts_with_all = ["type", "resume", "resume_path", "patch", "append", "stdin"])]
         content: Option<String>,
+        /// Read task content from stdin (LLM-friendly, avoids shell escaping)
+        #[arg(long, conflicts_with_all = ["type", "resume", "resume_path", "content", "patch", "append"])]
+        stdin: bool,
         /// YAML patch to merge into task (requires single ID)
-        #[arg(long, conflicts_with_all = ["type", "resume", "resume_path", "content", "append"])]
+        #[arg(long, conflicts_with_all = ["type", "resume", "resume_path", "content", "append", "stdin"])]
         patch: Option<String>,
         /// Append text to task description (requires single ID)
-        #[arg(long, conflicts_with_all = ["type", "resume", "resume_path", "content", "patch"])]
+        #[arg(long, conflicts_with_all = ["type", "resume", "resume_path", "content", "patch", "stdin"])]
         append: Option<String>,
         /// Editor command to use
         #[arg(long, short)]
@@ -166,6 +169,7 @@ fn run(cli: Cli) -> Result<(), AppError> {
             resume,
             resume_path,
             content,
+            stdin,
             patch,
             append,
             editor,
@@ -177,6 +181,7 @@ fn run(cli: Cli) -> Result<(), AppError> {
                 resume,
                 resume_path,
                 content,
+                stdin,
                 patch,
                 append,
                 editor,
@@ -283,6 +288,7 @@ Description here.
             resume: false,
             resume_path: None,
             content: Some(content.to_string()),
+            stdin: false,
             patch: None,
             append: None,
             editor: None,
@@ -327,6 +333,7 @@ title: Updated title
             resume: false,
             resume_path: None,
             content: Some(content.to_string()),
+            stdin: false,
             patch: None,
             append: None,
             editor: None,
@@ -387,6 +394,7 @@ title: Parent
             resume: false,
             resume_path: None,
             content: Some(content.to_string()),
+            stdin: false,
             patch: None,
             append: None,
             editor: None,
@@ -424,6 +432,7 @@ Gate description.
             resume: false,
             resume_path: None,
             content: Some(content.to_string()),
+            stdin: false,
             patch: None,
             append: None,
             editor: None,

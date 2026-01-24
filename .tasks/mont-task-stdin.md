@@ -1,7 +1,9 @@
 ---
 id: mont-task-stdin
 title: Add stdin support to mont task for LLM usage
+status: inprogress
 ---
+
 The `--content` flag has issues when content starts with `---` (clap parsing confusion).
 
 Add `--stdin` flag that reads task content from stdin:

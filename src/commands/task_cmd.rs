@@ -1,6 +1,6 @@
 //! Unified task command - creates, edits, and deletes tasks in one editor session.
 
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::path::PathBuf;
 
 use owo_colors::OwoColorize;
@@ -10,6 +10,7 @@ use super::shared::{
     parse_multi_task_content, remove_temp_file, resolve_ids, TaskFilter,
 };
 use crate::error_fmt::AppError;
+use crate::jj;
 use crate::multieditor::{apply_diff, compute_diff, ApplyResult};
 use crate::{resolve_editor, MontContext, Task, TaskType};
 
@@ -25,12 +26,24 @@ pub struct TaskArgs {
     pub resume_path: Option<PathBuf>,
     /// Skip editor, use content directly (LLM/scripting)
     pub content: Option<String>,
-    /// JSON patch to merge into task (requires single ID)
+    /// Read content from stdin (LLM-friendly)
+    pub stdin: bool,
+    /// YAML patch to merge into task (requires single ID)
     pub patch: Option<String>,
     /// Append text to task description (requires single ID)
     pub append: Option<String>,
     /// Editor name override
     pub editor: Option<String>,
+}
+
+/// Read all content from stdin.
+fn read_stdin() -> Result<String, AppError> {
+    let mut content = String::new();
+    io::stdin().read_to_string(&mut content).map_err(|e| AppError::Io {
+        context: "failed to read from stdin".to_string(),
+        source: e,
+    })?;
+    Ok(content)
 }
 
 /// Run the unified task command.
@@ -42,6 +55,12 @@ pub fn task(ctx: &MontContext, args: TaskArgs) -> Result<(), AppError> {
 
     // Content mode: --content (skip editor)
     if let Some(content) = args.content {
+        return content_mode(ctx, &content, &args.ids);
+    }
+
+    // Stdin mode: --stdin (read content from stdin)
+    if args.stdin {
+        let content = read_stdin()?;
         return content_mode(ctx, &content, &args.ids);
     }
 
@@ -118,6 +137,7 @@ fn content_mode(ctx: &MontContext, content: &str, ids: &[String]) -> Result<(), 
     // Apply changes directly (no confirmation in content mode)
     let result = apply_diff(ctx, diff)?;
     print_result(ctx, &result);
+    auto_commit(ctx, &result);
 
     Ok(())
 }
@@ -441,6 +461,7 @@ fn run_editor_workflow(
     match apply_diff(ctx, diff) {
         Ok(result) => {
             print_result(ctx, &result);
+            auto_commit(ctx, &result);
             remove_temp_file(temp_path)?;
             Ok(())
         }
@@ -558,4 +579,80 @@ fn print_result(ctx: &MontContext, result: &ApplyResult) {
     for id in &result.deleted {
         println!("deleted: {}", id.bright_red());
     }
+}
+
+/// Auto-commit changes if jj is enabled.
+fn auto_commit(ctx: &MontContext, result: &ApplyResult) {
+    // Skip if jj is disabled
+    if !ctx.config().jj.enabled {
+        return;
+    }
+
+    // Skip if no changes
+    if result.created.is_empty() && result.updated.is_empty() && result.deleted.is_empty() {
+        return;
+    }
+
+    // Build commit message
+    let message = build_commit_message(result);
+
+    // Run jj commit
+    match jj::commit(&message) {
+        Ok(_) => {
+            println!("{}", "committed".bright_green());
+        }
+        Err(e) => {
+            eprintln!(
+                "{}: failed to auto-commit: {}",
+                "warning".yellow(),
+                e
+            );
+        }
+    }
+}
+
+/// Build a commit message from apply result.
+fn build_commit_message(result: &ApplyResult) -> String {
+    let mut parts = Vec::new();
+
+    if !result.created.is_empty() {
+        if result.created.len() == 1 {
+            parts.push(format!("Create task {}", result.created[0]));
+        } else {
+            parts.push(format!("Create {} tasks", result.created.len()));
+        }
+    }
+
+    if !result.updated.is_empty() {
+        let renamed: Vec<_> = result.updated.iter()
+            .filter(|(_, _, changed)| *changed)
+            .collect();
+        let updated: Vec<_> = result.updated.iter()
+            .filter(|(_, _, changed)| !*changed)
+            .collect();
+
+        if !updated.is_empty() {
+            if updated.len() == 1 {
+                parts.push(format!("Update task {}", updated[0].1));
+            } else {
+                parts.push(format!("Update {} tasks", updated.len()));
+            }
+        }
+
+        if !renamed.is_empty() {
+            for (old, new, _) in renamed {
+                parts.push(format!("Rename {} to {}", old, new));
+            }
+        }
+    }
+
+    if !result.deleted.is_empty() {
+        if result.deleted.len() == 1 {
+            parts.push(format!("Delete task {}", result.deleted[0]));
+        } else {
+            parts.push(format!("Delete {} tasks", result.deleted.len()));
+        }
+    }
+
+    parts.join(", ")
 }
