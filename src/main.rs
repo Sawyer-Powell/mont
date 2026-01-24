@@ -64,6 +64,14 @@ enum Commands {
         #[arg(long, short)]
         group: bool,
     },
+    /// Quick jot - shortcut for mont task --type jot
+    Jot {
+        /// Optional title for the jot
+        title: Option<String>,
+        /// Editor command to use
+        #[arg(long, short)]
+        editor: Option<String>,
+    },
     /// Delete a task and remove all references to it
     Delete {
         /// Task ID to delete. If not provided, opens interactive picker.
@@ -192,6 +200,7 @@ fn run(cli: Cli) -> Result<(), AppError> {
                 group,
             },
         ),
+        Commands::Jot { title, editor } => commands::jot(&ctx, title.as_deref(), editor.as_deref()),
         Commands::Delete { id, force } => {
             let resolved_id = match id {
                 Some(id) => id,

@@ -691,3 +691,26 @@ fn build_commit_message(result: &ApplyResult) -> String {
 
     parts.join(", ")
 }
+
+/// Quick jot command - creates a jot with optional pre-filled title.
+pub fn jot(ctx: &MontContext, title: Option<&str>, editor_name: Option<&str>) -> Result<(), AppError> {
+    let jot_title = title.unwrap_or("New Jot");
+
+    let starter = Task {
+        id: "new-jot".to_string(),
+        new_id: None,
+        title: Some(jot_title.to_string()),
+        description: "Quick idea here.".to_string(),
+        before: vec![],
+        after: vec![],
+        gates: vec![],
+        task_type: TaskType::Jot,
+        status: None,
+        deleted: false,
+    };
+
+    let comment = build_multiedit_comment(MultiEditMode::CreateWithType(TaskType::Jot));
+    let temp_path = make_temp_file("task", &[starter], Some(&comment))?;
+
+    run_editor_workflow(ctx, &temp_path, &[], editor_name)
+}
