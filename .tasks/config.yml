@@ -1,5 +1,6 @@
 jj:
   enabled: true
 default_gates:
+  - user-qa
   - architecture-validator
   - test
