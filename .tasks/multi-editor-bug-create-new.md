@@ -22,3 +22,11 @@ The CLI says that it detected the creation of two tasks:
 - my-new-task
 
 It should be able to see that jot-rousing-ruff already exists in the task graph.
+
+# Hypothesis
+
+After invoking mont resume -r, we lose the context of the ids specified in the input of 'mont task'
+
+Maybe we solve this by including the ids of the input of mont task in the comments in the header?
+
+We need an approach that works consistently across 'mont jot' 'mont distill' and 'mont task'
