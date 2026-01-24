@@ -4,10 +4,12 @@ title: Conduct interview to confirm changes
 type: gate
 ---
 
-Review and collate all decisions you made while working on this task.
-Identify specifically:
-- Any architectural or structural decisions you made
-- Any new libraries or techniques you used
-- How your changes fit into the larger architecture
+Show a tree output of all the files that you modified
+- For each file describe the changes you made
 
-Using the AskQuestion tool, confirm each architectural decision with the user.
+Next, identify the key systems in the codebase
+- For each change identify how your changes extend or modify the existing core systems
+
+Take your time to research the codebase and built a complete picture
+
+Finally, ask questions using the AskQuestion tool to confirm design decisions
