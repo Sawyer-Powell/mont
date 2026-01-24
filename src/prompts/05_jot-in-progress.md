@@ -3,9 +3,9 @@
 {% if jot_title %}**{{ jot_title }}**
 
 {% endif %}
-## Status: Jot in progress - needs conversion to tasks
+## Status: Jot in progress - REQUIRES DISTILLATION
 
-This jot captures an idea that needs to be broken down into actionable tasks.
+> **IMPORTANT**: Jots are ideas, not tasks. You MUST convert this jot into concrete tasks BEFORE doing any implementation work. Do NOT write code or make changes to implement this jot directly.
 
 ### Jot Content
 {% if jot_description %}
@@ -16,36 +16,58 @@ This jot captures an idea that needs to be broken down into actionable tasks.
 *No description provided.*
 {% endif %}
 
-# Guidelines
+# Required Workflow
 
-Your goal is to help convert this jot into one or more well-defined tasks.
+## Step 1: Analyze and plan
 
 1. Review the jot content above
-2. Identify the concrete work items or tasks implied by this idea
-3. Use `mont list` to identify how these tasks might or might not be related to existing tasks
-4. For each task, consider:
-   - A clear, actionable title
-   - What needs to be done (description)
-   - Dependencies between tasks (if multiple)
-   - Dependencies to existing tasks
-5. Communicate your breakdown to the user to confirm
-6. Use `mont task` to create the new tasks
+2. Check existing tasks with `mont list` to understand context and potential dependencies
+3. Break down the jot into concrete, actionable tasks
+4. Present your task breakdown to the user for confirmation
 
-You can create tasks directly using the `--content` flag:
+## Step 2: Distill the jot (after user confirms)
+
+Use `mont distill --stdin` to convert the jot into tasks:
+
 ```bash
-mont task --content='---
-id: task-id
-title: Task Title
+mont distill {{ jot_id }} --stdin <<'EOF'
 ---
-What needs to be done
+id: task-id-here
+title: Clear actionable title
+gates:
+  - user-qa
+  - test
+---
+Detailed description of what needs to be done.
+Acceptance criteria go here.
 
 ---
-id: another-task
-title: Another Task
+id: second-task
+title: Another task
 after:
-  - task-id
+  - task-id-here
+gates:
+  - user-qa
 ---
-Description of another task'
+Description of the second task.
+EOF
 ```
 
-After creating tasks, use `mont delete {{ jot_id }}` to remove the original jot, then use `mont prompt` for next steps.
+This will:
+- Validate the new task definitions
+- Delete the jot automatically
+- Create the new tasks
+- Commit the changes
+
+## Step 3: Continue with the new tasks
+
+After distilling, run `mont prompt` to get instructions for working on the newly created tasks.
+
+# Why this matters
+
+Jots capture rough ideas. Tasks have:
+- Clear acceptance criteria
+- Gates for validation (tests, user QA, etc.)
+- Dependencies that mont tracks
+
+Implementing jots directly bypasses these safeguards and leads to incomplete or unvalidated work.

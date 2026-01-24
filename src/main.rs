@@ -88,13 +88,16 @@ enum Commands {
         #[arg(conflicts_with_all = ["resume", "resume_path"])]
         id: Option<String>,
         /// Resume editing the most recent temp file
-        #[arg(long, short = 'r', conflicts_with_all = ["id", "resume_path"])]
+        #[arg(long, short = 'r', conflicts_with_all = ["id", "resume_path", "stdin"])]
         resume: bool,
         /// Resume editing a specific temp file
-        #[arg(long, conflicts_with_all = ["id", "resume"])]
+        #[arg(long, conflicts_with_all = ["id", "resume", "stdin"])]
         resume_path: Option<PathBuf>,
+        /// Read task definitions from stdin (LLM-friendly, skips editor)
+        #[arg(long, conflicts_with_all = ["resume", "resume_path", "editor"])]
+        stdin: bool,
         /// Editor command to use
-        #[arg(long, short)]
+        #[arg(long, short, conflicts_with = "stdin")]
         editor: Option<String>,
     },
     /// Delete a task and remove all references to it
@@ -235,7 +238,7 @@ fn run(cli: Cli) -> Result<(), AppError> {
                 editor,
             },
         ),
-        Commands::Distill { id, resume, resume_path, editor } => {
+        Commands::Distill { id, resume, resume_path, stdin, editor } => {
             // Resume mode doesn't need an ID
             if resume || resume_path.is_some() {
                 return commands::distill(
@@ -244,6 +247,7 @@ fn run(cli: Cli) -> Result<(), AppError> {
                         jot_id: String::new(), // Not used in resume mode
                         resume,
                         resume_path,
+                        stdin: false,
                         editor,
                     },
                 );
@@ -260,6 +264,7 @@ fn run(cli: Cli) -> Result<(), AppError> {
                     jot_id: resolved_id,
                     resume: false,
                     resume_path: None,
+                    stdin,
                     editor,
                 },
             )

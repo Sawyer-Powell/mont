@@ -807,6 +807,8 @@ pub struct DistillArgs {
     pub resume: bool,
     /// Resume editing a specific temp file
     pub resume_path: Option<PathBuf>,
+    /// Read task definitions from stdin (LLM-friendly, skips editor)
+    pub stdin: bool,
     /// Editor name override
     pub editor: Option<String>,
 }
@@ -855,6 +857,12 @@ pub fn distill(ctx: &MontContext, args: DistillArgs) -> Result<(), AppError> {
         };
 
         return run_editor_workflow(ctx, &temp_path, &[], &graph_tasks, args.editor.as_deref(), "distill");
+    }
+
+    // Stdin mode: read task definitions from stdin (LLM-friendly)
+    if args.stdin {
+        let content = read_stdin()?;
+        return distill_stdin_mode(ctx, &args.jot_id, &content);
     }
 
     // Load the jot
@@ -913,4 +921,81 @@ when you save and confirm.
     // template = [starter] (for no-changes check)
     // graph = [jot] (jot exists in graph and will be deleted when user makes changes)
     run_editor_workflow(ctx, &temp_path, std::slice::from_ref(&starter), std::slice::from_ref(&jot), args.editor.as_deref(), "distill")
+}
+
+/// Distill a jot using stdin content (LLM-friendly, skips editor).
+///
+/// This parses task definitions from stdin, validates them, deletes the jot,
+/// and creates the new tasks - all without user interaction.
+fn distill_stdin_mode(ctx: &MontContext, jot_id: &str, content: &str) -> Result<(), AppError> {
+    use std::path::Path;
+
+    // Verify the jot exists and is actually a jot
+    let jot = ctx
+        .graph()
+        .get(jot_id)
+        .ok_or_else(|| AppError::TaskNotFound {
+            task_id: jot_id.to_string(),
+            tasks_dir: ctx.tasks_dir().display().to_string(),
+        })?
+        .clone();
+
+    if !jot.is_jot() {
+        return Err(AppError::NotAJot(jot_id.to_string()));
+    }
+
+    // Parse task definitions from stdin (use fake path for error messages)
+    let edited = parse_multi_task_content(content, Path::new("<stdin>"))?;
+
+    if edited.is_empty() {
+        return Err(AppError::CommandFailed(
+            "No tasks defined in stdin. Provide task definitions in frontmatter format.".to_string(),
+        ));
+    }
+
+    // Compute diff: original = [jot], edited = new tasks
+    // This will result in: delete jot, insert all new tasks
+    let diff = compute_diff(std::slice::from_ref(&jot), &edited);
+
+    // Show what will happen
+    println!("{}", "Changes:".bold());
+    for id in &diff.deletes {
+        println!("  {} {}", "deleted:".red(), id.bright_yellow());
+    }
+    for task in &diff.inserts {
+        println!("  {} {}", "created:".green(), task.id.cyan());
+    }
+
+    // Apply the diff (validates and commits atomically)
+    let result = apply_diff(ctx, diff)?;
+
+    // Show results
+    for id in &result.deleted {
+        println!("  {}: {}", "deleted".red(), id.bright_yellow());
+    }
+    for (old_id, new_id, id_changed) in &result.updated {
+        if *id_changed {
+            println!("  {}: {} -> {}", "renamed".blue(), old_id.bright_yellow(), new_id.cyan());
+        } else {
+            println!("  {}: {}", "updated".yellow(), new_id.cyan());
+        }
+    }
+    for id in &result.created {
+        println!("  {}: {}", "created".green(), id.cyan());
+    }
+
+    if result.created.is_empty() && result.updated.is_empty() && result.deleted.is_empty() {
+        println!("No changes detected.");
+    }
+
+    // Auto-commit if jj is enabled
+    if ctx.config().jj.enabled {
+        let message = format!("Distill jot {} into tasks", jot_id);
+        match jj::commit(&message, &[ctx.tasks_dir()]) {
+            Ok(_) => println!("{}", "committed".bright_green()),
+            Err(e) => eprintln!("{}: failed to auto-commit: {}", "warning".yellow(), e),
+        }
+    }
+
+    Ok(())
 }

@@ -274,7 +274,13 @@ pub fn prompt(ctx: &MontContext) -> Result<(), AppError> {
 }
 
 /// System prompt for Claude Code sessions.
-const CLAUDE_SYSTEM_PROMPT: &str = r#"After completing your current work, always run `mont prompt` to get the next task or instructions. This ensures you stay synchronized with the task graph and receive appropriate guidance for your next steps."#;
+const CLAUDE_SYSTEM_PROMPT: &str = r#"After completing your current work, always run `mont prompt` to get the next task or instructions. This ensures you stay synchronized with the task graph and receive appropriate guidance for your next steps.
+
+CRITICAL WORKFLOW RULES:
+1. ALWAYS run `mont prompt` before starting any work - it tells you exactly what to do
+2. If `mont prompt` shows a JOT (not a task), you MUST distill it into tasks first using `mont distill <jot-id> --stdin`. NEVER implement jots directly - follow the distillation instructions in the prompt.
+3. Only implement TASKS, never jots. Tasks have gates (validation checkpoints) that ensure quality.
+4. After completing work on a task, run `mont prompt` again - it guides you through gates and completion."#;
 
 /// Pre-validate before showing the picker for `mont claude`.
 ///
