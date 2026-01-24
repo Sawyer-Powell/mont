@@ -76,7 +76,7 @@ pub fn done(ctx: &MontContext, id: Option<&str>, message: Option<&str>) -> Resul
     if jj_enabled {
         match message {
             Some(msg) => {
-                jj::commit(msg).map_err(|e| AppError::JJError(e.to_string()))?;
+                jj::commit(msg, &[]).map_err(|e| AppError::JJError(e.to_string()))?;
             }
             None => {
                 jj::commit_interactive().map_err(|e| AppError::JJError(e.to_string()))?;

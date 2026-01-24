@@ -613,8 +613,8 @@ fn auto_commit(ctx: &MontContext, result: &ApplyResult) {
     // Build commit message
     let message = build_commit_message(result);
 
-    // Run jj commit
-    match jj::commit(&message) {
+    // Run jj commit (only commit task files)
+    match jj::commit(&message, &[ctx.tasks_dir()]) {
         Ok(_) => {
             println!("{}", "committed".bright_green());
         }

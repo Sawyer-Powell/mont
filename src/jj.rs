@@ -106,10 +106,13 @@ pub fn working_copy_description() -> Result<String, JJError> {
 }
 
 /// Runs `jj commit` with the given message.
-pub fn commit(message: &str) -> Result<CommitResult, JJError> {
-    let output = Command::new("jj")
-        .args(["commit", "-m", message])
-        .output()?;
+/// If paths are provided, only those paths are included in the commit.
+pub fn commit(message: &str, paths: &[&Path]) -> Result<CommitResult, JJError> {
+    let mut args = vec!["commit", "-m", message];
+    let path_strs: Vec<&str> = paths.iter().filter_map(|p| p.to_str()).collect();
+    args.extend(path_strs);
+
+    let output = Command::new("jj").args(&args).output()?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
