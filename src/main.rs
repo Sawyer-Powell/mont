@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use mont::commands;
 use mont::commands::shared::{pick_task, TaskFilter};
 use mont::error_fmt::AppError;
-use mont::{MontContext, TaskType};
+use mont::TaskType;
 
 #[derive(Parser)]
 #[command(name = "mont")]
@@ -31,85 +31,32 @@ enum Commands {
         /// Specific task ID to validate (validates entire graph if not provided)
         id: Option<String>,
     },
-    /// Create a new task
+    /// Create or edit tasks (opens multieditor)
     Task {
-        /// Title for the task (required unless using --resume)
-        #[arg(required_unless_present = "resume")]
-        title: Option<String>,
-        /// Description (markdown body)
-        #[arg(long, short)]
-        description: Option<String>,
-        /// Before target task IDs (comma-separated)
-        #[arg(long, short, value_delimiter = ',')]
-        before: Vec<String>,
-        /// After dependency task IDs (comma-separated)
-        #[arg(long, value_delimiter = ',')]
-        after: Vec<String>,
-        /// Validation task IDs (comma-separated)
-        #[arg(long, value_delimiter = ',')]
-        gate: Vec<String>,
-        /// Open in editor after creation
-        #[arg(long, short)]
-        editor: Option<Option<String>>,
-        /// Resume editing a temp file from a previous failed gate
-        #[arg(long, conflicts_with_all = ["title", "description", "before", "after", "gate"])]
-        resume: Option<PathBuf>,
-    },
-    /// Create a new gate
-    Gate {
-        /// Title for the gate (required unless using --resume)
-        #[arg(required_unless_present = "resume")]
-        title: Option<String>,
-        /// Description (markdown body)
-        #[arg(long, short)]
-        description: Option<String>,
-        /// Before target task IDs (comma-separated)
-        #[arg(long, short, value_delimiter = ',')]
-        before: Vec<String>,
-        /// After dependency task IDs (comma-separated)
-        #[arg(long, value_delimiter = ',')]
-        after: Vec<String>,
-        /// Validation task IDs (comma-separated)
-        #[arg(long, value_delimiter = ',')]
-        gate: Vec<String>,
-        /// Open in editor after creation
-        #[arg(long, short)]
-        editor: Option<Option<String>>,
-        /// Resume editing a temp file from a previous failed gate
-        #[arg(long, conflicts_with_all = ["title", "description", "before", "after", "gate"])]
-        resume: Option<PathBuf>,
-    },
-    /// Edit an existing task
-    Edit {
-        /// Task ID to edit (original ID when using --resume). If not provided, opens interactive picker.
-        id: Option<String>,
-        /// New task ID (renames the task and updates references)
-        #[arg(long)]
-        new_id: Option<String>,
-        /// Title for the task
-        #[arg(long, short)]
-        title: Option<String>,
-        /// Description (markdown body)
-        #[arg(long, short)]
-        description: Option<String>,
-        /// Before target task IDs (comma-separated)
-        #[arg(long, short, value_delimiter = ',')]
-        before: Vec<String>,
-        /// After dependency task IDs (comma-separated)
-        #[arg(long, value_delimiter = ',')]
-        after: Vec<String>,
-        /// Gate task IDs (comma-separated)
-        #[arg(long, value_delimiter = ',')]
-        gate: Vec<String>,
-        /// Task type (task, jot, gate)
+        /// Task ID(s) to edit (comma-separated). If empty, opens empty multieditor.
+        #[arg(value_delimiter = ',')]
+        ids: Vec<String>,
+        /// Task type template: task, jot, gate
         #[arg(long, short = 'T', value_parser = parse_task_type)]
         r#type: Option<TaskType>,
-        /// Open in editor (optionally specify editor name)
+        /// Resume editing the most recent temp file
+        #[arg(long, conflicts_with_all = ["ids", "type", "content", "patch", "append"])]
+        resume: bool,
+        /// Resume editing a specific temp file
+        #[arg(long, conflicts_with_all = ["ids", "type", "content", "resume", "patch", "append"])]
+        resume_path: Option<PathBuf>,
+        /// Skip editor, use content directly (LLM/scripting)
+        #[arg(long, conflicts_with_all = ["type", "resume", "resume_path", "patch", "append"])]
+        content: Option<String>,
+        /// YAML patch to merge into task (requires single ID)
+        #[arg(long, conflicts_with_all = ["type", "resume", "resume_path", "content", "append"])]
+        patch: Option<String>,
+        /// Append text to task description (requires single ID)
+        #[arg(long, conflicts_with_all = ["type", "resume", "resume_path", "content", "patch"])]
+        append: Option<String>,
+        /// Editor command to use
         #[arg(long, short)]
-        editor: Option<Option<String>>,
-        /// Resume editing a temp file from a previous failed gate
-        #[arg(long, conflicts_with_all = ["new_id", "title", "description", "before", "after", "gate", "type"])]
-        resume: Option<PathBuf>,
+        editor: Option<String>,
     },
     /// Delete a task and remove all references to it
     Delete {
@@ -119,35 +66,6 @@ enum Commands {
         #[arg(long, short)]
         force: bool,
     },
-    /// Quickly jot down an idea (creates a new task with type 'jot')
-    Jot {
-        /// Title for the jot (required unless using --resume)
-        #[arg(required_unless_present = "resume")]
-        title: Option<String>,
-        /// Description (markdown body)
-        #[arg(long, short)]
-        description: Option<String>,
-        /// Before target task IDs (comma-separated)
-        #[arg(long, short, value_delimiter = ',')]
-        before: Vec<String>,
-        /// After dependency task IDs (comma-separated)
-        #[arg(long, value_delimiter = ',')]
-        after: Vec<String>,
-        /// Open in editor after creation
-        #[arg(long, short)]
-        editor: Option<Option<String>>,
-        /// Resume editing a temp file from a previous failed operation
-        #[arg(long, conflicts_with_all = ["title", "description", "before", "after"])]
-        resume: Option<PathBuf>,
-    },
-    /// Distill a jot into one or more proper tasks
-    Distill {
-        /// Jot task ID to distill. If not provided, opens interactive picker.
-        id: Option<String>,
-        /// YAML-formatted task definitions (bypasses editor workflow)
-        #[arg(long)]
-        tasks: Option<String>,
-    },
     /// Show details for a single task
     Show {
         /// Task ID to show. If not provided, opens interactive picker.
@@ -155,9 +73,6 @@ enum Commands {
         /// Show shortened version (omit description)
         #[arg(long, short)]
         short: bool,
-        /// Open in editor (optionally specify editor command)
-        #[arg(long, short)]
-        editor: Option<Option<String>>,
     },
     /// Mark gates as passed or skipped
     Unlock {
@@ -226,7 +141,7 @@ fn main() {
 
 fn run(cli: Cli) -> Result<(), AppError> {
     // Load context once for all commands
-    let ctx = MontContext::load(PathBuf::from(".tasks"))?;
+    let ctx = mont::MontContext::load(PathBuf::from(".tasks"))?;
 
     // Default to Status if no command is provided
     let command = cli.command.unwrap_or(Commands::Status);
@@ -246,77 +161,27 @@ fn run(cli: Cli) -> Result<(), AppError> {
         }
         Commands::Check { id } => commands::check(&ctx, id.as_deref()),
         Commands::Task {
-            title,
-            description,
-            before,
-            after,
-            gate,
-            editor,
+            ids,
+            r#type,
             resume,
+            resume_path,
+            content,
+            patch,
+            append,
+            editor,
         } => commands::task(
             &ctx,
-            commands::new::CreateArgs {
-                title,
-                description,
-                before,
-                after,
-                gates: gate,
-                editor,
+            commands::task_cmd::TaskArgs {
+                ids,
+                task_type: r#type,
                 resume,
+                resume_path,
+                content,
+                patch,
+                append,
+                editor,
             },
         ),
-        Commands::Gate {
-            title,
-            description,
-            before,
-            after,
-            gate,
-            editor,
-            resume,
-        } => commands::gate(
-            &ctx,
-            commands::new::CreateArgs {
-                title,
-                description,
-                before,
-                after,
-                gates: gate,
-                editor,
-                resume,
-            },
-        ),
-        Commands::Edit {
-            id,
-            new_id,
-            title,
-            description,
-            before,
-            after,
-            gate,
-            r#type,
-            editor,
-            resume,
-        } => {
-            let resolved_id = match id {
-                Some(id) => id,
-                None => pick_task(&ctx.graph(), TaskFilter::Active)?,
-            };
-            commands::edit(
-                &ctx,
-                commands::edit::EditArgs {
-                    id: resolved_id,
-                    new_id,
-                    title,
-                    description,
-                    before,
-                    after,
-                    gates: gate,
-                    task_type: r#type,
-                    editor,
-                    resume,
-                },
-            )
-        }
         Commands::Delete { id, force } => {
             let resolved_id = match id {
                 Some(id) => id,
@@ -324,37 +189,12 @@ fn run(cli: Cli) -> Result<(), AppError> {
             };
             commands::delete(&ctx, &resolved_id, force)
         }
-        Commands::Jot {
-            title,
-            description,
-            before,
-            after,
-            editor,
-            resume,
-        } => commands::jot(
-            &ctx,
-            commands::jot::JotArgs {
-                title,
-                description,
-                before,
-                after,
-                editor,
-                resume,
-            },
-        ),
-        Commands::Distill { id, tasks } => {
-            let resolved_id = match id {
-                Some(id) => id,
-                None => pick_task(&ctx.graph(), TaskFilter::Active)?,
-            };
-            commands::distill(&ctx, &resolved_id, tasks.as_deref())
-        }
-        Commands::Show { id, short, editor } => {
+        Commands::Show { id, short } => {
             let resolved_id = match id {
                 Some(id) => id,
                 None => pick_task(&ctx.graph(), TaskFilter::All)?,
             };
-            commands::show(&ctx, &resolved_id, short, editor)
+            commands::show(&ctx, &resolved_id, short)
         }
         Commands::Unlock { id, passed, skipped } => {
             let resolved_id = match id {
@@ -425,76 +265,44 @@ mod tests {
         (temp_dir, ctx)
     }
 
-    // Tests for mont task
+    // Tests for mont task (content mode for non-interactive testing)
     #[test]
-    fn test_task_creates_file() {
+    fn test_task_creates_file_via_content() {
         let (temp_dir, ctx) = create_temp_context();
 
-        let args = commands::new::CreateArgs {
-            title: Some("Test task".to_string()),
-            description: None,
-            before: vec![],
-            after: vec![],
-            gates: vec![],
+        let content = r#"---
+id: test-task
+title: Test task
+---
+Description here.
+"#;
+
+        let args = commands::task_cmd::TaskArgs {
+            ids: vec![],
+            task_type: None,
+            resume: false,
+            resume_path: None,
+            content: Some(content.to_string()),
+            patch: None,
+            append: None,
             editor: None,
-            resume: None,
         };
 
         let result = commands::task(&ctx, args);
         assert!(result.is_ok());
 
-        // Find the created file (ID is auto-generated)
-        let files: Vec<_> = std::fs::read_dir(temp_dir.path())
-            .unwrap()
-            .filter_map(|e| e.ok())
-            .filter(|e| e.path().extension().map_or(false, |ext| ext == "md"))
-            .collect();
-        assert_eq!(files.len(), 1);
-
-        let content = std::fs::read_to_string(files[0].path()).unwrap();
-        assert!(content.contains("title: Test task"));
-        // type: task is not written since it's the default
-        assert!(!content.contains("type:"));
+        // Verify task was created
+        assert!(temp_dir.path().join("test-task.md").exists());
     }
 
     #[test]
-    fn test_gate_creates_file_with_gate_type() {
-        let (temp_dir, ctx) = create_temp_context();
-
-        let args = commands::new::CreateArgs {
-            title: Some("Test gate".to_string()),
-            description: None,
-            before: vec![],
-            after: vec![],
-            gates: vec![],
-            editor: None,
-            resume: None,
-        };
-
-        let result = commands::gate(&ctx, args);
-        assert!(result.is_ok());
-
-        // Find the created file (ID is auto-generated)
-        let files: Vec<_> = std::fs::read_dir(temp_dir.path())
-            .unwrap()
-            .filter_map(|e| e.ok())
-            .filter(|e| e.path().extension().map_or(false, |ext| ext == "md"))
-            .collect();
-        assert_eq!(files.len(), 1);
-
-        let content = std::fs::read_to_string(files[0].path()).unwrap();
-        assert!(content.contains("title: Test gate"));
-        assert!(content.contains("type: gate"));
-    }
-
-    // Tests for mont edit
-    #[test]
-    fn test_edit_task_updates_title() {
+    fn test_task_edits_existing_via_content() {
         let (temp_dir, ctx) = create_temp_context();
 
         // Create a task directly with a known ID
         let task = Task {
             id: "edit-test".to_string(),
+            new_id: None,
             title: Some("Original title".to_string()),
             description: String::new(),
             before: vec![],
@@ -506,33 +314,39 @@ mod tests {
         };
         ctx.insert(task).unwrap();
 
-        // Edit the task
-        let edit_args = commands::edit::EditArgs {
-            id: "edit-test".to_string(),
-            new_id: None,
-            title: Some("Updated title".to_string()),
-            description: None,
-            before: vec![],
-            after: vec![],
-            gates: vec![],
+        // Edit via content mode
+        let content = r#"---
+id: edit-test
+title: Updated title
+---
+"#;
+
+        let args = commands::task_cmd::TaskArgs {
+            ids: vec!["edit-test".to_string()],
             task_type: None,
+            resume: false,
+            resume_path: None,
+            content: Some(content.to_string()),
+            patch: None,
+            append: None,
             editor: None,
-            resume: None,
         };
-        let result = commands::edit(&ctx, edit_args);
+
+        let result = commands::task(&ctx, args);
         assert!(result.is_ok());
 
-        let content = std::fs::read_to_string(temp_dir.path().join("edit-test.md")).unwrap();
-        assert!(content.contains("title: Updated title"));
+        let file_content = std::fs::read_to_string(temp_dir.path().join("edit-test.md")).unwrap();
+        assert!(file_content.contains("title: Updated title"));
     }
 
     #[test]
-    fn test_edit_task_rename_propagates_references() {
+    fn test_task_rename_propagates_references() {
         let (temp_dir, ctx) = create_temp_context();
 
         // Create parent task directly with a known ID
         let parent = Task {
             id: "parent-task".to_string(),
+            new_id: None,
             title: Some("Parent".to_string()),
             description: String::new(),
             before: vec![],
@@ -547,6 +361,7 @@ mod tests {
         // Create child task with before reference
         let child = Task {
             id: "child-task".to_string(),
+            new_id: None,
             title: Some("Child".to_string()),
             description: String::new(),
             before: vec!["parent-task".to_string()],
@@ -558,20 +373,26 @@ mod tests {
         };
         ctx.insert(child).unwrap();
 
-        // Rename parent
-        let edit_args = commands::edit::EditArgs {
-            id: "parent-task".to_string(),
-            new_id: Some("renamed-parent".to_string()),
-            title: None,
-            description: None,
-            before: vec![],
-            after: vec![],
-            gates: vec![],
+        // Rename parent via content mode using new_id field
+        let content = r#"---
+id: parent-task
+new_id: renamed-parent
+title: Parent
+---
+"#;
+
+        let args = commands::task_cmd::TaskArgs {
+            ids: vec!["parent-task".to_string()],
             task_type: None,
+            resume: false,
+            resume_path: None,
+            content: Some(content.to_string()),
+            patch: None,
+            append: None,
             editor: None,
-            resume: None,
         };
-        let result = commands::edit(&ctx, edit_args);
+
+        let result = commands::task(&ctx, args);
         assert!(result.is_ok());
 
         // Verify old file removed, new file exists
@@ -583,5 +404,36 @@ mod tests {
             std::fs::read_to_string(temp_dir.path().join("child-task.md")).unwrap();
         assert!(child_content.contains("- renamed-parent"));
         assert!(!child_content.contains("- parent-task"));
+    }
+
+    #[test]
+    fn test_gate_type_content() {
+        let (temp_dir, ctx) = create_temp_context();
+
+        let content = r#"---
+id: test-gate
+title: Test gate
+type: gate
+---
+Gate description.
+"#;
+
+        let args = commands::task_cmd::TaskArgs {
+            ids: vec![],
+            task_type: None,
+            resume: false,
+            resume_path: None,
+            content: Some(content.to_string()),
+            patch: None,
+            append: None,
+            editor: None,
+        };
+
+        let result = commands::task(&ctx, args);
+        assert!(result.is_ok());
+
+        let file_content = std::fs::read_to_string(temp_dir.path().join("test-gate.md")).unwrap();
+        assert!(file_content.contains("title: Test gate"));
+        assert!(file_content.contains("type: gate"));
     }
 }

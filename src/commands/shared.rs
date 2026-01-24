@@ -6,7 +6,7 @@ use std::process::{Command, Stdio};
 
 use crate::context::graph::is_available;
 use crate::error_fmt::{AppError, IoResultExt, ParseResultExt};
-use crate::{parse, resolve_editor, MontContext, Task, TaskGraph};
+use crate::{parse, Task, TaskGraph};
 
 /// Filter options for interactive task picker.
 #[derive(Clone, Copy)]
@@ -133,6 +133,44 @@ pub fn pick_task(graph: &TaskGraph, filter: TaskFilter) -> Result<String, AppErr
     Ok(id)
 }
 
+/// Resolve a list of IDs, expanding `?` placeholders via interactive picker.
+///
+/// Input can be:
+/// - A slice of IDs where some may be `?`
+/// - Each `?` triggers an fzf picker
+///
+/// Returns a deduplicated Vec of resolved IDs in order of first occurrence.
+///
+/// # Examples
+/// - `["task1", "task2"]` → `["task1", "task2"]`
+/// - `["?"]` → `["<picked-task>"]`
+/// - `["task1", "?", "?"]` → `["task1", "<picked1>", "<picked2>"]`
+pub fn resolve_ids(
+    graph: &TaskGraph,
+    ids: &[String],
+    filter: TaskFilter,
+) -> Result<Vec<String>, AppError> {
+    use std::collections::HashSet;
+
+    let mut resolved = Vec::new();
+    let mut seen = HashSet::new();
+
+    for id in ids {
+        let actual_id = if id == "?" {
+            pick_task(graph, filter)?
+        } else {
+            id.clone()
+        };
+
+        // Deduplicate while preserving order
+        if seen.insert(actual_id.clone()) {
+            resolved.push(actual_id);
+        }
+    }
+
+    Ok(resolved)
+}
+
 /// Create a temp file containing one or more tasks.
 ///
 /// The file is named `{ULID}_{suffix}.md` in the system temp directory.
@@ -182,29 +220,13 @@ pub fn parse_temp_file(path: &Path) -> Result<Vec<Task>, AppError> {
     parse_multi_task_content(&content, path)
 }
 
-/// Open a temp file in an editor and return the parsed tasks.
-///
-/// This is the unified workflow for editing tasks via temp files:
-/// 1. Opens the file in the specified editor
-/// 2. Waits for the editor to close
-/// 3. Parses the file and returns the tasks
-///
-/// The temp file is NOT automatically removed - caller should use `remove_temp_file`
-/// after successfully processing the tasks.
-pub fn edit_temp_file(path: &Path, editor_name: Option<&str>) -> Result<Vec<Task>, AppError> {
-    let mut cmd = resolve_editor(editor_name, path)?;
-    cmd.status().with_context("failed to run editor")?;
-
-    parse_temp_file(path)
-}
-
 /// Parse content containing one or more tasks.
 ///
 /// Parsing rule:
 /// - Odd `---` lines start a new task's frontmatter
 /// - Even `---` lines end frontmatter, start body
 /// - Content before the first `---` is ignored (allows for comments/instructions)
-fn parse_multi_task_content(content: &str, path: &Path) -> Result<Vec<Task>, AppError> {
+pub fn parse_multi_task_content(content: &str, path: &Path) -> Result<Vec<Task>, AppError> {
     let mut tasks = Vec::new();
     let mut current_task = String::new();
     let mut delimiter_count = 0;
@@ -272,164 +294,76 @@ pub fn find_temp_files(suffix: &str) -> Vec<PathBuf> {
     files
 }
 
+/// Find the most recent temp file matching the given suffix.
+///
+/// Returns the path to the most recently created temp file with the given suffix,
+/// or None if no matching files exist.
+pub fn find_most_recent_temp_file(suffix: &str) -> Option<PathBuf> {
+    find_temp_files(suffix).into_iter().next()
+}
+
+/// Mode for the multieditor comment header.
+#[derive(Debug, Clone, Copy)]
+pub enum MultiEditMode {
+    /// Creating new tasks (empty editor)
+    Create,
+    /// Editing existing tasks
+    Edit,
+    /// Creating with a specific type template
+    CreateWithType(crate::TaskType),
+}
+
+/// Build the instruction comment for multieditor temp files.
+pub fn build_multiedit_comment(mode: MultiEditMode) -> String {
+    match mode {
+        MultiEditMode::Create => {
+            r#"Create tasks below. Each task starts with --- and ends with ---
+Tasks without an id: field will get an auto-generated ID.
+
+Example:
+---
+id: my-task
+title: My Task Title
+after:
+  - dependency-task
+---
+Task description here."#.to_string()
+        }
+        MultiEditMode::Edit => {
+            r#"Edit tasks below. Each task starts with --- and ends with ---
+- Change any field to update
+- To rename: add new_id: new-name (keeps references)
+- Delete a task block to delete it
+- Add new task blocks to create new tasks
+- Tasks without an id: field will get an auto-generated ID"#.to_string()
+        }
+        MultiEditMode::CreateWithType(task_type) => {
+            let type_str = match task_type {
+                crate::TaskType::Task => "task",
+                crate::TaskType::Jot => "jot",
+                crate::TaskType::Gate => "gate",
+            };
+            format!(
+                r#"Create {} tasks below. Each task starts with --- and ends with ---
+Tasks without an id: field will get an auto-generated ID.
+
+Example:
+---
+id: my-{}
+title: My {} Title
+type: {}
+---
+Description here."#,
+                type_str, type_str, type_str.to_uppercase(), type_str
+            )
+        }
+    }
+}
+
 /// Remove a temp file.
 pub fn remove_temp_file(path: &Path) -> Result<(), AppError> {
     std::fs::remove_file(path)
         .with_context(&format!("failed to remove temp file {}", path.display()))
-}
-
-/// Result of an update operation via editor.
-pub enum UpdateResult {
-    /// Task was updated (includes new_id which may equal original_id)
-    Updated { new_id: String, id_changed: bool },
-    /// User deleted all content, no changes made
-    Aborted,
-}
-
-/// Create tasks via temp file editor workflow.
-///
-/// 1. Opens the temp file in an editor
-/// 2. Parses the result
-/// 3. Validates and inserts all tasks atomically
-/// 4. Removes the temp file on success
-///
-/// Returns the IDs of created tasks, or empty vec if user aborted (deleted all content).
-pub fn create_via_editor(
-    ctx: &MontContext,
-    path: &Path,
-    editor_name: Option<&str>,
-) -> Result<Vec<String>, AppError> {
-    let mut cmd = resolve_editor(editor_name, path)?;
-    cmd.status().with_context("failed to run editor")?;
-
-    let temp_path_str = path.display().to_string();
-
-    // Parse the temp file
-    let tasks = match parse_temp_file(path) {
-        Ok(t) => t,
-        Err(e) => {
-            return Err(AppError::TempValidationFailed {
-                error: Box::new(e),
-                temp_path: temp_path_str,
-                editor_name: editor_name.map(String::from),
-            });
-        }
-    };
-
-    if tasks.is_empty() {
-        remove_temp_file(path)?;
-        return Ok(Vec::new());
-    }
-
-    // Build a single transaction for atomicity
-    let mut txn = ctx.begin();
-    let mut created_ids = Vec::new();
-
-    for task in tasks {
-        let mut task = task;
-
-        // Generate ID if empty
-        if task.id.is_empty() {
-            task.id = ctx.generate_id(&ctx.graph())
-                .map_err(|e| AppError::TempValidationFailed {
-                    error: Box::new(e.into()),
-                    temp_path: temp_path_str.clone(),
-                    editor_name: editor_name.map(String::from),
-                })?;
-        } else if ctx.graph().contains(&task.id) {
-            // Check for duplicate ID
-            return Err(AppError::TempValidationFailed {
-                error: Box::new(AppError::IdAlreadyExists(task.id.clone())),
-                temp_path: temp_path_str,
-                editor_name: editor_name.map(String::from),
-            });
-        }
-
-        created_ids.push(task.id.clone());
-        txn.insert(task);
-    }
-
-    // Commit atomically
-    if let Err(e) = ctx.commit(txn) {
-        return Err(AppError::TempValidationFailed {
-            error: Box::new(e.into()),
-            temp_path: temp_path_str,
-            editor_name: editor_name.map(String::from),
-        });
-    }
-
-    // Clean up temp file
-    remove_temp_file(path)?;
-
-    Ok(created_ids)
-}
-
-/// Update a single task via temp file editor workflow.
-///
-/// 1. Opens the temp file in an editor
-/// 2. Parses the result (takes first task)
-/// 3. Validates and updates the task
-/// 4. Removes the temp file on success
-///
-/// Returns UpdateResult indicating what happened.
-pub fn update_via_editor(
-    ctx: &MontContext,
-    original_id: &str,
-    path: &Path,
-    editor_name: Option<&str>,
-) -> Result<UpdateResult, AppError> {
-    let mut cmd = resolve_editor(editor_name, path)?;
-    cmd.status().with_context("failed to run editor")?;
-
-    let temp_path_str = path.display().to_string();
-
-    // Parse the temp file (takes first task for edit)
-    let tasks = match parse_temp_file(path) {
-        Ok(t) => t,
-        Err(e) => {
-            return Err(AppError::EditTempValidationFailed {
-                error: Box::new(e),
-                original_id: original_id.to_string(),
-                temp_path: temp_path_str,
-                editor_name: editor_name.map(String::from),
-            });
-        }
-    };
-
-    let Some(parsed) = tasks.into_iter().next() else {
-        remove_temp_file(path)?;
-        return Ok(UpdateResult::Aborted);
-    };
-
-    let id_changed = parsed.id != original_id;
-
-    // Check if new ID conflicts with existing (excluding original)
-    if id_changed && ctx.graph().contains(&parsed.id) {
-        return Err(AppError::EditTempValidationFailed {
-            error: Box::new(AppError::IdAlreadyExists(parsed.id.clone())),
-            original_id: original_id.to_string(),
-            temp_path: temp_path_str,
-            editor_name: editor_name.map(String::from),
-        });
-    }
-
-    // Update the task
-    if let Err(e) = ctx.update(original_id, parsed.clone()) {
-        return Err(AppError::EditTempValidationFailed {
-            error: Box::new(e.into()),
-            original_id: original_id.to_string(),
-            temp_path: temp_path_str,
-            editor_name: editor_name.map(String::from),
-        });
-    }
-
-    // Clean up temp file
-    remove_temp_file(path)?;
-
-    Ok(UpdateResult::Updated {
-        new_id: parsed.id,
-        id_changed,
-    })
 }
 
 #[cfg(test)]
@@ -441,6 +375,7 @@ mod tests {
     fn test_make_and_parse_single_task() {
         let task = Task {
             id: "test-task".to_string(),
+            new_id: None,
             title: Some("Test Title".to_string()),
             description: "Test description".to_string(),
             before: vec![],
@@ -467,6 +402,7 @@ mod tests {
         let tasks = vec![
             Task {
                 id: "task-one".to_string(),
+                new_id: None,
                 title: Some("First Task".to_string()),
                 description: "First description".to_string(),
                 before: vec![],
@@ -478,6 +414,7 @@ mod tests {
             },
             Task {
                 id: "task-two".to_string(),
+                new_id: None,
                 title: Some("Second Task".to_string()),
                 description: "Second description".to_string(),
                 before: vec![],
@@ -504,6 +441,7 @@ mod tests {
     fn test_make_with_comment() {
         let task = Task {
             id: "commented-task".to_string(),
+            new_id: None,
             title: Some("Task".to_string()),
             description: String::new(),
             before: vec![],

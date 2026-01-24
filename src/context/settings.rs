@@ -102,6 +102,7 @@ mod tests {
     fn make_gate(id: &str) -> Task {
         Task {
             id: id.to_string(),
+            new_id: None,
             before: vec![],
             after: vec![],
             gates: vec![],
@@ -116,6 +117,7 @@ mod tests {
     fn make_task(id: &str) -> Task {
         Task {
             id: id.to_string(),
+            new_id: None,
             before: vec![],
             after: vec![],
             gates: vec![],

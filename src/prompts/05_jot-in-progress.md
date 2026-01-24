@@ -3,7 +3,7 @@
 {% if jot_title %}**{{ jot_title }}**
 
 {% endif %}
-## Status: Jot in progress - needs distillation
+## Status: Jot in progress - needs conversion to tasks
 
 This jot captures an idea that needs to be broken down into actionable tasks.
 
@@ -18,7 +18,7 @@ This jot captures an idea that needs to be broken down into actionable tasks.
 
 # Guidelines
 
-Your goal is to help distill this jot into one or more well-defined tasks.
+Your goal is to help convert this jot into one or more well-defined tasks.
 
 1. Review the jot content above
 2. Identify the concrete work items or tasks implied by this idea
@@ -29,18 +29,23 @@ Your goal is to help distill this jot into one or more well-defined tasks.
    - Dependencies between tasks (if multiple)
    - Dependencies to existing tasks
 5. Communicate your breakdown to the user to confirm
-6. Use `mont distill {{ jot_id }}` to convert this jot into tasks
+6. Use `mont task` to create the new tasks
 
-When running `mont distill`, you can provide tasks directly using YAML.
-**Important:** Use `=` to attach the YAML value (required because YAML starts with `-`):
+You can create tasks directly using the `--content` flag:
 ```bash
-mont distill {{ jot_id }} --tasks='- id: task-id
-  title: Task Title
-  description: What needs to be done
-- id: another-task
-  title: Another Task
-  after:
-    - task-id'
+mont task --content='---
+id: task-id
+title: Task Title
+---
+What needs to be done
+
+---
+id: another-task
+title: Another Task
+after:
+  - task-id
+---
+Description of another task'
 ```
 
-After distilling, use `mont prompt` for next steps.
+After creating tasks, use `mont delete {{ jot_id }}` to remove the original jot, then use `mont prompt` for next steps.

@@ -82,6 +82,10 @@ pub enum AppError {
     CommandFailed(String),
     /// Cannot complete a jot (must be distilled first)
     CannotCompleteJot(String),
+    /// Multi-edit requires editor mode
+    MultiEditRequiresEditor,
+    /// Invalid command arguments
+    InvalidArgs(String),
 }
 
 impl fmt::Display for AppError {
@@ -174,6 +178,12 @@ impl fmt::Display for AppError {
             }
             AppError::CannotCompleteJot(id) => {
                 write!(f, "{}", format_cannot_complete_jot(id))
+            }
+            AppError::MultiEditRequiresEditor => {
+                write!(f, "{}", format_multi_edit_requires_editor())
+            }
+            AppError::InvalidArgs(msg) => {
+                write!(f, "{}", format_cli_error(msg))
             }
         }
     }
@@ -310,7 +320,7 @@ fn format_parse_error(error: &ParseError, file_path: &str) -> String {
             ));
             out.push('\n');
             out.push_str(&format!("  {}\n", "Jots are quick ideas that cannot have gates.".dimmed()));
-            out.push_str(&format!("  {}\n", "Use `mont distill` to convert the jot into proper tasks with gates.".dimmed()));
+            out.push_str(&format!("  {}\n", "Edit the jot with `mont task <id>` to convert it or remove gates.".dimmed()));
             out.push('\n');
             out.push_str(&format!("  {}:\n", "To fix this".bold()));
             out.push_str(&format!(
@@ -321,6 +331,21 @@ fn format_parse_error(error: &ParseError, file_path: &str) -> String {
             out.push_str(&format!(
                 "    2. Or change {} to make this a regular task\n",
                 "type: jot".cyan()
+            ));
+        }
+        ParseError::ReservedId(id) => {
+            out.push_str(&format!(
+                "task id '{}' is reserved\n",
+                id.yellow()
+            ));
+            out.push('\n');
+            out.push_str(&format!("  {}\n", "The '?' character is reserved for interactive ID selection.".dimmed()));
+            out.push('\n');
+            out.push_str(&format!("  {}:\n", "To fix this".bold()));
+            out.push_str(&format!(
+                "    Change the {} field in {} to a valid identifier.\n",
+                "id".cyan(),
+                file_path.cyan()
             ));
         }
     }
@@ -620,18 +645,14 @@ fn format_id_or_title_required() -> String {
     let mut out = String::new();
 
     out.push_str(&format!("{}: ", "error".red().bold()));
-    out.push_str("either --id or --title is required\n");
+    out.push_str("task content is required\n");
     out.push('\n');
-    out.push_str(&format!("  {}\n", "A task needs an identifier to be created.".dimmed()));
+    out.push_str(&format!("  {}\n", "A task needs content to be created.".dimmed()));
     out.push('\n');
     out.push_str(&format!("  {}:\n", "To fix this".bold()));
     out.push_str(&format!(
-        "    1. Provide an id: {}\n",
-        "mont new --id my-task".cyan()
-    ));
-    out.push_str(&format!(
-        "    2. Provide a title: {}\n",
-        "mont new --title \"My task title\"".cyan()
+        "    Open the task editor: {}\n",
+        "mont task".cyan()
     ));
 
     out
@@ -647,8 +668,8 @@ fn format_id_generation_failed(attempts: u32) -> String {
     out.push('\n');
     out.push_str(&format!("  {}:\n", "To fix this".bold()));
     out.push_str(&format!(
-        "    Provide an explicit id: {}\n",
-        "mont new --id my-unique-id".cyan()
+        "    Provide an explicit id in the frontmatter: {}\n",
+        "id: my-unique-id".cyan()
     ));
 
     out
@@ -664,8 +685,8 @@ fn format_temp_file_not_found(path: &str) -> String {
     out.push('\n');
     out.push_str(&format!("  {}:\n", "To fix this".bold()));
     out.push_str(&format!(
-        "    Create a new task instead: {}\n",
-        "mont new --editor".cyan()
+        "    Start fresh with: {}\n",
+        "mont task".cyan()
     ));
 
     out
@@ -702,8 +723,8 @@ fn format_temp_validation_failed(error: &AppError, temp_path: &str, editor_name:
     out.push_str(&format!("  {}:\n", "To fix and retry".bold()));
 
     let resume_cmd = match editor_name {
-        Some(name) => format!("mont new --resume {} --editor {}", temp_path, name),
-        None => format!("mont new --resume {}", temp_path),
+        Some(name) => format!("mont task --resume-path {} --editor {}", temp_path, name),
+        None => format!("mont task --resume-path {}", temp_path),
     };
     out.push_str(&format!("    {}\n", resume_cmd.cyan()));
 
@@ -716,26 +737,18 @@ fn format_no_changes_provided() -> String {
     out.push_str(&format!("{}: ", "error".red().bold()));
     out.push_str("no changes provided\n");
     out.push('\n');
-    out.push_str(&format!("  {}\n", "The edit command requires at least one change.".dimmed()));
+    out.push_str(&format!("  {}\n", "No changes were detected in the edited content.".dimmed()));
     out.push('\n');
     out.push_str(&format!("  {}:\n", "To fix this".bold()));
     out.push_str(&format!(
-        "    1. Provide field flags: {}\n",
-        "mont edit <task-id> --title \"New title\"".cyan()
-    ));
-    out.push_str(&format!(
-        "    2. Use editor mode: {}\n",
-        "mont edit <task-id> --editor".cyan()
-    ));
-    out.push_str(&format!(
-        "    3. Rename the task: {}\n",
-        "mont edit <task-id> --new-id new-id".cyan()
+        "    Edit task: {}\n",
+        "mont task <task-id>".cyan()
     ));
 
     out
 }
 
-fn format_edit_temp_validation_failed(error: &AppError, original_id: &str, temp_path: &str, editor_name: Option<&str>) -> String {
+fn format_edit_temp_validation_failed(error: &AppError, _original_id: &str, temp_path: &str, editor_name: Option<&str>) -> String {
     let mut out = String::new();
 
     // First, display the underlying error
@@ -749,8 +762,8 @@ fn format_edit_temp_validation_failed(error: &AppError, original_id: &str, temp_
     out.push_str(&format!("  {}:\n", "To fix and retry".bold()));
 
     let resume_cmd = match editor_name {
-        Some(name) => format!("mont edit {} --resume {} --editor {}", original_id, temp_path, name),
-        None => format!("mont edit {} --resume {}", original_id, temp_path),
+        Some(name) => format!("mont task --resume-path {} --editor {}", temp_path, name),
+        None => format!("mont task --resume-path {}", temp_path),
     };
     out.push_str(&format!("    {}\n", resume_cmd.cyan()));
 
@@ -763,14 +776,14 @@ fn format_not_a_jot(id: &str) -> String {
     out.push_str(&format!("{}: ", "error".red().bold()));
     out.push_str(&format!("task '{}' is not a jot\n", id.yellow()));
     out.push('\n');
-    out.push_str(&format!("  {}\n", "The distill command can only be used on jot-type tasks.".dimmed()));
+    out.push_str(&format!("  {}\n", "This operation can only be used on jot-type tasks.".dimmed()));
     out.push('\n');
     out.push_str(&format!("  {}:\n", "To fix this".bold()));
     out.push_str(&format!(
-        "    1. Use {} to create a jot first\n",
-        "mont jot".cyan()
+        "    1. Create a jot with: {}\n",
+        "mont task --type jot".cyan()
     ));
-    out.push_str("    2. Check that the task has 'type: jot' in its frontmatter\n");
+    out.push_str("    2. Or check that the task has 'type: jot' in its frontmatter\n");
 
     out
 }
@@ -856,7 +869,7 @@ fn format_no_active_tasks() -> String {
     out.push_str(&format!("  {}:\n", "To fix this".bold()));
     out.push_str(&format!(
         "    Create a new task: {}\n",
-        "mont new --title \"My task\"".cyan()
+        "mont task".cyan()
     ));
 
     out
@@ -879,9 +892,8 @@ fn format_gate_not_valid(gate_id: &str, task_id: &str) -> String {
     out.push('\n');
     out.push_str(&format!("  {}:\n", "To fix this".bold()));
     out.push_str(&format!(
-        "    1. Add '{}' to the task's gates: {}\n",
-        gate_id.cyan(),
-        format!("mont edit {} --validation {}", task_id, gate_id).cyan()
+        "    1. Edit the task to add the gate: {}\n",
+        format!("mont task {}", task_id).cyan()
     ));
     out.push_str(&format!(
         "    2. Add '{}' to default_gates in {}\n",
@@ -911,7 +923,7 @@ fn format_task_already_complete(id: &str) -> String {
     ));
     out.push_str(&format!(
         "    2. Edit the task to remove complete status: {}\n",
-        format!("mont edit {} --editor", id).cyan()
+        format!("mont task {}", id).cyan()
     ));
 
     out
@@ -1089,14 +1101,31 @@ fn format_cannot_complete_jot(id: &str) -> String {
     out.push_str(&format!("{}: ", "error".red().bold()));
     out.push_str(&format!("cannot complete jot '{}'\n", id.yellow()));
     out.push('\n');
-    out.push_str(&format!("  {}\n", "Jots are quick ideas that must be distilled into tasks before completion.".dimmed()));
+    out.push_str(&format!("  {}\n", "Jots are quick ideas that must be converted to tasks before completion.".dimmed()));
     out.push('\n');
     out.push_str(&format!("  {}:\n", "To fix this".bold()));
     out.push_str(&format!(
-        "    1. Distill the jot into tasks: {}\n",
-        format!("mont distill {}", id).cyan()
+        "    1. Edit the jot to convert it: {}\n",
+        format!("mont task {}", id).cyan()
     ));
-    out.push_str("    2. Then complete the resulting tasks with 'mont done'\n");
+    out.push_str("    2. Then complete the resulting task with 'mont done'\n");
+
+    out
+}
+
+fn format_multi_edit_requires_editor() -> String {
+    let mut out = String::new();
+
+    out.push_str(&format!("{}: ", "error".red().bold()));
+    out.push_str("editing multiple tasks requires editor mode\n");
+    out.push('\n');
+    out.push_str(&format!("  {}\n", "When specifying multiple task IDs, the editor is used automatically.".dimmed()));
+    out.push('\n');
+    out.push_str(&format!("  {}:\n", "To fix this".bold()));
+    out.push_str(&format!(
+        "    {}\n",
+        "mont task task1,task2,task3".cyan()
+    ));
 
     out
 }

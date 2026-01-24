@@ -1,6 +1,10 @@
 ---
 id: mont-edit-multiple
 title: Need to update how mont edit works
+status: complete
+gates:
+  - interview-validator: passed
+  - test: passed
 ---
 
 Mont edit when passed with -e should allow creation of multiple tasks at once.

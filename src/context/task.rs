@@ -84,6 +84,8 @@ pub enum ParseError {
     InvalidYaml(#[from] serde_yaml::Error),
     #[error("task id cannot be empty")]
     EmptyId,
+    #[error("task id '{0}' is reserved")]
+    ReservedId(String),
     #[error("gate '{0}' must not have after dependencies")]
     GateWithAfter(String),
     #[error("gate '{0}' cannot be marked complete")]
@@ -95,6 +97,9 @@ pub enum ParseError {
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct Task {
     pub id: String,
+    /// New ID for renaming. Only used in multieditor, not persisted.
+    #[serde(default)]
+    pub new_id: Option<String>,
     /// This task must complete before these referenced tasks
     #[serde(default)]
     pub before: Vec<String>,
@@ -331,6 +336,11 @@ pub fn parse(content: &str) -> Result<Task, ParseError> {
 
     let mut task: Task = serde_yaml::from_str(yaml)?;
     task.description = description;
+
+    // Validate reserved IDs
+    if task.id == "?" {
+        return Err(ParseError::ReservedId(task.id));
+    }
 
     if task.is_gate() && !task.after.is_empty() {
         return Err(ParseError::GateWithAfter(task.id));
@@ -709,6 +719,7 @@ Task description.
     fn test_to_markdown_minimal() {
         let task = Task {
             id: "minimal".to_string(),
+            new_id: None,
             before: vec![],
             after: vec![],
             gates: vec![],
@@ -730,6 +741,7 @@ Task description.
         // Use Task type since jots cannot have gates
         let task = Task {
             id: "full-task".to_string(),
+            new_id: None,
             before: vec!["parent1".to_string(), "parent2".to_string()],
             after: vec!["dep1".to_string()],
             gates: vec![
@@ -772,6 +784,7 @@ Task description.
     fn test_to_markdown_gate() {
         let task = Task {
             id: "my-gate".to_string(),
+            new_id: None,
             before: vec!["consumer".to_string()],
             after: vec![],
             gates: vec![],
@@ -791,6 +804,7 @@ Task description.
     fn test_to_markdown_complete_status() {
         let task = Task {
             id: "done-task".to_string(),
+            new_id: None,
             before: vec![],
             after: vec![],
             gates: vec![],
@@ -809,6 +823,7 @@ Task description.
     fn test_to_markdown_stopped_status() {
         let task = Task {
             id: "stopped-task".to_string(),
+            new_id: None,
             before: vec![],
             after: vec![],
             gates: vec![],

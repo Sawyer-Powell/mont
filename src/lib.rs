@@ -2,6 +2,7 @@ pub mod commands;
 pub mod context;
 pub mod error_fmt;
 pub mod jj;
+pub mod multieditor;
 pub mod render;
 
 // Re-export commonly used types from context module for convenience

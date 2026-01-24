@@ -5,31 +5,25 @@
 
 mod check;
 mod delete;
-mod distill;
 mod done;
-pub mod edit;
-pub mod jot;
 mod list;
 pub mod llm;
-pub mod new;
 mod ready;
 pub mod shared;
 mod show;
 mod start;
 mod status;
+pub mod task_cmd;
 pub mod unlock;
 
 pub use check::check;
 pub use delete::delete;
-pub use distill::distill;
 pub use done::done;
-pub use edit::edit;
-pub use jot::jot;
 pub use list::list;
 pub use llm::{claude, claude_ignore, claude_pre_validate, prompt};
-pub use new::{gate, task};
 pub use ready::ready;
 pub use show::show;
 pub use start::start;
 pub use status::status;
+pub use task_cmd::task;
 pub use unlock::unlock;

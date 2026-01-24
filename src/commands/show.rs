@@ -2,18 +2,12 @@
 
 use owo_colors::OwoColorize;
 
-use super::shared::{make_temp_file, update_via_editor, UpdateResult};
 use crate::error_fmt::AppError;
 use crate::render::{print_gates_section, TaskDisplayView};
 use crate::{MontContext, Task, TaskType};
 
 /// Show details for a single task.
-pub fn show(
-    ctx: &MontContext,
-    id: &str,
-    short: bool,
-    editor: Option<Option<String>>,
-) -> Result<(), AppError> {
+pub fn show(ctx: &MontContext, id: &str, short: bool) -> Result<(), AppError> {
     let task = ctx
         .graph()
         .get(id)
@@ -22,12 +16,6 @@ pub fn show(
             tasks_dir: ctx.tasks_dir().display().to_string(),
         })?
         .clone();
-
-    // If editor flag is set, use edit workflow
-    if let Some(editor_opt) = editor {
-        let editor_name = editor_opt.as_deref();
-        return edit_with_editor(ctx, id, &task, editor_name);
-    }
 
     // Print task details using shared helpers
     print_task_details(ctx, &task, short);
@@ -99,34 +87,4 @@ fn print_task_details(ctx: &MontContext, task: &Task, short: bool) {
         skin.headers[5].align = termimad::Alignment::Left;
         skin.print_text(&task.description);
     }
-}
-
-fn edit_with_editor(
-    ctx: &MontContext,
-    original_id: &str,
-    task: &Task,
-    editor_name: Option<&str>,
-) -> Result<(), AppError> {
-    let suffix = format!("show_{}", original_id);
-    let path = make_temp_file(&suffix, std::slice::from_ref(task), None)?;
-
-    match update_via_editor(ctx, original_id, &path, editor_name)? {
-        UpdateResult::Updated { new_id, id_changed } => {
-            if id_changed {
-                println!(
-                    "renamed: {} -> {}",
-                    original_id.bright_yellow(),
-                    new_id.bright_green()
-                );
-            } else {
-                let file_path = ctx.tasks_dir().join(format!("{}.md", new_id));
-                println!("updated: {}", file_path.display().to_string().bright_green());
-            }
-        }
-        UpdateResult::Aborted => {
-            println!("No task defined, aborting edit.");
-        }
-    }
-
-    Ok(())
 }

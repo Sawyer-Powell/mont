@@ -464,6 +464,7 @@ mod tests {
     fn make_task(id: &str) -> Task {
         Task {
             id: id.to_string(),
+            new_id: None,
             before: vec![],
             after: vec![],
             gates: vec![],
@@ -478,6 +479,7 @@ mod tests {
     fn make_task_with_before(id: &str, before_id: &str) -> Task {
         Task {
             id: id.to_string(),
+            new_id: None,
             before: vec![before_id.to_string()],
             after: vec![],
             gates: vec![],
