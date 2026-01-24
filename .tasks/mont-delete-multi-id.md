@@ -2,6 +2,7 @@
 id: mont-delete-multi-id
 title: Support multiple IDs in mont delete
 ---
+
 Update `mont delete` to support multiple task IDs with `?` picker support.
 
 Current: `mont delete <id>` - single ID only
