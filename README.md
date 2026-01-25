@@ -3,12 +3,14 @@
 A task tracker to help you and your agent write robust, reliable code.
 Built on jj-vcs.
 
-**note**: `mont` is currently in **ALPHA**. This means it is usable, and should work as described.
+## Notes
 
-**ALERT**:
+**ALERT - ALPHA SOFTWARE**:
+- `mont` should work as described BUT
 - Breaking changes will likely happen
 - There are likely obvious bugs that haven't been found yet
 - There are areas that are likely lacking ergonomic polish
+- `mont` works well so far on my M4 Macbook Pro, but might be slow on your machine
 
 **DON'T PANIC**:
 - You can help improve `mont`!
@@ -19,8 +21,10 @@ Built on jj-vcs.
 Right now I'm only building/distributing binaries for MacOS. If you really want a different OS/linux distro supported,
 create an issue here on GitHub.
 
-Requires [jj-vcs](htps://github.com/martinvonz/jj): 
-```brew install jj```
+Requires [jj-vcs](htps://github.com/artinvonz/jj): 
+```bash
+brew install jj
+```
 
 ### Homebrew (macOS)
 ```bash
