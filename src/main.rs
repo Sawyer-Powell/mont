@@ -10,13 +10,18 @@ use mont::TaskType;
 #[command(name = "mont")]
 #[command(about = "Task management and agent coordination")]
 struct Cli {
+    /// Task ID(s) to edit (shortcut for 'mont task <ids>')
+    #[arg(value_delimiter = ',')]
+    ids: Vec<String>,
+
     #[command(subcommand)]
     command: Option<Commands>,
 }
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Show status of in-progress tasks (default command)
+    /// Show status of in-progress tasks
+    #[command(alias = "st")]
     Status,
     /// List all tasks in the task graph
     List {
@@ -185,8 +190,29 @@ fn run(cli: Cli) -> Result<(), AppError> {
     // Load context once for all commands
     let ctx = mont::MontContext::load(PathBuf::from(".tasks"))?;
 
-    // Default to Status if no command is provided
-    let command = cli.command.unwrap_or(Commands::Status);
+    // Handle shortcut: `mont` or `mont <ids>` → `mont task [<ids>]`
+    // If no subcommand provided, treat IDs as task editing
+    let command = match cli.command {
+        Some(cmd) => cmd,
+        None => {
+            // Shortcut: `mont` or `mont <ids>` opens multieditor
+            return commands::task(
+                &ctx,
+                commands::task_cmd::TaskArgs {
+                    ids: cli.ids,
+                    task_type: None,
+                    resume: false,
+                    resume_path: None,
+                    content: None,
+                    stdin: false,
+                    patch: None,
+                    append: None,
+                    editor: None,
+                    group: false,
+                },
+            );
+        }
+    };
 
     match command {
         Commands::Status => {

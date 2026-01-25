@@ -1,6 +1,11 @@
 ---
 id: simplify-mont-commands
 title: Make mont base command be a shortcut for mont task
+status: complete
+gates:
+  - user-qa: passed
+  - architecture-validator: passed
+  - test: passed
 ---
 
 Right now, if I want to create a new task, I can run mont task, and it opens my editor,
