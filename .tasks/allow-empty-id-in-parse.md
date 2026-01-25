@@ -1,6 +1,7 @@
 ---
 id: allow-empty-id-in-parse
 title: Allow empty ID in task parsing for auto-generation
+status: inprogress
 gates:
   - user-qa
   - test
