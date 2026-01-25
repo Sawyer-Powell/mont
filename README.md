@@ -3,9 +3,24 @@
 A task tracker to help you and your agent write robust, reliable code.
 Built on jj-vcs.
 
+**note**: `mont` is currently in **ALPHA**. This means it is usable, and should work as described.
+
+**ALERT**:
+- Breaking changes will likely happen
+- There are likely obvious bugs that haven't been found yet
+- There are areas that are likely lacking ergonomic polish
+
+**DON'T PANIC**:
+- You can help improve `mont`!
+- Report issues you find here on GitHub, I'll try and resolve them time-permitting
+
 ## Installation
 
-Requires [jj-vcs](https://github.com/martinvonz/jj): `brew install jj`
+Right now I'm only building/distributing binaries for MacOS. If you really want a different OS/linux distro supported,
+create an issue here on GitHub.
+
+Requires [jj-vcs](htps://github.com/martinvonz/jj): 
+```brew install jj```
 
 ### Homebrew (macOS)
 ```bash
@@ -110,3 +125,21 @@ Use `mont prompt` to preview what Claude will receive.
 **Claude integration.** Use `mont claude <task-id>` to launch Claude Code with a dynamically generated prompt based on your task state. Use `mont prompt` to inspect what prompt would be generated.
 
 **Shortcuts.** `mont st` is an alias for `mont status`.
+
+# Notes for Contributors
+
+This software is made by me, Sawyer, with a primary customer of me, Sawyer. While I would like this software to be useful
+to as many people as possible, I'm not going to be fostering an open source community around `mont`, allowing others to submit PRs.
+
+If you REALLY want to contribute, reach out to me directly and I'll see if you can be helpful. But don't expect your PRs to be
+reviewed, much less approved. If you really don't like how `mont` currently works, and your github issue doesn't have a response
+from me, fork it.
+
+# Disclosure of LLM usage
+
+This software is designed to make it easier for you to write reliable, well designed software using LLMs. As such, `mont` is developed
+with extensive usage of LLMs (using `mont`!).
+
+As such, some of the internals of the codebase may look weird/have duplicated logic, or just plain ol' bad code. If you find it, report
+it, create a GitHub issue calling it out. The design goal of `mont` is to allow our usage of LLMs to produce *better* code than we could
+without them. Bad code in `mont` means I'm not using `mont` correctly to build `mont`, or `mont` is designed poorly.
