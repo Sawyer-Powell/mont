@@ -1,8 +1,6 @@
 ---
 id: update-readme-for-release
 title: Update README to match current CLI
-gates:
-  - user-qa
 ---
 
 The README has outdated examples that don't match current CLI:
