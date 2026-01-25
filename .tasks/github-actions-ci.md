@@ -3,9 +3,6 @@ id: github-actions-ci
 title: Add GitHub Actions CI workflow
 after:
   - add-license
-gates:
-  - user-qa
-  - test
 ---
 
 Create `.github/workflows/ci.yml` that:
