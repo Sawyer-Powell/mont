@@ -62,7 +62,13 @@
       "Bash(gh run list:*)",
       "Bash(git show:*)",
       "Bash(git ls-tree:*)",
-      "Bash(git rm:*)"
+      "Bash(git rm:*)",
+      "Bash(gh release download:*)",
+      "Bash(git init:*)",
+      "Bash(gh repo create:*)",
+      "Bash(brew install:*)",
+      "Bash(mont --version:*)",
+      "Bash(mont --help:*)"
     ]
   }
 }

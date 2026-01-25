@@ -5,19 +5,21 @@ Built on jj-vcs.
 
 ## Installation
 
-### MacOS (manual compilation)
+Requires [jj-vcs](https://github.com/martinvonz/jj): `brew install jj`
+
+### Homebrew (macOS)
 ```bash
-# Ensure that you have jj-vcs installed
-brew install jj
+brew install sawyer-powell/tap/mont
+```
 
-# Ensure that you have rust/cargo installed
-curl https://sh.rustup.rs -sSf | sh
+### Cargo binstall
+```bash
+cargo binstall mont
+```
 
-# Clone this repo
-git clone https://github.com/Sawyer-Powell/mont
-
-# Compile and install
-cargo install --path ./mont
+### Cargo install
+```bash
+cargo install mont
 ```
 
 ## Quick Start
