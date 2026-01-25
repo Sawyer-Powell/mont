@@ -144,6 +144,6 @@ from me, fork it.
 This software is designed to make it easier for you to write reliable, well designed software using LLMs. As such, `mont` is developed
 with extensive usage of LLMs (using `mont`!).
 
-As such, some of the internals of the codebase may look weird/have duplicated logic, or just plain ol' bad code. If you find it, report
+Some of the internals of the codebase may look weird/have duplicated logic, or just plain ol' bad code. If you find it, report
 it, create a GitHub issue calling it out. The design goal of `mont` is to allow our usage of LLMs to produce *better* code than we could
 without them. Bad code in `mont` means I'm not using `mont` correctly to build `mont`, or `mont` is designed poorly.
