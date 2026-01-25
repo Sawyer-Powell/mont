@@ -3,9 +3,9 @@
 A task tracker to help you and your agent write robust, reliable code.
 Built on jj-vcs.
 
-# Installation
+## Installation
 
-## MacOS (manual compilation)
+### MacOS (manual compilation)
 ```bash
 # Ensure that you have jj-vcs installed
 brew install jj
@@ -20,71 +20,91 @@ git clone https://github.com/Sawyer-Powell/mont
 cargo install --path ./mont
 ```
 
-# Overview
+## Quick Start
 
 ```bash
-# Describe some gates, a task describing some form of
-# quality control. Gates should have a clear success state
-% mont gate "Tests pass" \
-    --description "Run 'make lint' then 'make test'. \
-                   Mark as passed if no errors."
-created: .tasks/festive-bengal.md
+# Create a new task (opens your editor)
+% mont
+created: .tasks/my-task.md
 
-# If you want to use an agent, you can create a gate for 
-# doing a code review with you
-% mont gate "Implementation interview" \
-    --description "Scan your changes using 'jj diff', \
-                   and then conduct an interview with the user \
-                   to confirm implementation details"
-created: .tasks/bouncy-fox.md
+# Or create a quick jot (unstructured idea)
+% mont jot -q "Add user authentication"
+created: .tasks/cheerful-otter.md
 
-# Jot down an unstructured idea for your codebase
-% mont jot "Add user authentication"
-created: .tasks/buff-bloodhound.md
+# View what's ready to work on
+% mont ready
 
-# Use claude code to help you distill the jot then implement
-% mont claude buff-bloodhound
+# Start working on a task
+% mont start my-task
 
-# OR use mont manually
-% mont distill buff-bloodhound --tasks='
-    - id: auth-backend
-      title: Add auth backend
-      gate: [festive-bengal]
-    - id: auth-ui
-      title: Add login UI
-      after: [auth-backend]
-    - id: auth-tests
-      title: Add auth tests
-      after: [auth-backend]
-  '
-created: .tasks/auth-backend.md
-created: .tasks/auth-ui.md
-created: .tasks/auth-tests.md
-deleted jot: buff-bloodhound
-committed: Distilled jot 'buff-bloodhound' into tasks: auth-backend, auth-ui, auth-tests
-
-# View dependency graph
-% mont list
-◉    [task] auth-backend Add auth backend
-├─╮
-○ │  [wait] auth-tests Add auth tests
-  ○  [wait] auth-ui Add login UI
-
-# Start work, this marks 'auth-backend' as in progress
-% mont start auth-backend
-
-# Unlock gate when tests pass
-% mont unlock auth-backend -p festive-bengal
-festive-bengal gate marked as passed
-
-# Complete the task, this commits the changes and moves to a new revision
+# When done, complete the task
 % mont done -m "Added auth backend"
 ```
 
-## Tips and Tricks
+## Core Concepts
 
-**Claude integration.** Run `mont claude -i` anytime to get help tackling mont tasks. Mont generates prompts dynamically based on your tasks and repo state. Use `mont prompt` to inspect the generated prompt.
+**Jots** are unstructured ideas that need to be refined into tasks. Use them to capture random ill-defined tasks from your stream of consciousness while working.
 
-**Fuzzy finder.** Install [fzf](https://github.com/junegunn/fzf) to enable mont's picker functionality. Anywhere you'd normally type an id, you can omit it. Mont invokes an appropriate fzf picker to help you find your task.
+**Tasks** are concrete work items with clear completion criteria.
 
-**Editor support.** `mont task`, `mont jot`, `mont gate`, and `mont show` all accept `-e` to edit tasks in your preferred editor. Set `$EDITOR` or pass the binary explicitly with `-e`.
+**Gates** are quality checkpoints (tests pass, code reviewed, etc.) that must be unlocked before completing a task.
+
+## The Multieditor
+
+`mont` opens your editor with a multi-document format. Create, edit, and link tasks in one session:
+
+```yaml
+---
+id: auth-backend
+title: Add authentication backend
+gates: [code-review]
+---
+Implement JWT-based auth with refresh tokens.
+
+---
+id: auth-frontend
+title: Add login UI
+after: [auth-backend]
+---
+Build login/logout components.
+```
+
+Save to apply changes atomically. Use `mont <ids>` to edit specific tasks.
+
+## Using Claude
+
+```bash
+# Let Claude tackle a task
+% mont claude auth-backend
+
+# Claude receives a prompt with task details, dependencies, and repo context
+# It works through gates, asks for review, then completes the task
+```
+
+Use `mont prompt` to preview what Claude will receive.
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `mont` | Open editor to create/edit tasks |
+| `mont <ids>` | Edit specific tasks |
+| `mont status` | Show in-progress tasks |
+| `mont list` | Show task dependency graph |
+| `mont ready` | Show tasks ready for work |
+| `mont jot [title]` | Create a quick jot |
+| `mont distill <id>` | Convert jot to tasks |
+| `mont start <id>` | Begin working on a task |
+| `mont done [-m msg]` | Complete current task |
+| `mont unlock <id> -p <gate>` | Mark gate as passed |
+| `mont show <id>` | View task details |
+| `mont delete <id>` | Delete a task |
+| `mont claude <id>` | Launch Claude Code for a task |
+
+## Tips
+
+**Fuzzy finder.** Install [fzf](https://github.com/junegunn/fzf) to enable picker functionality. Instead of typing in a task id, many commands accept you entering `?` in their place. For each `?`, a picker is invoked to select the task id.
+
+**Claude integration.** Use `mont claude <task-id>` to launch Claude Code with a dynamically generated prompt based on your task state. Use `mont prompt` to inspect what prompt would be generated.
+
+**Shortcuts.** `mont st` is an alias for `mont status`.

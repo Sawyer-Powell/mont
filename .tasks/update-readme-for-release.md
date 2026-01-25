@@ -1,6 +1,11 @@
 ---
 id: update-readme-for-release
 title: Update README to match current CLI
+status: complete
+gates:
+  - user-qa: passed
+  - architecture-validator: passed
+  - test: passed
 ---
 
 The README has outdated examples that don't match current CLI:
