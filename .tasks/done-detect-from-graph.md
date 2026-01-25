@@ -1,6 +1,7 @@
 ---
 id: done-detect-from-graph
 title: Detect in-progress task from graph instead of diff
+status: inprogress
 gates:
   - user-qa
   - test
