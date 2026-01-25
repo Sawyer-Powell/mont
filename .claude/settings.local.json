@@ -56,7 +56,8 @@
       "Bash(cargo clippy:*)",
       "Bash(tree:*)",
       "Bash(mont check:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(EDITOR=\"cat\" mont distill:*)"
     ]
   }
 }

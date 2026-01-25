@@ -48,6 +48,23 @@ fn read_stdin() -> Result<String, AppError> {
     Ok(content)
 }
 
+/// Parse original task IDs from a temp file's comment header.
+///
+/// Looks for the pattern "# ORIGINAL_IDS: id1,id2,id3" in the file.
+/// These are the tasks that existed when the temp file was created,
+/// used to compute proper diffs on resume.
+fn parse_original_ids_from_file(path: &PathBuf) -> Vec<String> {
+    let Ok(content) = std::fs::read_to_string(path) else {
+        return vec![];
+    };
+    for line in content.lines() {
+        if let Some(rest) = line.strip_prefix("# ORIGINAL_IDS: ") {
+            return rest.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+        }
+    }
+    vec![]
+}
+
 /// Resume editing from a temp file. Shared by task, jot, and distill commands.
 ///
 /// - `suffix`: The temp file suffix (e.g., "task", "jot", "distill")
@@ -72,8 +89,17 @@ fn resume_from_temp_file(
         return Err(AppError::TempFileNotFound(temp_path.display().to_string()));
     }
 
-    // For resume, we can't determine original tasks, so treat all as new
-    run_editor_workflow(ctx, &temp_path, &[], &[], editor_name, command_name)
+    // Try to recover original task IDs from the temp file header
+    let original_ids = parse_original_ids_from_file(&temp_path);
+    let graph_tasks: Vec<Task> = {
+        let graph = ctx.graph();
+        original_ids
+            .iter()
+            .filter_map(|id| graph.get(id).cloned())
+            .collect()
+    };
+
+    run_editor_workflow(ctx, &temp_path, &[], &graph_tasks, editor_name, command_name)
 }
 
 /// Run the unified task command.
@@ -439,7 +465,10 @@ fn edit_mode(
         original_tasks.push(task);
     }
 
-    let comment = build_multiedit_comment(MultiEditMode::Edit);
+    // Build comment with ORIGINAL_IDS header so resume can recover context
+    let base_comment = build_multiedit_comment(MultiEditMode::Edit);
+    let original_ids_line = format!("ORIGINAL_IDS: {}", ids.join(","));
+    let comment = format!("{}\n{}", original_ids_line, base_comment);
     let temp_path = make_temp_file("task", &original_tasks, Some(&comment))?;
 
     // Both template and graph are the same for edit mode
@@ -813,25 +842,13 @@ pub struct DistillArgs {
     pub editor: Option<String>,
 }
 
-/// Parse the jot ID from a distill temp file's comment header.
-///
-/// Looks for the pattern "# DISTILLING JOT: <jot-id>" in the file.
-fn parse_jot_id_from_distill_file(path: &PathBuf) -> Option<String> {
-    let content = std::fs::read_to_string(path).ok()?;
-    for line in content.lines() {
-        if let Some(rest) = line.strip_prefix("# DISTILLING JOT: ") {
-            return Some(rest.trim().to_string());
-        }
-    }
-    None
-}
 
 /// Distill a jot into concrete tasks.
 ///
 /// Opens editor with the jot commented out and space for new tasks.
 /// When saved, the jot is deleted and new tasks are created.
 pub fn distill(ctx: &MontContext, args: DistillArgs) -> Result<(), AppError> {
-    // Resume mode - needs special handling to recover jot ID from temp file
+    // Resume mode - recover original IDs from temp file header
     if args.resume || args.resume_path.is_some() {
         let temp_path = if let Some(path) = args.resume_path {
             path
@@ -844,16 +861,14 @@ pub fn distill(ctx: &MontContext, args: DistillArgs) -> Result<(), AppError> {
             return Err(AppError::TempFileNotFound(temp_path.display().to_string()));
         }
 
-        // Try to recover the jot ID from the temp file and include it in graph_tasks
-        let graph_tasks = if let Some(jot_id) = parse_jot_id_from_distill_file(&temp_path) {
-            if let Some(jot) = ctx.graph().get(&jot_id) {
-                vec![jot.clone()]
-            } else {
-                // Jot no longer exists (maybe already deleted), proceed without it
-                vec![]
-            }
-        } else {
-            vec![]
+        // Recover original IDs (the jot being distilled) from the temp file
+        let original_ids = parse_original_ids_from_file(&temp_path);
+        let graph_tasks: Vec<Task> = {
+            let graph = ctx.graph();
+            original_ids
+                .iter()
+                .filter_map(|id| graph.get(id).cloned())
+                .collect()
         };
 
         return run_editor_workflow(ctx, &temp_path, &[], &graph_tasks, args.editor.as_deref(), "distill");
@@ -889,16 +904,13 @@ pub fn distill(ctx: &MontContext, args: DistillArgs) -> Result<(), AppError> {
         .join("\n");
 
     let comment = format!(
-        r#"============================================================
-DISTILLING JOT: {}
-============================================================
+        r#"ORIGINAL_IDS: {}
 Original jot (for reference - will be deleted):
 
 {}
 
 Create replacement tasks below. The jot above will be deleted
-when you save and confirm.
-============================================================"#,
+when you save and confirm."#,
         args.jot_id, jot_lines
     );
 
