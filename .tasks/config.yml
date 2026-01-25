@@ -4,3 +4,4 @@ default_gates:
   - user-qa
   - architecture-validator
   - test
+  - semver

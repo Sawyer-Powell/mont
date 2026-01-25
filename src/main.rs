@@ -45,22 +45,19 @@ enum Commands {
         #[arg(long, short = 'T', value_parser = parse_task_type)]
         r#type: Option<TaskType>,
         /// Resume editing the most recent temp file
-        #[arg(long, short = 'r', conflicts_with_all = ["ids", "type", "content", "patch", "append"])]
+        #[arg(long, short = 'r', conflicts_with_all = ["ids", "type", "patch", "append"])]
         resume: bool,
         /// Resume editing a specific temp file
-        #[arg(long, conflicts_with_all = ["ids", "type", "content", "resume", "patch", "append"])]
+        #[arg(long, conflicts_with_all = ["ids", "type", "resume", "patch", "append"])]
         resume_path: Option<PathBuf>,
-        /// Skip editor, use content directly (LLM/scripting)
-        #[arg(long, conflicts_with_all = ["type", "resume", "resume_path", "patch", "append", "stdin"])]
-        content: Option<String>,
         /// Read task content from stdin (LLM-friendly, avoids shell escaping)
-        #[arg(long, conflicts_with_all = ["type", "resume", "resume_path", "content", "patch", "append"])]
+        #[arg(long, conflicts_with_all = ["type", "resume", "resume_path", "patch", "append"])]
         stdin: bool,
         /// YAML patch to merge into task (requires single ID)
-        #[arg(long, conflicts_with_all = ["type", "resume", "resume_path", "content", "append", "stdin"])]
+        #[arg(long, conflicts_with_all = ["type", "resume", "resume_path", "append", "stdin"])]
         patch: Option<String>,
         /// Append text to task description (requires single ID)
-        #[arg(long, conflicts_with_all = ["type", "resume", "resume_path", "content", "patch", "stdin"])]
+        #[arg(long, conflicts_with_all = ["type", "resume", "resume_path", "patch", "stdin"])]
         append: Option<String>,
         /// Editor command to use
         #[arg(long, short)]
@@ -233,7 +230,6 @@ fn run(cli: Cli) -> Result<(), AppError> {
             r#type,
             resume,
             resume_path,
-            content,
             stdin,
             patch,
             append,
@@ -246,7 +242,7 @@ fn run(cli: Cli) -> Result<(), AppError> {
                 task_type: r#type,
                 resume,
                 resume_path,
-                content,
+                content: None,
                 stdin,
                 patch,
                 append,

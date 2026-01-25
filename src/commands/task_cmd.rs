@@ -24,7 +24,7 @@ pub struct TaskArgs {
     pub resume: bool,
     /// Resume editing a specific temp file
     pub resume_path: Option<PathBuf>,
-    /// Skip editor, use content directly (LLM/scripting)
+    /// Content to use directly (for testing/internal use)
     pub content: Option<String>,
     /// Read content from stdin (LLM-friendly)
     pub stdin: bool,
@@ -109,7 +109,7 @@ pub fn task(ctx: &MontContext, args: TaskArgs) -> Result<(), AppError> {
         return resume_mode(ctx, args);
     }
 
-    // Content mode: --content (skip editor)
+    // Content mode (internal/testing)
     if let Some(content) = args.content {
         return content_mode(ctx, &content, &args.ids);
     }
