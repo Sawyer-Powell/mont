@@ -337,7 +337,7 @@ fn format_parse_error(error: &ParseError, file_path: &str) -> String {
             ));
             out.push('\n');
             out.push_str(&format!("  {}\n", "Jots are quick ideas that cannot have gates.".dimmed()));
-            out.push_str(&format!("  {}\n", "Edit the jot with `mont task <id>` to convert it or remove gates.".dimmed()));
+            out.push_str(&format!("  {}\n", "Edit the jot with `mont <id>` to convert it or remove gates.".dimmed()));
             out.push('\n');
             out.push_str(&format!("  {}:\n", "To fix this".bold()));
             out.push_str(&format!(
@@ -442,7 +442,7 @@ fn format_validation_error(error: &ValidationError, tasks_dir: &str) -> String {
             ));
             out.push('\n');
             out.push_str(&format!("  {}\n", "Gates define validation criteria, not work dependencies.".dimmed()));
-            out.push_str(&format!("  {}\n", "Use the 'validations' field instead of 'after'.".dimmed()));
+            out.push_str(&format!("  {}\n", "Use the 'gates' field instead of 'after'.".dimmed()));
             out.push('\n');
             out.push_str(&format!("  {}:\n", "To fix this".bold()));
             out.push_str(&format!(
@@ -457,7 +457,7 @@ fn format_validation_error(error: &ValidationError, tasks_dir: &str) -> String {
             out.push_str(&format!("      {}  - {}\n", "".dimmed(), after_id.dimmed()));
             out.push('\n');
             out.push_str(&format!("      {}\n", "# After:".dimmed()));
-            out.push_str(&format!("      {}:\n", "validations".dimmed()));
+            out.push_str(&format!("      {}:\n", "gates".dimmed()));
             out.push_str(&format!("      {}  - {}\n", "".dimmed(), after_id.dimmed()));
         }
         ValidationError::ValidationNotFound {
@@ -465,14 +465,14 @@ fn format_validation_error(error: &ValidationError, tasks_dir: &str) -> String {
             validation_id,
         } => {
             out.push_str(&format!(
-                "task '{}' references non-existent validation '{}'\n",
+                "task '{}' references non-existent gate '{}'\n",
                 task_id.yellow(),
                 validation_id.yellow()
             ));
             out.push('\n');
             out.push_str(&format!(
                 "  {}\n",
-                format!("The validation task '{}' does not exist in {}/", validation_id, tasks_dir).dimmed()
+                format!("The gate '{}' does not exist in {}/", validation_id, tasks_dir).dimmed()
             ));
             out.push('\n');
             out.push_str(&format!("  {}:\n", "To fix this".bold()));
@@ -483,19 +483,19 @@ fn format_validation_error(error: &ValidationError, tasks_dir: &str) -> String {
                 "type: gate".cyan()
             ));
             out.push_str(&format!(
-                "    2. Remove '{}' from validations in {}/{}.md\n",
+                "    2. Remove '{}' from gates in {}/{}.md\n",
                 validation_id.cyan(),
                 tasks_dir.cyan(),
                 task_id.cyan()
             ));
-            out.push_str("    3. Change the validation to reference an existing gate\n");
+            out.push_str("    3. Change the gate reference to an existing gate\n");
         }
         ValidationError::InvalidValidation {
             task_id,
             validation_id,
         } => {
             out.push_str(&format!(
-                "task '{}' references validation '{}' which is not a gate\n",
+                "task '{}' references '{}' in gates, but it is not a gate\n",
                 task_id.yellow(),
                 validation_id.yellow()
             ));
@@ -513,12 +513,12 @@ fn format_validation_error(error: &ValidationError, tasks_dir: &str) -> String {
                 validation_id.cyan()
             ));
             out.push_str(&format!(
-                "    2. Remove '{}' from validations in {}/{}.md\n",
+                "    2. Remove '{}' from gates in {}/{}.md\n",
                 validation_id.cyan(),
                 tasks_dir.cyan(),
                 task_id.cyan()
             ));
-            out.push_str("    3. Change the validation to reference an existing gate\n");
+            out.push_str("    3. Change the gate reference to an existing gate\n");
         }
         ValidationError::ValidationNotRootGate {
             task_id,
@@ -530,7 +530,7 @@ fn format_validation_error(error: &ValidationError, tasks_dir: &str) -> String {
                 validation_id.yellow()
             ));
             out.push('\n');
-            out.push_str(&format!("  {}\n", "Gates used in the 'validations' field must be root gates".dimmed()));
+            out.push_str(&format!("  {}\n", "Gates used in the 'gates' field must be root gates".dimmed()));
             out.push_str(&format!("  {}\n", "(they cannot have a before target).".dimmed()));
             out.push('\n');
             out.push_str(&format!("  {}:\n", "To fix this".bold()));
@@ -625,11 +625,7 @@ fn format_dir_not_found(dir: &str) -> String {
         "    1. Create the directory: {}\n",
         format!("mkdir -p {}", dir).cyan()
     ));
-    out.push_str(&format!(
-        "    2. Use a different directory: {}\n",
-        "mont list -d /path/to/tasks".cyan()
-    ));
-    out.push_str("    3. Run from a directory that contains a .tasks folder\n");
+    out.push_str("    2. Run from a directory that contains a .tasks folder\n");
 
     out
 }
@@ -669,7 +665,7 @@ fn format_id_or_title_required() -> String {
     out.push_str(&format!("  {}:\n", "To fix this".bold()));
     out.push_str(&format!(
         "    Open the task editor: {}\n",
-        "mont task".cyan()
+        "mont".cyan()
     ));
 
     out
@@ -703,7 +699,7 @@ fn format_temp_file_not_found(path: &str) -> String {
     out.push_str(&format!("  {}:\n", "To fix this".bold()));
     out.push_str(&format!(
         "    Start fresh with: {}\n",
-        "mont task".cyan()
+        "mont".cyan()
     ));
 
     out
@@ -760,7 +756,7 @@ fn format_no_changes_provided() -> String {
     out.push_str(&format!("  {}:\n", "To fix this".bold()));
     out.push_str(&format!(
         "    Edit task: {}\n",
-        "mont task <task-id>".cyan()
+        "mont <task-id>".cyan()
     ));
 
     out
@@ -793,14 +789,14 @@ fn format_not_a_jot(id: &str) -> String {
     let mut out = String::new();
 
     out.push_str(&format!("{}: ", "error".red().bold()));
-    out.push_str(&format!("task '{}' is not a jot\n", id.yellow()));
+    out.push_str(&format!("'{}' is not a jot\n", id.yellow()));
     out.push('\n');
-    out.push_str(&format!("  {}\n", "This operation can only be used on jot-type tasks.".dimmed()));
+    out.push_str(&format!("  {}\n", "The distill command can only be used on jots.".dimmed()));
     out.push('\n');
     out.push_str(&format!("  {}:\n", "To fix this".bold()));
     out.push_str(&format!(
         "    1. Create a jot with: {}\n",
-        "mont task --type jot".cyan()
+        "mont jot".cyan()
     ));
     out.push_str("    2. Or check that the task has 'type: jot' in its frontmatter\n");
 
@@ -888,7 +884,7 @@ fn format_no_active_tasks() -> String {
     out.push_str(&format!("  {}:\n", "To fix this".bold()));
     out.push_str(&format!(
         "    Create a new task: {}\n",
-        "mont task".cyan()
+        "mont".cyan()
     ));
 
     out
@@ -906,13 +902,13 @@ fn format_gate_not_valid(gate_id: &str, task_id: &str) -> String {
     out.push('\n');
     out.push_str(&format!(
         "  {}\n",
-        "The gate must be either in the task's validations list or in default_gates.".dimmed()
+        "The gate must be either in the task's gates list or in default_gates.".dimmed()
     ));
     out.push('\n');
     out.push_str(&format!("  {}:\n", "To fix this".bold()));
     out.push_str(&format!(
         "    1. Edit the task to add the gate: {}\n",
-        format!("mont task {}", task_id).cyan()
+        format!("mont {}", task_id).cyan()
     ));
     out.push_str(&format!(
         "    2. Add '{}' to default_gates in {}\n",
@@ -942,7 +938,7 @@ fn format_task_already_complete(id: &str) -> String {
     ));
     out.push_str(&format!(
         "    2. Edit the task to remove complete status: {}\n",
-        format!("mont task {}", id).cyan()
+        format!("mont {}", id).cyan()
     ));
 
     out
@@ -1120,14 +1116,13 @@ fn format_cannot_complete_jot(id: &str) -> String {
     out.push_str(&format!("{}: ", "error".red().bold()));
     out.push_str(&format!("cannot complete jot '{}'\n", id.yellow()));
     out.push('\n');
-    out.push_str(&format!("  {}\n", "Jots are quick ideas that must be converted to tasks before completion.".dimmed()));
+    out.push_str(&format!("  {}\n", "Jots are quick ideas that must be distilled into tasks before completion.".dimmed()));
     out.push('\n');
     out.push_str(&format!("  {}:\n", "To fix this".bold()));
     out.push_str(&format!(
-        "    1. Edit the jot to convert it: {}\n",
-        format!("mont task {}", id).cyan()
+        "    Distill the jot into tasks: {}\n",
+        format!("mont distill {}", id).cyan()
     ));
-    out.push_str("    2. Then complete the resulting task with 'mont done'\n");
 
     out
 }
@@ -1143,7 +1138,7 @@ fn format_multi_edit_requires_editor() -> String {
     out.push_str(&format!("  {}:\n", "To fix this".bold()));
     out.push_str(&format!(
         "    {}\n",
-        "mont task task1,task2,task3".cyan()
+        "mont task1,task2,task3".cyan()
     ));
 
     out
