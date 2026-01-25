@@ -3,8 +3,6 @@ id: homebrew-tap
 title: Create Homebrew tap for mont
 after:
   - github-actions-release
-gates:
-  - user-qa
 ---
 
 Create a separate repo `homebrew-mont` with formula that:
