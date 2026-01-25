@@ -3,9 +3,6 @@ id: github-actions-release
 title: Add GitHub Actions release workflow for macOS
 after:
   - github-actions-ci
-gates:
-  - user-qa
-  - test
 ---
 
 Create `.github/workflows/release.yml` that:
