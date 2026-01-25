@@ -1,10 +1,11 @@
 ---
 id: done-detect-from-graph
 title: Detect in-progress task from graph instead of diff
-status: inprogress
+status: complete
 gates:
-  - user-qa
-  - test
+  - user-qa: passed
+  - test: passed
+  - architecture-validator: passed
 ---
 
 Change `detect_in_progress_task()` in done.rs to query the task graph

@@ -74,10 +74,10 @@ pub enum AppError {
         task_id: String,
         blocking: Vec<(String, crate::GateStatus)>,
     },
-    /// No in-progress task found in the current JJ diff
-    NoInProgressTaskInDiff,
-    /// Multiple in-progress tasks found in the current JJ diff
-    MultipleInProgressTasksInDiff(Vec<String>),
+    /// No in-progress task found
+    NoInProgressTask,
+    /// Multiple in-progress tasks found
+    MultipleInProgressTasks(Vec<String>),
     /// Template rendering error
     TemplateError(String),
     /// External command failed
@@ -168,11 +168,11 @@ impl fmt::Display for AppError {
             AppError::GatesNotPassed { task_id, blocking } => {
                 write!(f, "{}", format_gates_not_passed(task_id, blocking))
             }
-            AppError::NoInProgressTaskInDiff => {
-                write!(f, "{}", format_no_in_progress_task_in_diff())
+            AppError::NoInProgressTask => {
+                write!(f, "{}", format_no_in_progress_task())
             }
-            AppError::MultipleInProgressTasksInDiff(tasks) => {
-                write!(f, "{}", format_multiple_in_progress_tasks_in_diff(tasks))
+            AppError::MultipleInProgressTasks(tasks) => {
+                write!(f, "{}", format_multiple_in_progress_tasks(tasks))
             }
             AppError::TemplateError(msg) => {
                 write!(f, "{}", format_template_error(msg))
@@ -1052,13 +1052,13 @@ fn format_gates_not_passed(task_id: &str, blocking: &[(String, crate::GateStatus
     out
 }
 
-fn format_no_in_progress_task_in_diff() -> String {
+fn format_no_in_progress_task() -> String {
     let mut out = String::new();
 
     out.push_str(&format!("{}: ", "error".red().bold()));
-    out.push_str("no in-progress task found in current revision\n");
+    out.push_str("no in-progress task found\n");
     out.push('\n');
-    out.push_str(&format!("  {}\n", "Could not detect which task to complete from the diff.".dimmed()));
+    out.push_str(&format!("  {}\n", "No task is currently marked as in progress.".dimmed()));
     out.push('\n');
     out.push_str(&format!("  {}:\n", "To fix this".bold()));
     out.push_str(&format!(
@@ -1073,13 +1073,13 @@ fn format_no_in_progress_task_in_diff() -> String {
     out
 }
 
-fn format_multiple_in_progress_tasks_in_diff(tasks: &[String]) -> String {
+fn format_multiple_in_progress_tasks(tasks: &[String]) -> String {
     let mut out = String::new();
 
     out.push_str(&format!("{}: ", "error".red().bold()));
-    out.push_str("multiple in-progress tasks found in current revision\n");
+    out.push_str("multiple in-progress tasks found\n");
     out.push('\n');
-    out.push_str(&format!("  {}\n", "Found multiple tasks with status: inprogress in the diff:".dimmed()));
+    out.push_str(&format!("  {}\n", "Found multiple tasks with status: inprogress:".dimmed()));
     out.push('\n');
 
     for task_id in tasks {

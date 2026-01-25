@@ -7,8 +7,7 @@ use crate::{jj, GateStatus, MontContext, Status};
 
 /// Complete a task.
 ///
-/// If no task ID is provided, attempts to detect the in-progress task
-/// from the current JJ revision's diff.
+/// If no task ID is provided, detects the in-progress task from the task graph.
 ///
 /// If a message is provided, uses it for the commit. Otherwise opens
 /// the default editor via `jj commit`.
@@ -87,44 +86,20 @@ pub fn done(ctx: &MontContext, id: Option<&str>, message: Option<&str>) -> Resul
     Ok(())
 }
 
-/// Detect the in-progress task from the current JJ revision's diff.
+/// Detect the in-progress task from the task graph.
 ///
-/// Looks for .tasks/*.md files in the diff that have `status: inprogress`.
-/// If jj is disabled, returns an error since we can't detect from diff.
+/// Queries the graph for tasks with status: inprogress.
 fn detect_in_progress_task(ctx: &MontContext) -> Result<String, AppError> {
-    let jj_enabled = ctx.config().jj.enabled;
-    if !jj_enabled {
-        return Err(AppError::NoInProgressTaskInDiff);
-    }
-    let patch = jj::working_copy_diff().map_err(|e| AppError::JJError(e.to_string()))?;
+    let graph = ctx.graph();
+    let in_progress: Vec<String> = graph
+        .values()
+        .filter(|t| t.is_in_progress())
+        .map(|t| t.id.clone())
+        .collect();
 
-    let mut found_tasks: Vec<String> = Vec::new();
-
-    for file in patch.files() {
-        // target_file is a field, not a method
-        let path: &str = &file.target_file;
-        // Check if this is a task file
-        if !path.contains(".tasks/") || !path.ends_with(".md") {
-            continue;
-        }
-
-        // Check if any added line contains "status: inprogress"
-        for hunk in file.hunks() {
-            for line in hunk.lines() {
-                if line.is_added() && line.value.contains("status: inprogress") {
-                    // Extract task ID from path: b/.tasks/foo.md -> foo
-                    if let Some(id) = path.split('/').next_back().and_then(|f| f.strip_suffix(".md")) {
-                        found_tasks.push(id.to_string());
-                    }
-                    break;
-                }
-            }
-        }
-    }
-
-    match found_tasks.len() {
-        0 => Err(AppError::NoInProgressTaskInDiff),
-        1 => Ok(found_tasks.remove(0)),
-        _ => Err(AppError::MultipleInProgressTasksInDiff(found_tasks)),
+    match in_progress.as_slice() {
+        [] => Err(AppError::NoInProgressTask),
+        [single] => Ok(single.clone()),
+        _ => Err(AppError::MultipleInProgressTasks(in_progress)),
     }
 }
