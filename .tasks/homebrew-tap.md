@@ -1,8 +1,14 @@
 ---
 id: homebrew-tap
 title: Create Homebrew tap for mont
+status: complete
 after:
   - github-actions-release
+gates:
+  - user-qa: passed
+  - architecture-validator: passed
+  - test: passed
+  - semver: passed
 ---
 
 Create a separate repo `homebrew-mont` with formula that:
