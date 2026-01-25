@@ -11,7 +11,7 @@ use super::shared::{
 };
 use crate::error_fmt::AppError;
 use crate::jj;
-use crate::multieditor::{apply_diff, compute_diff, ApplyResult};
+use crate::multieditor::{apply_diff, compute_diff, fill_empty_ids, ApplyResult};
 use crate::{resolve_editor, MontContext, Task, TaskType};
 
 /// Arguments for the unified task command.
@@ -533,7 +533,7 @@ fn run_editor_workflow(
 
     // For actual diff, only include tasks that exist in the graph
     // Templates (like "new-task", "new-jot") become inserts, not updates
-    let diff = {
+    let mut diff = {
         let graph = ctx.graph();
         let real_originals: Vec<Task> = graph_tasks
             .iter()
@@ -543,6 +543,9 @@ fn run_editor_workflow(
         compute_diff(&real_originals, &edited)
         // graph (read lock) is dropped here before apply_diff needs write lock
     };
+
+    // Fill in empty IDs before showing summary so user sees actual IDs
+    fill_empty_ids(ctx, &mut diff)?;
 
     // Show summary and confirm
     print_diff_summary(&diff, graph_tasks, &edited);

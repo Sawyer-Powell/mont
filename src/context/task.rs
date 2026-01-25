@@ -133,6 +133,7 @@ pub enum ParseError {
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct Task {
+    #[serde(default)]
     pub id: String,
     /// New ID for renaming. Only used in multieditor, not persisted.
     #[serde(default)]
@@ -328,9 +329,9 @@ impl Task {
 /// assert!(matches!(result, Err(ParseError::MissingFrontmatter)));
 /// ```
 ///
-/// Missing required `id` field returns an error:
+/// Missing `id` field defaults to empty string (for auto-generation):
 /// ```
-/// use mont::{parse, ParseError};
+/// use mont::parse;
 ///
 /// let content = r#"---
 /// title: Task without id
@@ -340,7 +341,9 @@ impl Task {
 /// "#;
 ///
 /// let result = parse(content);
-/// assert!(matches!(result, Err(ParseError::InvalidYaml(_))));
+/// assert!(result.is_ok());
+/// let task = result.unwrap();
+/// assert!(task.id.is_empty());
 /// ```
 ///
 /// Gate with after dependencies returns an error:
@@ -510,7 +513,7 @@ Jots cannot have gates.
     }
 
     #[test]
-    fn test_parse_missing_id() {
+    fn test_parse_missing_id_defaults_to_empty() {
         let content = r#"---
 title: No id
 ---
@@ -518,7 +521,10 @@ title: No id
 Description.
 "#;
         let result = parse(content);
-        assert!(matches!(result, Err(ParseError::InvalidYaml(_))));
+        assert!(result.is_ok());
+        let task = result.unwrap();
+        assert!(task.id.is_empty());
+        assert_eq!(task.title, Some("No id".to_string()));
     }
 
     #[test]

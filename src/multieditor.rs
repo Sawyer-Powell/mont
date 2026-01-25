@@ -116,6 +116,30 @@ fn task_content_differs(a: &Task, b: &Task) -> bool {
         || a.status != b.status
 }
 
+/// Fill in empty IDs in a diff before displaying to the user.
+///
+/// This generates IDs for tasks with empty IDs so the confirmation
+/// prompt can show the actual IDs that will be created.
+pub fn fill_empty_ids(ctx: &MontContext, diff: &mut MultiEditDiff) -> Result<(), AppError> {
+    let graph = ctx.graph();
+
+    // Fill empty IDs in inserts
+    for task in &mut diff.inserts {
+        if task.id.is_empty() {
+            task.id = ctx.generate_id(&graph).map_err(AppError::from)?;
+        }
+    }
+
+    // Fill empty IDs in updates (rare but possible)
+    for (_original_id, task) in &mut diff.updates {
+        if task.id.is_empty() {
+            task.id = ctx.generate_id(&graph).map_err(AppError::from)?;
+        }
+    }
+
+    Ok(())
+}
+
 /// Apply a diff to the task graph atomically.
 ///
 /// Uses the transaction system for atomic validation:
@@ -124,6 +148,9 @@ fn task_content_differs(a: &Task, b: &Task) -> bool {
 /// 3. Full validation runs on the view (reference integrity, cycle detection)
 /// 4. Only if validation passes -> all changes applied atomically
 /// 5. If validation fails -> no changes applied
+///
+/// Note: Call `fill_empty_ids()` before this if you want to show the user
+/// the actual IDs that will be created.
 pub fn apply_diff(ctx: &MontContext, diff: MultiEditDiff) -> Result<ApplyResult, AppError> {
     let mut txn = ctx.begin();
     let graph = ctx.graph();

@@ -1,10 +1,11 @@
 ---
 id: allow-empty-id-in-parse
 title: Allow empty ID in task parsing for auto-generation
-status: inprogress
+status: complete
 gates:
-  - user-qa
-  - test
+  - user-qa: passed
+  - test: passed
+  - architecture-validator: passed
 ---
 
 Add #[serde(default)] to the `id` field in Task struct so tasks can be
