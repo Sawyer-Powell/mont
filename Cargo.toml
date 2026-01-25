@@ -23,6 +23,16 @@ minijinja = "2"
 regex = "1"
 tempfile = "3"
 
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/mont-{ target }.tar.gz"
+pkg-fmt = "tgz"
+
+[package.metadata.binstall.overrides.aarch64-apple-darwin]
+pkg-url = "{ repo }/releases/download/v{ version }/mont-aarch64-apple-darwin.tar.gz"
+
+[package.metadata.binstall.overrides.x86_64-apple-darwin]
+pkg-url = "{ repo }/releases/download/v{ version }/mont-x86_64-apple-darwin.tar.gz"
+
 [lints.rust]
 unsafe_code = "forbid"
 
