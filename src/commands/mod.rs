@@ -6,6 +6,7 @@
 mod check;
 mod delete;
 mod done;
+mod init;
 mod list;
 pub mod llm;
 mod ready;
@@ -19,6 +20,7 @@ pub mod unlock;
 pub use check::check;
 pub use delete::delete;
 pub use done::done;
+pub use init::init;
 pub use list::list;
 pub use llm::{claude, claude_ignore, claude_pre_validate, prompt};
 pub use ready::ready;

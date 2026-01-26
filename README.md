@@ -44,6 +44,14 @@ cargo install mont
 ## Quick Start
 
 ```bash
+# Initialize mont in your project
+% mont init
+Initializing mont...
+✓ Created .tasks directory
+✓ Created .tasks/config.yml
+✓ Committed .tasks changes
+Mont initialized successfully!
+
 # Create a new task (opens your editor)
 % mont
 created: .tasks/my-task.md
@@ -108,6 +116,7 @@ Use `mont prompt` to preview what Claude will receive.
 
 | Command | Description |
 |---------|-------------|
+| `mont init` | Initialize mont in current directory |
 | `mont` | Open editor to create/edit tasks |
 | `mont <ids>` | Edit specific tasks |
 | `mont status` | Show in-progress tasks |

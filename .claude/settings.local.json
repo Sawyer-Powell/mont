@@ -71,7 +71,10 @@
       "Bash(mont --help:*)",
       "Bash(git -C /Users/sawyer/repos/mont log --oneline -20)",
       "Bash(xargs:*)",
-      "Bash(git config:*)"
+      "Bash(git config:*)",
+      "Bash(/Users/sawyer/repos/mont/target/release/mont init:*)",
+      "Bash(jj file:*)",
+      "Bash(git restore:*)"
     ]
   }
 }

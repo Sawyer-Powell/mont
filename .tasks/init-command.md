@@ -1,10 +1,12 @@
 ---
 id: init-command
 title: Add interactive mont init command
-status: inprogress
+status: complete
 gates:
-  - user-qa
-  - test
+  - user-qa: passed
+  - test: passed
+  - architecture-validator: passed
+  - semver: passed
 ---
 
 Add a `mont init` command that initializes the `.tasks` directory with user-chosen git tracking preferences.

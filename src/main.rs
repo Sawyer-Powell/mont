@@ -160,6 +160,8 @@ enum Commands {
         #[arg(long, short)]
         ignore: bool,
     },
+    /// Initialize mont in the current directory
+    Init,
 }
 
 fn parse_task_type(s: &str) -> Result<TaskType, String> {
@@ -184,6 +186,11 @@ fn main() {
 }
 
 fn run(cli: Cli) -> Result<(), AppError> {
+    // Handle init command specially - it doesn't need an existing .tasks directory
+    if matches!(cli.command, Some(Commands::Init)) {
+        return commands::init();
+    }
+
     // Load context once for all commands
     let ctx = mont::MontContext::load(PathBuf::from(".tasks"))?;
 
@@ -364,6 +371,8 @@ fn run(cli: Cli) -> Result<(), AppError> {
                 commands::claude(&ctx, &resolved_id)
             }
         }
+        // Init is handled early before context loading
+        Commands::Init => unreachable!("Init command should be handled before context loading"),
     }
 }
 
