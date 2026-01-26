@@ -68,7 +68,10 @@
       "Bash(gh repo create:*)",
       "Bash(brew install:*)",
       "Bash(mont --version:*)",
-      "Bash(mont --help:*)"
+      "Bash(mont --help:*)",
+      "Bash(git -C /Users/sawyer/repos/mont log --oneline -20)",
+      "Bash(xargs:*)",
+      "Bash(git config:*)"
     ]
   }
 }
