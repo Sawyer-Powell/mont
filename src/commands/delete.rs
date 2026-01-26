@@ -68,7 +68,8 @@ pub fn delete(ctx: &MontContext, id: &str, force: bool) -> Result<(), AppError> 
     if ctx.config().jj.enabled {
         let message = format!("Delete task {}", id);
         match jj::commit(&message, &[ctx.tasks_dir()]) {
-            Ok(_) => println!("{}", "committed".bright_green()),
+            Ok(result) if result.committed => println!("{}", "committed".bright_green()),
+            Ok(_) => {} // Nothing to commit (e.g., .tasks is gitignored)
             Err(e) => eprintln!("{}: failed to auto-commit: {}", "warning".yellow(), e),
         }
     }

@@ -1,9 +1,12 @@
 ---
 id: skip-empty-jj-commits
 title: Skip jj commits when working copy is empty
+status: complete
 gates:
-  - user-qa
-  - test
+  - user-qa: passed
+  - test: passed
+  - architecture-validator: passed
+  - semver: passed
 ---
 
 Update `jj::commit()` to detect empty working copy and return early with success.

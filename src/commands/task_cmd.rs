@@ -706,9 +706,10 @@ fn auto_commit(ctx: &MontContext, result: &ApplyResult) {
 
     // Run jj commit (only commit task files)
     match jj::commit(&message, &[ctx.tasks_dir()]) {
-        Ok(_) => {
+        Ok(result) if result.committed => {
             println!("{}", "committed".bright_green());
         }
+        Ok(_) => {} // Nothing to commit (e.g., .tasks is gitignored)
         Err(e) => {
             eprintln!(
                 "{}: failed to auto-commit: {}",
@@ -815,7 +816,8 @@ pub fn jot(ctx: &MontContext, args: JotArgs) -> Result<(), AppError> {
         if ctx.config().jj.enabled {
             let message = format!("Create jot {}", id);
             match crate::jj::commit(&message, &[ctx.tasks_dir()]) {
-                Ok(_) => println!("{}", "committed".bright_green()),
+                Ok(result) if result.committed => println!("{}", "committed".bright_green()),
+                Ok(_) => {} // Nothing to commit (e.g., .tasks is gitignored)
                 Err(e) => eprintln!("{}: failed to auto-commit: {}", "warning".yellow(), e),
             }
         }
@@ -1007,7 +1009,8 @@ fn distill_stdin_mode(ctx: &MontContext, jot_id: &str, content: &str) -> Result<
     if ctx.config().jj.enabled {
         let message = format!("Distill jot {} into tasks", jot_id);
         match jj::commit(&message, &[ctx.tasks_dir()]) {
-            Ok(_) => println!("{}", "committed".bright_green()),
+            Ok(result) if result.committed => println!("{}", "committed".bright_green()),
+            Ok(_) => {} // Nothing to commit (e.g., .tasks is gitignored)
             Err(e) => eprintln!("{}: failed to auto-commit: {}", "warning".yellow(), e),
         }
     }

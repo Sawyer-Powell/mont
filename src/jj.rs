@@ -19,6 +19,8 @@ pub enum JJError {
 pub struct CommitResult {
     pub stdout: String,
     pub stderr: String,
+    /// Whether a commit was actually created. False if working copy was empty.
+    pub committed: bool,
 }
 
 /// Gets the diff for the current working copy as a PatchSet.
@@ -42,7 +44,20 @@ pub fn working_copy_diff() -> Result<PatchSet, JJError> {
 }
 
 /// Runs `jj commit` without a message, opening the default editor.
+///
+/// Returns early with success if the working copy is empty (nothing to commit).
+/// This handles the case where .tasks/ is gitignored - we don't want to open
+/// an editor when there's nothing to commit.
 pub fn commit_interactive() -> Result<CommitResult, JJError> {
+    // Check if there's anything to commit
+    if is_working_copy_empty()? {
+        return Ok(CommitResult {
+            stdout: String::new(),
+            stderr: String::new(),
+            committed: false,
+        });
+    }
+
     let output = Command::new("jj")
         .args(["commit"])
         .stdin(std::process::Stdio::inherit())
@@ -57,6 +72,7 @@ pub fn commit_interactive() -> Result<CommitResult, JJError> {
     Ok(CommitResult {
         stdout: String::new(),
         stderr: String::new(),
+        committed: true,
     })
 }
 
@@ -107,7 +123,20 @@ pub fn working_copy_description() -> Result<String, JJError> {
 
 /// Runs `jj commit` with the given message.
 /// If paths are provided, only those paths are included in the commit.
+///
+/// Returns early with success if the working copy is empty (nothing to commit).
+/// This handles the case where .tasks/ is gitignored - we don't want to fail,
+/// just gracefully skip the commit.
 pub fn commit(message: &str, paths: &[&Path]) -> Result<CommitResult, JJError> {
+    // Check if there's anything to commit
+    if is_working_copy_empty()? {
+        return Ok(CommitResult {
+            stdout: String::new(),
+            stderr: String::new(),
+            committed: false,
+        });
+    }
+
     let mut args = vec!["commit", "-m", message];
     let path_strs: Vec<&str> = paths.iter().filter_map(|p| p.to_str()).collect();
     args.extend(path_strs);
@@ -121,7 +150,11 @@ pub fn commit(message: &str, paths: &[&Path]) -> Result<CommitResult, JJError> {
         return Err(JJError::CommandFailed(stderr));
     }
 
-    Ok(CommitResult { stdout, stderr })
+    Ok(CommitResult {
+        stdout,
+        stderr,
+        committed: true,
+    })
 }
 
 /// Gets the output of `jj status`.
