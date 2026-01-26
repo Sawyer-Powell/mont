@@ -62,3 +62,67 @@ jobs:
         with:
           files: artifacts/**/*
           generate_release_notes: true
+
+  update-homebrew:
+    needs: release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Get version from tag
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Download SHA256 files
+        run: |
+          curl -sL "https://github.com/Sawyer-Powell/mont/releases/download/v${{ steps.version.outputs.version }}/mont-aarch64-apple-darwin.tar.gz" | shasum -a 256 | cut -d' ' -f1 > arm64.sha256
+          curl -sL "https://github.com/Sawyer-Powell/mont/releases/download/v${{ steps.version.outputs.version }}/mont-x86_64-apple-darwin.tar.gz" | shasum -a 256 | cut -d' ' -f1 > x86_64.sha256
+          echo "ARM64 SHA256: $(cat arm64.sha256)"
+          echo "x86_64 SHA256: $(cat x86_64.sha256)"
+
+      - name: Clone homebrew-tap
+        run: |
+          git clone https://x-access-token:${{ secrets.HOMEBREW_TAP_TOKEN }}@github.com/Sawyer-Powell/homebrew-tap.git
+          cd homebrew-tap
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
+      - name: Update formula
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          ARM64_SHA=$(cat arm64.sha256)
+          X86_64_SHA=$(cat x86_64.sha256)
+
+          cat > homebrew-tap/Formula/mont.rb << EOF
+          class Mont < Formula
+            desc "Task tracker to help you and your agent write robust, reliable code"
+            homepage "https://github.com/Sawyer-Powell/mont"
+            version "${VERSION}"
+            license "MIT"
+
+            on_macos do
+              on_arm do
+                url "https://github.com/Sawyer-Powell/mont/releases/download/v${VERSION}/mont-aarch64-apple-darwin.tar.gz"
+                sha256 "${ARM64_SHA}"
+              end
+              on_intel do
+                url "https://github.com/Sawyer-Powell/mont/releases/download/v${VERSION}/mont-x86_64-apple-darwin.tar.gz"
+                sha256 "${X86_64_SHA}"
+              end
+            end
+
+            def install
+              bin.install "mont"
+            end
+
+            test do
+              system "#{bin}/mont", "--help"
+            end
+          end
+          EOF
+
+      - name: Commit and push
+        run: |
+          cd homebrew-tap
+          git add Formula/mont.rb
+          git commit -m "Update mont to v${{ steps.version.outputs.version }}"
+          git push
