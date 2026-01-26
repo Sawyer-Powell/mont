@@ -1,6 +1,7 @@
 ---
 id: init-command
 title: Add interactive mont init command
+status: inprogress
 gates:
   - user-qa
   - test
@@ -34,6 +35,7 @@ Based on choice:
 - Create default `config.yml` if missing
 - Add/remove `.tasks` from appropriate exclude files based on choice
 - If changing from one exclude method to another, clean up the old one
+- **If switching from tracked to ignored**: Run `git rm -r --cached .tasks` (or jj equivalent) to untrack files while keeping them on disk
 
 ## Edge cases
 
