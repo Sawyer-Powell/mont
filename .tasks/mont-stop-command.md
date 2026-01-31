@@ -3,8 +3,9 @@ id: mont-stop-command
 title: Add mont stop command to clear in-progress status
 status: inprogress
 gates:
-  - user-qa
+  - user-qa: passed
   - test: passed
+  - architecture-validator: passed
 ---
 
 Add a new `mont stop` command that clears the in-progress status from a task, making it ready for work again.
