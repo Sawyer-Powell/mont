@@ -1,24 +1,49 @@
 //! Show command - displays details for a single task.
 
+use std::collections::HashSet;
+
 use owo_colors::OwoColorize;
 
 use crate::error_fmt::AppError;
 use crate::render::{print_gates_section, TaskDisplayView};
 use crate::{MontContext, Task, TaskType};
 
-/// Show details for a single task.
-pub fn show(ctx: &MontContext, id: &str, short: bool) -> Result<(), AppError> {
-    let task = ctx
-        .graph()
-        .get(id)
-        .ok_or_else(|| AppError::TaskNotFound {
+/// Show details for a single task, or multiple tasks if group mode is enabled.
+pub fn show(ctx: &MontContext, id: &str, short: bool, group: bool) -> Result<(), AppError> {
+    // Verify the task exists first
+    if ctx.graph().get(id).is_none() {
+        return Err(AppError::TaskNotFound {
             task_id: id.to_string(),
             tasks_dir: ctx.tasks_dir().display().to_string(),
-        })?
-        .clone();
+        });
+    }
 
-    // Print task details using shared helpers
-    print_task_details(ctx, &task, short);
+    // Get the list of task IDs to show
+    let ids: Vec<String> = if group {
+        // Expand to full subgraph (same logic as task_cmd.rs)
+        let subgraph_ids: HashSet<String> = ctx.graph().subgraph(&[id]).into_iter().collect();
+
+        // Get topological order and filter to just the subgraph
+        ctx.graph()
+            .topological_order()
+            .into_iter()
+            .filter(|task_id| subgraph_ids.contains(*task_id))
+            .map(|s| s.to_string())
+            .collect()
+    } else {
+        vec![id.to_string()]
+    };
+
+    // Print each task
+    for (i, task_id) in ids.iter().enumerate() {
+        if let Some(task) = ctx.graph().get(task_id) {
+            if i > 0 {
+                // Visual separator between tasks
+                println!("\n{}\n", "─".repeat(60).dimmed());
+            }
+            print_task_details(ctx, task, short);
+        }
+    }
 
     Ok(())
 }

@@ -1,10 +1,12 @@
 ---
 id: mont-show-group-flag
 title: Add -g/--group flag to mont show command
+status: complete
 gates:
-  - user-qa
-  - test
-  - semver
+  - user-qa: passed
+  - test: passed
+  - semver: passed
+  - architecture-validator: passed
 ---
 
 Add `--group` / `-g` flag to `mont show` that expands a task ID to include its full subgraph (all connected tasks via before/after dependencies), matching the existing behavior in `mont task`.

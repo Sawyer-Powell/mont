@@ -117,6 +117,9 @@ enum Commands {
         /// Show shortened version (omit description)
         #[arg(long, short)]
         short: bool,
+        /// Include full subgraph of the ID (all connected tasks via before/after)
+        #[arg(long, short)]
+        group: bool,
     },
     /// Mark gates as passed or skipped
     Unlock {
@@ -306,13 +309,13 @@ fn run(cli: Cli) -> Result<(), AppError> {
             };
             commands::delete(&ctx, &resolved_id, force)
         }
-        Commands::Show { id, short } => {
+        Commands::Show { id, short, group } => {
             let resolved_id = match id {
                 Some(id) if id == "?" => pick_task(&ctx.graph(), TaskFilter::All)?,
                 Some(id) => id,
                 None => return Err(AppError::IdRequired("show".to_string())),
             };
-            commands::show(&ctx, &resolved_id, short)
+            commands::show(&ctx, &resolved_id, short, group)
         }
         Commands::Unlock { id, passed, skipped } => {
             let resolved_id = match id {
