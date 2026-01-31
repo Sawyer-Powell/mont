@@ -97,7 +97,7 @@ export default function (pi: ExtensionAPI) {
 					content: `⚠️ IMPORTANT - CURRENT TASK STATUS (you must follow these instructions):\n\n${cleanPrompt}`,
 					display: false,
 				},
-				{ deliverAs: "steer", triggerTurn: false }
+				{ deliverAs: "followUp", triggerTurn: false }
 			);
 		}
 	});
