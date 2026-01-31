@@ -62,6 +62,7 @@ pub fn status(ctx: &MontContext) {
     println!("{}", "Info".bold());
     let ready_count = count_ready_tasks(&graph);
     let jot_count = graph.values().filter(|t| t.is_jot() && !t.is_complete()).count();
+    let stopped_count = graph.values().filter(|t| t.is_stopped()).count();
     let gate_count = graph.values().filter(|t| t.is_gate()).count();
 
     let completed_count = graph.values().filter(|t| t.is_complete()).count();
@@ -69,6 +70,7 @@ pub fn status(ctx: &MontContext) {
     // Left-align numbers in a 4-char field
     println!("  {:<4} tasks ready for work", ready_count.to_string().cyan());
     println!("  {:<4} jots needing distillation", jot_count.to_string().yellow());
+    println!("  {:<4} stopped", stopped_count.to_string().yellow());
     println!("  {:<4} gates", gate_count.to_string().purple());
     println!("  {:<4} completed", completed_count.to_string().bright_black());
 

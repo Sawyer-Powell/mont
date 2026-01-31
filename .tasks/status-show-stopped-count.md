@@ -1,6 +1,12 @@
 ---
 id: status-show-stopped-count
 title: Show count of stopped tasks in mont status info section
+status: complete
+gates:
+  - user-qa: passed
+  - architecture-validator: passed
+  - test: passed
+  - semver: passed
 ---
 
 Add a line to the Info section of `mont status` that displays the number of stopped tasks. Stopped tasks are tasks that were started but then paused via `mont stop`.
