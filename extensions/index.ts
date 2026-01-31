@@ -85,21 +85,6 @@ export default function (pi: ExtensionAPI) {
 
 		// Update the task widget
 		await updateTaskWidget(ctx);
-
-		// Get fresh mont prompt
-		const promptResult = await runMont(["prompt"], ctx.cwd);
-		const cleanPrompt = promptResult.stdout.replace(/\x1b\[[0-9;]*m/g, "").trim();
-
-		if (cleanPrompt) {
-			pi.sendMessage(
-				{
-					customType: "mont-prompt-update",
-					content: `⚠️ IMPORTANT - CURRENT TASK STATUS (you must follow these instructions):\n\n${cleanPrompt}`,
-					display: false,
-				},
-				{ deliverAs: "followUp", triggerTurn: false }
-			);
-		}
 	});
 
 	// Block writes to .tasks directory
