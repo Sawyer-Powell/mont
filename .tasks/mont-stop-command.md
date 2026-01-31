@@ -1,6 +1,7 @@
 ---
 id: mont-stop-command
 title: Add mont stop command to clear in-progress status
+status: inprogress
 gates:
   - user-qa
   - test
