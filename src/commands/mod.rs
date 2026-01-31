@@ -14,6 +14,7 @@ pub mod shared;
 mod show;
 mod start;
 mod status;
+mod stop;
 pub mod task_cmd;
 pub mod unlock;
 
@@ -27,5 +28,6 @@ pub use ready::ready;
 pub use show::show;
 pub use start::start;
 pub use status::status;
+pub use stop::stop;
 pub use task_cmd::{distill, jot, task};
 pub use unlock::unlock;

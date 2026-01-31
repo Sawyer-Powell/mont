@@ -145,6 +145,11 @@ enum Commands {
         /// Task ID to start. If not provided, opens interactive picker.
         id: Option<String>,
     },
+    /// Stop working on a task (makes it ready again)
+    Stop {
+        /// Task ID to stop. If not provided, uses the in-progress task.
+        id: Option<String>,
+    },
     /// Complete a task and commit
     Done {
         /// Task ID to complete. If not provided, detects from current revision.
@@ -176,6 +181,22 @@ fn parse_task_type(s: &str) -> Result<TaskType, String> {
             "invalid task type '{}', must be one of: task, jot, gate",
             s
         )),
+    }
+}
+
+/// Detect the in-progress task from the task graph.
+fn detect_in_progress_task(ctx: &mont::MontContext) -> Result<String, AppError> {
+    let graph = ctx.graph();
+    let in_progress: Vec<String> = graph
+        .values()
+        .filter(|t| t.is_in_progress())
+        .map(|t| t.id.clone())
+        .collect();
+
+    match in_progress.as_slice() {
+        [] => Err(AppError::NoInProgressTask),
+        [single] => Ok(single.clone()),
+        _ => Err(AppError::MultipleInProgressTasks(in_progress)),
     }
 }
 
@@ -353,6 +374,14 @@ fn run(cli: Cli) -> Result<(), AppError> {
                 None => return Err(AppError::IdRequired("start".to_string())),
             };
             commands::start(&ctx, &resolved_id)
+        }
+        Commands::Stop { id } => {
+            let resolved_id = match id {
+                Some(id) if id == "?" => pick_task(&ctx.graph(), TaskFilter::InProgress)?,
+                Some(id) => id,
+                None => detect_in_progress_task(&ctx)?,
+            };
+            commands::stop(&ctx, &resolved_id)
         }
         Commands::Done { id, message } => commands::done(&ctx, id.as_deref(), message.as_deref()),
         Commands::Prompt => commands::prompt(&ctx),

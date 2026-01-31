@@ -1,6 +1,6 @@
 [package]
 name = "mont"
-version = "0.2.2"
+version = "0.3.0"
 edition = "2024"
 license = "MIT"
 description = "A task tracker to help you and your agent write robust, reliable code"
