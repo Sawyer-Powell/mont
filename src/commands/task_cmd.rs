@@ -12,7 +12,7 @@ use super::shared::{
 use crate::error_fmt::AppError;
 use crate::jj;
 use crate::multieditor::{apply_diff, compute_diff, fill_empty_ids, ApplyResult};
-use crate::{resolve_editor, MontContext, Task, TaskType};
+use crate::{resolve_editor, MontContext, Priority, Task, TaskType};
 
 /// Arguments for the unified task command.
 pub struct TaskArgs {
@@ -20,6 +20,8 @@ pub struct TaskArgs {
     pub ids: Vec<String>,
     /// Task type template (task, jot, gate)
     pub task_type: Option<TaskType>,
+    /// Priority to apply to selected records or seed in a new-record template
+    pub priority: Option<Priority>,
     /// Resume editing the most recent temp file
     pub resume: bool,
     /// Resume editing a specific temp file
@@ -153,10 +155,15 @@ pub fn task(ctx: &MontContext, args: TaskArgs) -> Result<(), AppError> {
         return append_mode(ctx, &ids, &text);
     }
 
+    // Priority mode: update all selected tasks and jots without opening an editor.
+    if let Some(priority) = args.priority.filter(|_| !ids.is_empty()) {
+        return priority_mode(ctx, &ids, priority);
+    }
+
     // Editor mode: open editor for creating/editing tasks
     if ids.is_empty() {
         // Empty multieditor - create new tasks
-        create_mode(ctx, args.task_type, args.editor.as_deref())
+        create_mode(ctx, args.task_type, args.priority, args.editor.as_deref())
     } else {
         // Edit specific tasks
         edit_mode(ctx, &ids, args.editor.as_deref())
@@ -390,10 +397,61 @@ fn append_mode(ctx: &MontContext, ids: &[String], text: &str) -> Result<(), AppE
     Ok(())
 }
 
+/// Load selected tasks in ID order, returning an error if any ID is missing.
+fn tasks_for_ids(ctx: &MontContext, ids: &[String]) -> Result<Vec<Task>, AppError> {
+    let graph = ctx.graph();
+    ids.iter()
+        .map(|id| {
+            graph
+                .get(id)
+                .cloned()
+                .ok_or_else(|| AppError::TaskNotFound {
+                    task_id: id.clone(),
+                    tasks_dir: ctx.tasks_dir().display().to_string(),
+                })
+        })
+        .collect()
+}
+
+/// Apply a priority to every selected task or jot atomically.
+fn priority_mode(
+    ctx: &MontContext,
+    ids: &[String],
+    priority: Priority,
+) -> Result<(), AppError> {
+    let original_tasks = tasks_for_ids(ctx, ids)?;
+    if let Some(gate) = original_tasks.iter().find(|task| task.is_gate()) {
+        return Err(AppError::InvalidArgs(format!(
+            "cannot set priority on gate '{}'",
+            gate.id
+        )));
+    }
+
+    let edited_tasks: Vec<Task> = original_tasks
+        .iter()
+        .cloned()
+        .map(|mut task| {
+            task.priority = Some(priority);
+            task
+        })
+        .collect();
+    let diff = compute_diff(&original_tasks, &edited_tasks);
+    if diff.is_empty() {
+        println!("No changes.");
+        return Ok(());
+    }
+
+    let result = apply_diff(ctx, diff)?;
+    print_result(ctx, &result);
+    auto_commit(ctx, &result);
+    Ok(())
+}
+
 /// Create new tasks in empty multieditor.
 fn create_mode(
     ctx: &MontContext,
     task_type: Option<TaskType>,
+    priority: Option<Priority>,
     editor_name: Option<&str>,
 ) -> Result<(), AppError> {
     let mode = match task_type {
@@ -403,8 +461,26 @@ fn create_mode(
 
     let comment = build_multiedit_comment(mode);
 
-    // Create starter task based on type
-    let starter = match task_type {
+    let starter = new_task_template(task_type, priority)?;
+
+    let temp_path = make_temp_file("task", std::slice::from_ref(&starter), Some(&comment))?;
+
+    // template = [starter] (for no-changes check), graph = [] (all inserts)
+    run_editor_workflow(ctx, &temp_path, std::slice::from_ref(&starter), &[], editor_name, "task")
+}
+
+/// Build the record shown when `mont task` is invoked without IDs.
+fn new_task_template(
+    task_type: Option<TaskType>,
+    priority: Option<Priority>,
+) -> Result<Task, AppError> {
+    if task_type == Some(TaskType::Gate) && priority.is_some() {
+        return Err(AppError::InvalidArgs(
+            "cannot set priority on a gate template".to_string(),
+        ));
+    }
+
+    Ok(match task_type {
         Some(TaskType::Gate) => {
             Task {
                 id: "new-gate".to_string(),
@@ -416,7 +492,7 @@ fn create_mode(
                 gates: vec![],
                 task_type: TaskType::Gate,
                 status: None,
-                priority: None,
+                priority,
                 deleted: false,
             }
         }
@@ -431,7 +507,7 @@ fn create_mode(
                 gates: vec![],
                 task_type: TaskType::Jot,
                 status: None,
-                priority: None,
+                priority,
                 deleted: false,
             }
         }
@@ -446,16 +522,11 @@ fn create_mode(
                 gates: vec![],
                 task_type: TaskType::Task,
                 status: None,
-                priority: None,
+                priority,
                 deleted: false,
             }
         }
-    };
-
-    let temp_path = make_temp_file("task", std::slice::from_ref(&starter), Some(&comment))?;
-
-    // template = [starter] (for no-changes check), graph = [] (all inserts)
-    run_editor_workflow(ctx, &temp_path, std::slice::from_ref(&starter), &[], editor_name, "task")
+    })
 }
 
 /// Edit existing tasks.
@@ -464,19 +535,7 @@ fn edit_mode(
     ids: &[String],
     editor_name: Option<&str>,
 ) -> Result<(), AppError> {
-    // Collect tasks to edit
-    let mut original_tasks = Vec::new();
-    for id in ids {
-        let task = ctx
-            .graph()
-            .get(id)
-            .ok_or_else(|| AppError::TaskNotFound {
-                task_id: id.clone(),
-                tasks_dir: ctx.tasks_dir().display().to_string(),
-            })?
-            .clone();
-        original_tasks.push(task);
-    }
+    let original_tasks = tasks_for_ids(ctx, ids)?;
 
     // Build comment with ORIGINAL_IDS header so resume can recover context
     let base_comment = build_multiedit_comment(MultiEditMode::Edit);
@@ -783,6 +842,8 @@ fn build_commit_message(result: &ApplyResult) -> String {
 pub struct JotArgs {
     /// Optional title for the jot
     pub title: Option<String>,
+    /// Priority to seed in the jot
+    pub priority: Option<Priority>,
     /// Skip editor and confirmation, create jot immediately
     pub quick: bool,
     /// Resume editing the most recent temp file
@@ -814,7 +875,7 @@ pub fn jot(ctx: &MontContext, args: JotArgs) -> Result<(), AppError> {
         gates: vec![],
         task_type: TaskType::Jot,
         status: None,
-        priority: None,
+        priority: args.priority,
         deleted: false,
     };
 
@@ -1031,4 +1092,146 @@ fn distill_stdin_mode(ctx: &MontContext, jot_id: &str, content: &str) -> Result<
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod priority_tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    fn create_temp_context() -> (TempDir, MontContext) {
+        let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
+        std::fs::write(temp_dir.path().join("config.yml"), "jj:\n  enabled: false\n")
+            .expect("failed to disable jj integration");
+        let ctx = MontContext::load(temp_dir.path().to_path_buf())
+            .expect("failed to load context");
+        (temp_dir, ctx)
+    }
+
+    fn record(id: &str, task_type: TaskType, priority: Option<Priority>) -> Task {
+        Task {
+            id: id.to_string(),
+            new_id: None,
+            title: Some(id.to_string()),
+            description: String::new(),
+            before: vec![],
+            after: vec![],
+            gates: vec![],
+            task_type,
+            status: None,
+            priority,
+            deleted: false,
+        }
+    }
+
+    fn task_args(ids: &[&str], priority: Option<Priority>) -> TaskArgs {
+        TaskArgs {
+            ids: ids.iter().map(|id| (*id).to_string()).collect(),
+            task_type: None,
+            priority,
+            resume: false,
+            resume_path: None,
+            content: None,
+            stdin: false,
+            patch: None,
+            append: None,
+            editor: None,
+            group: false,
+        }
+    }
+
+    #[test]
+    fn task_priority_updates_multiple_tasks_and_jots() {
+        let (_temp_dir, ctx) = create_temp_context();
+        ctx.insert(record("task", TaskType::Task, Some(Priority::Low)))
+            .expect("failed to insert task");
+        ctx.insert(record("jot", TaskType::Jot, None))
+            .expect("failed to insert jot");
+
+        task(&ctx, task_args(&["task", "jot"], Some(Priority::Crit)))
+            .expect("failed to update priorities");
+
+        let graph = ctx.graph();
+        assert_eq!(
+            graph.get("task").and_then(|task| task.priority),
+            Some(Priority::Crit)
+        );
+        assert_eq!(
+            graph.get("jot").and_then(|task| task.priority),
+            Some(Priority::Crit)
+        );
+    }
+
+    #[test]
+    fn task_priority_rejects_gates_without_partial_updates() {
+        let (_temp_dir, ctx) = create_temp_context();
+        ctx.insert(record("task", TaskType::Task, None))
+            .expect("failed to insert task");
+        ctx.insert(record("gate", TaskType::Gate, None))
+            .expect("failed to insert gate");
+
+        let result = task(&ctx, task_args(&["task", "gate"], Some(Priority::High)));
+
+        assert!(matches!(result, Err(AppError::InvalidArgs(_))));
+        assert_eq!(
+            ctx.graph().get("task").and_then(|task| task.priority),
+            None
+        );
+    }
+
+    #[test]
+    fn new_record_templates_seed_priority_and_omit_it_by_default() {
+        let task_template = new_task_template(None, Some(Priority::High))
+            .expect("failed to build task template");
+        let jot_template = new_task_template(Some(TaskType::Jot), Some(Priority::Crit))
+            .expect("failed to build jot template");
+        let unset_template =
+            new_task_template(None, None).expect("failed to build unset template");
+
+        assert_eq!(task_template.priority, Some(Priority::High));
+        assert_eq!(jot_template.priority, Some(Priority::Crit));
+        assert_eq!(jot_template.task_type, TaskType::Jot);
+        assert_eq!(unset_template.priority, None);
+        assert!(new_task_template(Some(TaskType::Gate), Some(Priority::Low)).is_err());
+    }
+
+    #[test]
+    fn quick_jot_creation_sets_or_omits_priority() {
+        for priority in [Some(Priority::Crit), None] {
+            let (_temp_dir, ctx) = create_temp_context();
+            jot(
+                &ctx,
+                JotArgs {
+                    title: Some("Quick idea".to_string()),
+                    priority,
+                    quick: true,
+                    resume: false,
+                    resume_path: None,
+                    editor: None,
+                },
+            )
+            .expect("failed to create quick jot");
+
+            let graph = ctx.graph();
+            let created = graph.values().next().expect("jot was not created");
+            assert!(created.is_jot());
+            assert_eq!(created.priority, priority);
+        }
+    }
+
+    #[test]
+    fn omitted_priority_preserves_existing_value_and_patch_still_works() {
+        let (_temp_dir, ctx) = create_temp_context();
+        ctx.insert(record("existing", TaskType::Task, Some(Priority::Med)))
+            .expect("failed to insert task");
+        let mut args = task_args(&["existing"], None);
+        args.patch = Some("title: Updated".to_string());
+
+        task(&ctx, args).expect("failed to patch task");
+
+        let graph = ctx.graph();
+        let updated = graph.get("existing").expect("updated task missing");
+        assert_eq!(updated.title.as_deref(), Some("Updated"));
+        assert_eq!(updated.priority, Some(Priority::Med));
+    }
 }

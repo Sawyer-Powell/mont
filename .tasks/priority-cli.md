@@ -1,8 +1,12 @@
 ---
 id: priority-cli
 title: Add priority flags to CLI commands
+status: complete
 after:
   - priority-data-model
+gates:
+  - test: passed
+  - user-qa: passed
 ---
 
 Add `--priority <low|med|high|crit>` to `mont task` and `mont jot`. `mont task`

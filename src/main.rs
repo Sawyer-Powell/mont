@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use mont::commands;
 use mont::commands::shared::{pick_task, TaskFilter};
 use mont::error_fmt::AppError;
-use mont::TaskType;
+use mont::{Priority, TaskType};
 
 #[derive(Parser)]
 #[command(name = "mont")]
@@ -44,6 +44,13 @@ enum Commands {
         /// Task type template: task, jot, gate
         #[arg(long, short = 'T', value_parser = parse_task_type)]
         r#type: Option<TaskType>,
+        /// Set priority: low, med, high, or crit
+        #[arg(
+            long,
+            value_parser = parse_priority,
+            conflicts_with_all = ["resume", "resume_path", "stdin", "patch", "append"]
+        )]
+        priority: Option<Priority>,
         /// Resume editing the most recent temp file
         #[arg(long, short = 'r', conflicts_with_all = ["ids", "type", "patch", "append"])]
         resume: bool,
@@ -71,6 +78,13 @@ enum Commands {
         /// Optional title for the jot
         #[arg(conflicts_with_all = ["resume", "resume_path"])]
         title: Option<String>,
+        /// Set priority: low, med, high, or crit
+        #[arg(
+            long,
+            value_parser = parse_priority,
+            conflicts_with_all = ["resume", "resume_path"]
+        )]
+        priority: Option<Priority>,
         /// Skip editor and confirmation, create jot immediately
         #[arg(long, short = 'q', conflicts_with_all = ["resume", "resume_path", "editor"])]
         quick: bool,
@@ -184,6 +198,10 @@ fn parse_task_type(s: &str) -> Result<TaskType, String> {
     }
 }
 
+fn parse_priority(s: &str) -> Result<Priority, String> {
+    serde_yaml::from_str(s).map_err(|error| error.to_string())
+}
+
 /// Detect the in-progress task from the task graph.
 fn detect_in_progress_task(ctx: &mont::MontContext) -> Result<String, AppError> {
     let graph = ctx.graph();
@@ -229,6 +247,7 @@ fn run(cli: Cli) -> Result<(), AppError> {
                 commands::task_cmd::TaskArgs {
                     ids: cli.ids,
                     task_type: None,
+                    priority: None,
                     resume: false,
                     resume_path: None,
                     content: None,
@@ -259,6 +278,7 @@ fn run(cli: Cli) -> Result<(), AppError> {
         Commands::Task {
             ids,
             r#type,
+            priority,
             resume,
             resume_path,
             stdin,
@@ -271,6 +291,7 @@ fn run(cli: Cli) -> Result<(), AppError> {
             commands::task_cmd::TaskArgs {
                 ids,
                 task_type: r#type,
+                priority,
                 resume,
                 resume_path,
                 content: None,
@@ -281,10 +302,18 @@ fn run(cli: Cli) -> Result<(), AppError> {
                 group,
             },
         ),
-        Commands::Jot { title, quick, resume, resume_path, editor } => commands::jot(
+        Commands::Jot {
+            title,
+            priority,
+            quick,
+            resume,
+            resume_path,
+            editor,
+        } => commands::jot(
             &ctx,
             commands::task_cmd::JotArgs {
                 title,
+                priority,
                 quick,
                 resume,
                 resume_path,
@@ -410,6 +439,8 @@ fn run(cli: Cli) -> Result<(), AppError> {
 
 #[cfg(test)]
 mod tests {
+    use super::{Cli, Commands};
+    use clap::Parser;
     use tempfile::TempDir;
 
     use mont::commands;
@@ -436,6 +467,7 @@ Description here.
         let args = commands::task_cmd::TaskArgs {
             ids: vec![],
             task_type: None,
+            priority: None,
             resume: false,
             resume_path: None,
             content: Some(content.to_string()),
@@ -483,6 +515,7 @@ title: Updated title
         let args = commands::task_cmd::TaskArgs {
             ids: vec!["edit-test".to_string()],
             task_type: None,
+            priority: None,
             resume: false,
             resume_path: None,
             content: Some(content.to_string()),
@@ -521,6 +554,7 @@ title: Updated title
         let args = commands::task_cmd::TaskArgs {
             ids: vec!["priority-patch".to_string()],
             task_type: None,
+            priority: None,
             resume: false,
             resume_path: None,
             content: None,
@@ -586,6 +620,7 @@ title: Parent
         let args = commands::task_cmd::TaskArgs {
             ids: vec!["parent-task".to_string()],
             task_type: None,
+            priority: None,
             resume: false,
             resume_path: None,
             content: Some(content.to_string()),
@@ -625,6 +660,7 @@ Gate description.
         let args = commands::task_cmd::TaskArgs {
             ids: vec![],
             task_type: None,
+            priority: None,
             resume: false,
             resume_path: None,
             content: Some(content.to_string()),
@@ -641,5 +677,41 @@ Gate description.
         let file_content = std::fs::read_to_string(temp_dir.path().join("test-gate.md")).unwrap();
         assert!(file_content.contains("title: Test gate"));
         assert!(file_content.contains("type: gate"));
+    }
+
+    #[test]
+    fn test_cli_parses_task_and_jot_priorities_including_crit() {
+        let task_cli = Cli::try_parse_from(["mont", "task", "one,two", "--priority", "crit"])
+            .expect("task priority should parse");
+        match task_cli.command {
+            Some(Commands::Task { ids, priority, .. }) => {
+                assert_eq!(ids, ["one", "two"]);
+                assert_eq!(priority, Some(Priority::Crit));
+            }
+            _ => panic!("expected task command"),
+        }
+
+        let jot_cli = Cli::try_parse_from(["mont", "jot", "An idea", "--priority", "high"])
+            .expect("jot priority should parse");
+        match jot_cli.command {
+            Some(Commands::Jot { priority, .. }) => {
+                assert_eq!(priority, Some(Priority::High));
+            }
+            _ => panic!("expected jot command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_rejects_invalid_priority() {
+        for invalid in ["urgent", "HIGH"] {
+            let error = match Cli::try_parse_from(["mont", "task", "--priority", invalid]) {
+                Ok(_) => panic!("invalid priority should fail"),
+                Err(error) => error,
+            };
+
+            let diagnostic = error.to_string();
+            assert!(diagnostic.contains("unknown variant"));
+            assert!(diagnostic.contains(invalid));
+        }
     }
 }
