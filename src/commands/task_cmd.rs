@@ -884,7 +884,7 @@ pub fn jot(ctx: &MontContext, args: JotArgs) -> Result<(), AppError> {
         let id = jot.id.clone();
         ctx.insert(jot)?;
 
-        let file_path = ctx.tasks_dir().join(format!("{}.md", &id));
+        let file_path = ctx.tasks_dir().join(format!("{}.md", id));
         println!("created: {}", file_path.display().to_string().bright_green());
 
         // Auto-commit
