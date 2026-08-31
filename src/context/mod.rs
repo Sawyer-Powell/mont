@@ -20,7 +20,7 @@ use std::sync::RwLock;
 // Re-export public types
 pub use graph::{GraphReadError, TaskGraph};
 pub use settings::{GlobalConfig, SettingsError};
-pub use task::{parse, ParseError, Status, Task, TaskType, GateItem, GateStatus};
+pub use task::{parse, GateItem, GateStatus, ParseError, Priority, Status, Task, TaskType};
 pub use transaction::{Op, Transaction};
 pub use validations::ValidationError;
 pub use view::{GraphView, ValidationView};
@@ -435,6 +435,7 @@ mod tests {
             gates: vec![],
             title: Some(format!("{} title", id)),
             status: None,
+            priority: None,
             task_type: TaskType::Task,
             description: String::new(),
             deleted: false,

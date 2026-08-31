@@ -330,6 +330,24 @@ fn format_parse_error(error: &ParseError, file_path: &str) -> String {
                 "type: gate".cyan()
             ));
         }
+        ParseError::GateWithPriority(task_id) => {
+            out.push_str(&format!(
+                "gate '{}' has a priority\n",
+                task_id.yellow()
+            ));
+            out.push('\n');
+            out.push_str(&format!(
+                "  {}\n",
+                "Gates are reusable validation criteria and do not support priority.".dimmed()
+            ));
+            out.push('\n');
+            out.push_str(&format!("  {}:\n", "To fix this".bold()));
+            out.push_str(&format!(
+                "    Remove the {} field from {}\n",
+                "priority".cyan(),
+                file_path.cyan()
+            ));
+        }
         ParseError::JotWithGates(task_id) => {
             out.push_str(&format!(
                 "jot '{}' has gates\n",

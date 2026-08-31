@@ -1,6 +1,10 @@
 ---
 id: priority-data-model
 title: Add priority field to tasks and jots
+status: complete
+gates:
+  - test: passed
+  - user-qa: passed
 ---
 
 Add an optional priority field for tasks and jots, backed by a `Priority` enum

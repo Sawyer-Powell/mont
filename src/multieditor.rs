@@ -114,6 +114,7 @@ fn task_content_differs(a: &Task, b: &Task) -> bool {
         || a.gates != b.gates
         || a.task_type != b.task_type
         || a.status != b.status
+        || a.priority != b.priority
 }
 
 /// Fill in empty IDs in a diff before displaying to the user.
@@ -224,6 +225,7 @@ mod tests {
             gates: vec![],
             task_type: TaskType::Task,
             status: None,
+            priority: None,
             deleted: false,
         }
     }
@@ -248,6 +250,20 @@ mod tests {
         assert_eq!(diff.updates[0].1.title, Some("Updated Title".to_string()));
         assert!(diff.inserts.is_empty());
         assert!(diff.deletes.is_empty());
+    }
+
+    #[test]
+    fn test_compute_diff_priority_only_update() {
+        use crate::Priority;
+
+        let original = vec![make_task("task1", "Task 1")];
+        let mut edited_task = make_task("task1", "Task 1");
+        edited_task.priority = Some(Priority::High);
+
+        let diff = compute_diff(&original, &[edited_task]);
+
+        assert_eq!(diff.updates.len(), 1);
+        assert_eq!(diff.updates[0].1.priority, Some(Priority::High));
     }
 
     #[test]

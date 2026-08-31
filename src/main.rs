@@ -413,7 +413,7 @@ mod tests {
     use tempfile::TempDir;
 
     use mont::commands;
-    use mont::{MontContext, Task, TaskType};
+    use mont::{MontContext, Priority, Task, TaskType};
 
     fn create_temp_context() -> (TempDir, MontContext) {
         let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
@@ -468,6 +468,7 @@ Description here.
             gates: vec![],
             task_type: TaskType::Task,
             status: None,
+            priority: None,
             deleted: false,
         };
         ctx.insert(task).unwrap();
@@ -500,6 +501,45 @@ title: Updated title
     }
 
     #[test]
+    fn test_task_patch_updates_priority() {
+        let (_temp_dir, ctx) = create_temp_context();
+        let task = Task {
+            id: "priority-patch".to_string(),
+            new_id: None,
+            title: Some("Priority patch".to_string()),
+            description: String::new(),
+            before: vec![],
+            after: vec![],
+            gates: vec![],
+            task_type: TaskType::Task,
+            status: None,
+            priority: Some(Priority::Low),
+            deleted: false,
+        };
+        ctx.insert(task).unwrap();
+
+        let args = commands::task_cmd::TaskArgs {
+            ids: vec!["priority-patch".to_string()],
+            task_type: None,
+            resume: false,
+            resume_path: None,
+            content: None,
+            stdin: false,
+            patch: Some("priority: crit".to_string()),
+            append: None,
+            editor: None,
+            group: false,
+        };
+
+        commands::task(&ctx, args).unwrap();
+
+        assert_eq!(
+            ctx.graph().get("priority-patch").unwrap().priority,
+            Some(Priority::Crit)
+        );
+    }
+
+    #[test]
     fn test_task_rename_propagates_references() {
         let (temp_dir, ctx) = create_temp_context();
 
@@ -514,6 +554,7 @@ title: Updated title
             gates: vec![],
             task_type: TaskType::Task,
             status: None,
+            priority: None,
             deleted: false,
         };
         ctx.insert(parent).unwrap();
@@ -529,6 +570,7 @@ title: Updated title
             gates: vec![],
             task_type: TaskType::Task,
             status: None,
+            priority: None,
             deleted: false,
         };
         ctx.insert(child).unwrap();

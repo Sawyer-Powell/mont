@@ -56,6 +56,16 @@ pub enum Status {
     Complete,
 }
 
+/// Task priority, ordered from lowest to highest.
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "lowercase")]
+pub enum Priority {
+    Low,
+    Med,
+    High,
+    Crit,
+}
+
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum GateStatus {
@@ -129,6 +139,8 @@ pub enum ParseError {
     GateMarkedComplete(String),
     #[error("jot '{0}' cannot have gates")]
     JotWithGates(String),
+    #[error("gate '{0}' must not have priority")]
+    GateWithPriority(String),
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
@@ -150,6 +162,9 @@ pub struct Task {
     /// Task status: None means pending (ready if no blockers), Some(status) for explicit state
     #[serde(default)]
     pub status: Option<Status>,
+    /// Optional priority. Unset priorities rank below `Priority::Low`.
+    #[serde(default)]
+    pub priority: Option<Priority>,
     #[serde(default, rename = "type")]
     pub task_type: TaskType,
     #[serde(skip)]
@@ -221,6 +236,16 @@ impl Task {
                 Status::Complete => "complete",
             };
             content.push_str(&format!("status: {}\n", status_str));
+        }
+
+        if let Some(priority) = self.priority {
+            let priority_str = match priority {
+                Priority::Crit => "crit",
+                Priority::High => "high",
+                Priority::Med => "med",
+                Priority::Low => "low",
+            };
+            content.push_str(&format!("priority: {}\n", priority_str));
         }
 
         if !self.before.is_empty() {
@@ -390,6 +415,10 @@ pub fn parse(content: &str) -> Result<Task, ParseError> {
         return Err(ParseError::GateMarkedComplete(task.id));
     }
 
+    if task.is_gate() && task.priority.is_some() {
+        return Err(ParseError::GateWithPriority(task.id));
+    }
+
     if task.is_jot() && !task.gates.is_empty() {
         return Err(ParseError::JotWithGates(task.id));
     }
@@ -541,8 +570,67 @@ Minimal task.
         assert!(task.after.is_empty());
         assert!(task.gates.is_empty());
         assert!(task.title.is_none());
+        assert!(task.priority.is_none());
         assert!(!task.is_gate());
         assert!(!task.is_complete());
+    }
+
+    #[test]
+    fn test_priority_values_parse_and_roundtrip_for_tasks_and_jots() {
+        let priorities = [
+            ("crit", Priority::Crit),
+            ("high", Priority::High),
+            ("med", Priority::Med),
+            ("low", Priority::Low),
+        ];
+
+        for task_type in [TaskType::Task, TaskType::Jot] {
+            let type_line = if task_type == TaskType::Jot {
+                "type: jot\n"
+            } else {
+                ""
+            };
+            let without_priority = format!("---\nid: unprioritized\n{type_line}---\n");
+            let task = parse(&without_priority).unwrap();
+            assert!(task.priority.is_none());
+            assert!(!task.to_markdown().contains("priority:"));
+            assert!(parse(&task.to_markdown()).unwrap().priority.is_none());
+
+            for (yaml_value, expected) in priorities {
+                let content = format!(
+                    "---\nid: priority-item\n{type_line}priority: {yaml_value}\n---\n"
+                );
+
+                let task = parse(&content).unwrap();
+                assert_eq!(task.priority, Some(expected));
+
+                let markdown = task.to_markdown();
+                assert!(markdown.contains(&format!("priority: {yaml_value}\n")));
+                assert_eq!(parse(&markdown).unwrap().priority, Some(expected));
+            }
+        }
+
+        assert!(Priority::Crit > Priority::High);
+        assert!(Priority::High > Priority::Med);
+        assert!(Priority::Med > Priority::Low);
+        assert!(Some(Priority::Low) > None);
+    }
+
+    #[test]
+    fn test_invalid_priority_fails() {
+        let result = parse("---\nid: bad-priority\npriority: urgent\n---\n");
+
+        assert!(matches!(result, Err(ParseError::InvalidYaml(_))));
+    }
+
+    #[test]
+    fn test_gate_with_priority_fails() {
+        let result = parse("---\nid: prioritized-gate\ntype: gate\npriority: high\n---\n");
+
+        assert!(matches!(
+            result,
+            Err(ParseError::GateWithPriority(id)) if id == "prioritized-gate"
+        ));
     }
 
     #[test]
@@ -768,6 +856,7 @@ Task description.
             gates: vec![],
             title: None,
             status: None,
+            priority: None,
             task_type: TaskType::Task,
             description: String::new(),
             deleted: false,
@@ -803,6 +892,7 @@ Task description.
             ],
             title: Some("Full Task Title".to_string()),
             status: Some(Status::InProgress),
+            priority: Some(Priority::High),
             task_type: TaskType::Task,
             description: "This is the description.".to_string(),
             deleted: false,
@@ -814,6 +904,7 @@ Task description.
         assert_eq!(parsed.title, task.title);
         assert_eq!(parsed.task_type, TaskType::Task);
         assert_eq!(parsed.status, Some(Status::InProgress));
+        assert_eq!(parsed.priority, Some(Priority::High));
         assert_eq!(parsed.before, task.before);
         assert_eq!(parsed.after, task.after);
         assert_eq!(parsed.gates.len(), 3);
@@ -833,6 +924,7 @@ Task description.
             gates: vec![],
             title: Some("Gate Title".to_string()),
             status: None,
+            priority: None,
             task_type: TaskType::Gate,
             description: "Gate description.".to_string(),
             deleted: false,
@@ -853,6 +945,7 @@ Task description.
             gates: vec![],
             title: Some("Completed Task".to_string()),
             status: Some(Status::Complete),
+            priority: None,
             task_type: TaskType::Task,
             description: String::new(),
             deleted: false,
@@ -872,6 +965,7 @@ Task description.
             gates: vec![],
             title: None,
             status: Some(Status::Stopped),
+            priority: None,
             task_type: TaskType::Task,
             description: String::new(),
             deleted: false,
@@ -891,6 +985,7 @@ Task description.
             gates: vec![],
             title: Some("Fix: something broken".to_string()),
             status: None,
+            priority: None,
             task_type: TaskType::Task,
             description: String::new(),
             deleted: false,
@@ -913,6 +1008,7 @@ Task description.
             gates: vec![],
             title: Some("Task with \"quotes\" inside".to_string()),
             status: None,
+            priority: None,
             task_type: TaskType::Task,
             description: String::new(),
             deleted: false,

@@ -163,6 +163,7 @@ mod tests {
             gates: vec![],
             title: Some(format!("{} title", id)),
             status: None,
+            priority: None,
             task_type: TaskType::Task,
             description: String::new(),
             deleted: false,

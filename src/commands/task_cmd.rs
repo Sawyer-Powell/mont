@@ -218,6 +218,8 @@ struct TaskPatch {
     #[serde(default)]
     status: Option<String>,
     #[serde(default)]
+    priority: Option<crate::Priority>,
+    #[serde(default)]
     r#type: Option<String>,
 }
 
@@ -299,6 +301,9 @@ fn patch_mode(ctx: &MontContext, ids: &[String], patch_yaml: &str) -> Result<(),
             _ => return Err(AppError::InvalidArgs(format!("invalid status: {}", status))),
         };
     }
+    if let Some(priority) = patch.priority {
+        task.priority = Some(priority);
+    }
     if let Some(task_type) = patch.r#type {
         task.task_type = match task_type.to_lowercase().as_str() {
             "task" => TaskType::Task,
@@ -306,6 +311,11 @@ fn patch_mode(ctx: &MontContext, ids: &[String], patch_yaml: &str) -> Result<(),
             "gate" => TaskType::Gate,
             _ => return Err(AppError::InvalidArgs(format!("invalid type: {}", task_type))),
         };
+    }
+    if task.is_gate() && task.priority.is_some() {
+        return Err(AppError::InvalidArgs(
+            "gates do not support priority".to_string(),
+        ));
     }
 
     // Update the task (this handles reference rewriting if ID changed)
@@ -406,6 +416,7 @@ fn create_mode(
                 gates: vec![],
                 task_type: TaskType::Gate,
                 status: None,
+                priority: None,
                 deleted: false,
             }
         }
@@ -420,6 +431,7 @@ fn create_mode(
                 gates: vec![],
                 task_type: TaskType::Jot,
                 status: None,
+                priority: None,
                 deleted: false,
             }
         }
@@ -434,6 +446,7 @@ fn create_mode(
                 gates: vec![],
                 task_type: TaskType::Task,
                 status: None,
+                priority: None,
                 deleted: false,
             }
         }
@@ -801,6 +814,7 @@ pub fn jot(ctx: &MontContext, args: JotArgs) -> Result<(), AppError> {
         gates: vec![],
         task_type: TaskType::Jot,
         status: None,
+        priority: None,
         deleted: false,
     };
 
@@ -930,6 +944,7 @@ when you save and confirm."#,
         gates: vec![],
         task_type: TaskType::Task,
         status: None,
+        priority: None,
         deleted: false,
     };
 

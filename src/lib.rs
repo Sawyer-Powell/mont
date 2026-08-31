@@ -8,7 +8,7 @@ pub mod render;
 // Re-export commonly used types from context module for convenience
 pub use context::{
     parse, GlobalConfig, GraphReadError, LoadError, MontContext, Op, ParseError, SettingsError,
-    Status, Task, TaskGraph, TaskType, Transaction, TransactionError, ValidationError,
+    Priority, Status, Task, TaskGraph, TaskType, Transaction, TransactionError, ValidationError,
     GateItem, GateStatus,
 };
 

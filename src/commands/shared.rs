@@ -386,6 +386,7 @@ mod tests {
             gates: vec![],
             task_type: TaskType::Task,
             status: None,
+            priority: None,
             deleted: false,
         };
 
@@ -413,6 +414,7 @@ mod tests {
                 gates: vec![],
                 task_type: TaskType::Task,
                 status: None,
+                priority: None,
                 deleted: false,
             },
             Task {
@@ -425,6 +427,7 @@ mod tests {
                 gates: vec![],
                 task_type: TaskType::Task,
                 status: None,
+                priority: None,
                 deleted: false,
             },
         ];
@@ -452,6 +455,7 @@ mod tests {
             gates: vec![],
             task_type: TaskType::Task,
             status: None,
+            priority: None,
             deleted: false,
         };
 
