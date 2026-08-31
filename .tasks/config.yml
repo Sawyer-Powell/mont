@@ -2,3 +2,4 @@ jj:
   enabled: true
 default_gates:
   - test
+  - user-qa
