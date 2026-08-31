@@ -2,10 +2,12 @@
 id: opencode-orchestration-layer
 title: Compose Mont primitives into OpenCode orchestration
 type: jot
+after:
+  - workspace-cleanup-design
 ---
 
-After Mont's lifecycle and JSON contracts stabilize, design OpenCode skills and agents that launch and coordinate worker and validator processes using Mont's CLI primitives.
+After repository-wide state and the managed `start`, `done`, and `cleanup` contracts stabilize, design OpenCode skills and agents that coordinate external workers using Mont's human-readable CLI primitives.
 
-Mont itself must not launch, monitor, or own agent processes. The external layer should consume structured start, completion, integration, gate, provenance, and recovery metadata; support hierarchical orchestration through JJ ancestry and queue bookmarks; and preserve gates as per-task statuses rather than independent workspace-owning nodes.
+Mont must not launch, monitor, or own agent processes. The external layer may consume task descriptions, lifecycle output, queue bookmarks, gates, provenance, and recovery guidance. It should preserve JJ ancestry as orchestration structure and gates as per-task statuses.
 
-Automatic agent launching and monitoring, gate-agent provenance enforcement, a daemon or ACID claim service, automatic squash policy, and automatic rollback remain outside the Mont MVP. This jot should be distilled only after the CLI contract is concrete enough to avoid coupling agents to unstable output.
+Automatic agent launching inside Mont, a daemon or lock service, automatic integration or squashing, automatic rollback, and gate-agent provenance enforcement remain outside the Mont MVP.

@@ -1,11 +1,11 @@
 ---
 id: real-jj-orchestration-verification
-title: Verify orchestration against real JJ repositories
+title: Design a reusable real-JJ test harness
 type: jot
 ---
 
-Build reusable integration-test coverage using temporary real JJ repositories rather than relying only on mocked command output.
+Design reusable integration-test support around temporary real JJ repositories. This is a known prerequisite for repository-wide state and managed workspace implementation.
 
-The verification matrix must include nested-directory invocation; default and non-default workspaces; concurrent claims; sibling and nested workers; non-conflicting synthesis; conflicting and identical concurrent edits; local readiness with queued dependency completion; every interruption point and retry for start, done, stop, and integrate; descendant blockers; multi-revision integration without squashing; conflicted rebase recovery and `jj op restore` guidance; stale integrated bookmarks; safe orphan-directory cleanup; and stable ANSI-free JSON.
+The harness must support isolated repositories and data roots, default and non-default workspaces, nested-directory CLI invocation, divergent and merged revisions, `.tasks` edits and conflicts, bookmarks, operation IDs, workspace registration and forgetting, ancestry assertions, and deterministic construction of partial lifecycle states. Tests must be parallel-safe and must not mutate process-global environment from in-process tests.
 
-Distillation should identify the smallest reusable real-JJ test harness first, then assign scenario coverage alongside the implementation workstreams where practical rather than postponing all verification to the end.
+Definition of done: settle the harness API and ownership boundaries, prove uncertain JJ behavior with focused spikes where useful, and produce one or more implementation tasks capped at small/medium scope.
