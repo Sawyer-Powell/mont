@@ -3,9 +3,9 @@ use std::io;
 
 use owo_colors::OwoColorize;
 
+use crate::EditorError;
 use crate::context::{GraphReadError, LoadError, SettingsError};
 use crate::{ParseError, TransactionError, ValidationError};
-use crate::EditorError;
 
 /// Application error with context for actionable error messages.
 #[derive(Debug)]
@@ -15,9 +15,15 @@ pub enum AppError {
     /// IO error with context
     Io { context: String, source: io::Error },
     /// Parse error with file path context
-    Parse { file_path: String, source: ParseError },
+    Parse {
+        file_path: String,
+        source: ParseError,
+    },
     /// Validation error with tasks directory context
-    Validation { tasks_dir: String, source: ValidationError },
+    Validation {
+        tasks_dir: String,
+        source: ValidationError,
+    },
     /// Task not found
     TaskNotFound { task_id: String, tasks_dir: String },
     /// Editor resolution error
@@ -97,7 +103,11 @@ impl fmt::Display for AppError {
         match self {
             AppError::DirNotFound(dir) => write!(f, "{}", format_dir_not_found(dir)),
             AppError::Io { context, source } => {
-                write!(f, "{}", format_cli_error(&format!("{}: {}", context, source)))
+                write!(
+                    f,
+                    "{}",
+                    format_cli_error(&format!("{}: {}", context, source))
+                )
             }
             AppError::Parse { file_path, source } => {
                 write!(f, "{}", format_parse_error(source, file_path))
@@ -123,14 +133,42 @@ impl fmt::Display for AppError {
             AppError::IdAlreadyExists(id) => {
                 write!(f, "{}", format_id_already_exists(id))
             }
-            AppError::TempValidationFailed { error, temp_path, editor_name, command_name } => {
-                write!(f, "{}", format_temp_validation_failed(error, temp_path, editor_name.as_deref(), command_name.as_str()))
+            AppError::TempValidationFailed {
+                error,
+                temp_path,
+                editor_name,
+                command_name,
+            } => {
+                write!(
+                    f,
+                    "{}",
+                    format_temp_validation_failed(
+                        error,
+                        temp_path,
+                        editor_name.as_deref(),
+                        command_name.as_str()
+                    )
+                )
             }
             AppError::NoChangesProvided => {
                 write!(f, "{}", format_no_changes_provided())
             }
-            AppError::EditTempValidationFailed { error, original_id, temp_path, editor_name } => {
-                write!(f, "{}", format_edit_temp_validation_failed(error, original_id, temp_path, editor_name.as_deref()))
+            AppError::EditTempValidationFailed {
+                error,
+                original_id,
+                temp_path,
+                editor_name,
+            } => {
+                write!(
+                    f,
+                    "{}",
+                    format_edit_temp_validation_failed(
+                        error,
+                        original_id,
+                        temp_path,
+                        editor_name.as_deref()
+                    )
+                )
             }
             AppError::NotAJot(id) => {
                 write!(f, "{}", format_not_a_jot(id))
@@ -266,10 +304,16 @@ fn format_parse_error(error: &ParseError, file_path: &str) -> String {
                 file_path.cyan()
             ));
             out.push('\n');
-            out.push_str(&format!("  {}\n", "Task files require YAML frontmatter between --- delimiters.".dimmed()));
+            out.push_str(&format!(
+                "  {}\n",
+                "Task files require YAML frontmatter between --- delimiters.".dimmed()
+            ));
             out.push('\n');
             out.push_str(&format!("  {}:\n", "To fix this".bold()));
-            out.push_str(&format!("    Add frontmatter to the top of {}:\n", file_path.cyan()));
+            out.push_str(&format!(
+                "    Add frontmatter to the top of {}:\n",
+                file_path.cyan()
+            ));
             out.push('\n');
             out.push_str(&format!("      {}\n", "---".dimmed()));
             out.push_str(&format!("      {}\n", "id: your-task-id".dimmed()));
@@ -282,12 +326,21 @@ fn format_parse_error(error: &ParseError, file_path: &str) -> String {
             out.push_str(&format!("  {}\n", yaml_err.to_string().dimmed()));
         }
         ParseError::EmptyId => {
-            out.push_str(&format!("task id cannot be empty in {}\n", file_path.cyan()));
+            out.push_str(&format!(
+                "task id cannot be empty in {}\n",
+                file_path.cyan()
+            ));
             out.push('\n');
-            out.push_str(&format!("  {}\n", "Every task requires a non-empty id field.".dimmed()));
+            out.push_str(&format!(
+                "  {}\n",
+                "Every task requires a non-empty id field.".dimmed()
+            ));
             out.push('\n');
             out.push_str(&format!("  {}:\n", "To fix this".bold()));
-            out.push_str(&format!("    Add an id to the frontmatter, or remove the {} line\n", "id:".cyan()));
+            out.push_str(&format!(
+                "    Add an id to the frontmatter, or remove the {} line\n",
+                "id:".cyan()
+            ));
             out.push_str("    to let one be generated automatically.\n");
         }
         ParseError::GateWithAfter(task_id) => {
@@ -296,8 +349,14 @@ fn format_parse_error(error: &ParseError, file_path: &str) -> String {
                 task_id.yellow()
             ));
             out.push('\n');
-            out.push_str(&format!("  {}\n", "Gates cannot have after dependencies because they are".dimmed()));
-            out.push_str(&format!("  {}\n", "reusable validation criteria, not work items in the task graph.".dimmed()));
+            out.push_str(&format!(
+                "  {}\n",
+                "Gates cannot have after dependencies because they are".dimmed()
+            ));
+            out.push_str(&format!(
+                "  {}\n",
+                "reusable validation criteria, not work items in the task graph.".dimmed()
+            ));
             out.push('\n');
             out.push_str(&format!("  {}:\n", "To fix this".bold()));
             out.push_str(&format!(
@@ -311,13 +370,16 @@ fn format_parse_error(error: &ParseError, file_path: &str) -> String {
             ));
         }
         ParseError::GateMarkedComplete(task_id) => {
-            out.push_str(&format!(
-                "gate '{}' is marked complete\n",
-                task_id.yellow()
-            ));
+            out.push_str(&format!("gate '{}' is marked complete\n", task_id.yellow()));
             out.push('\n');
-            out.push_str(&format!("  {}\n", "Gates are reusable and cannot be completed.".dimmed()));
-            out.push_str(&format!("  {}\n", "They define validation criteria that can be run multiple times.".dimmed()));
+            out.push_str(&format!(
+                "  {}\n",
+                "Gates are reusable and cannot be completed.".dimmed()
+            ));
+            out.push_str(&format!(
+                "  {}\n",
+                "They define validation criteria that can be run multiple times.".dimmed()
+            ));
             out.push('\n');
             out.push_str(&format!("  {}:\n", "To fix this".bold()));
             out.push_str(&format!(
@@ -331,10 +393,7 @@ fn format_parse_error(error: &ParseError, file_path: &str) -> String {
             ));
         }
         ParseError::GateWithPriority(task_id) => {
-            out.push_str(&format!(
-                "gate '{}' has a priority\n",
-                task_id.yellow()
-            ));
+            out.push_str(&format!("gate '{}' has a priority\n", task_id.yellow()));
             out.push('\n');
             out.push_str(&format!(
                 "  {}\n",
@@ -349,13 +408,16 @@ fn format_parse_error(error: &ParseError, file_path: &str) -> String {
             ));
         }
         ParseError::JotWithGates(task_id) => {
-            out.push_str(&format!(
-                "jot '{}' has gates\n",
-                task_id.yellow()
-            ));
+            out.push_str(&format!("jot '{}' has gates\n", task_id.yellow()));
             out.push('\n');
-            out.push_str(&format!("  {}\n", "Jots are quick ideas that cannot have gates.".dimmed()));
-            out.push_str(&format!("  {}\n", "Edit the jot with `mont <id>` to convert it or remove gates.".dimmed()));
+            out.push_str(&format!(
+                "  {}\n",
+                "Jots are quick ideas that cannot have gates.".dimmed()
+            ));
+            out.push_str(&format!(
+                "  {}\n",
+                "Edit the jot with `mont <id>` to convert it or remove gates.".dimmed()
+            ));
             out.push('\n');
             out.push_str(&format!("  {}:\n", "To fix this".bold()));
             out.push_str(&format!(
@@ -369,12 +431,12 @@ fn format_parse_error(error: &ParseError, file_path: &str) -> String {
             ));
         }
         ParseError::ReservedId(id) => {
-            out.push_str(&format!(
-                "task id '{}' is reserved\n",
-                id.yellow()
-            ));
+            out.push_str(&format!("task id '{}' is reserved\n", id.yellow()));
             out.push('\n');
-            out.push_str(&format!("  {}\n", "The '?' character is reserved for interactive ID selection.".dimmed()));
+            out.push_str(&format!(
+                "  {}\n",
+                "The '?' character is reserved for interactive ID selection.".dimmed()
+            ));
             out.push('\n');
             out.push_str(&format!("  {}:\n", "To fix this".bold()));
             out.push_str(&format!(
@@ -403,7 +465,11 @@ fn format_validation_error(error: &ValidationError, tasks_dir: &str) -> String {
             out.push('\n');
             out.push_str(&format!(
                 "  {}\n",
-                format!("The before target '{}' does not exist in {}/", before_id, tasks_dir).dimmed()
+                format!(
+                    "The before target '{}' does not exist in {}/",
+                    before_id, tasks_dir
+                )
+                .dimmed()
             ));
             out.push('\n');
             out.push_str(&format!("  {}:\n", "To fix this".bold()));
@@ -420,10 +486,7 @@ fn format_validation_error(error: &ValidationError, tasks_dir: &str) -> String {
             ));
             out.push_str("    3. Change the before target to an existing task\n");
         }
-        ValidationError::InvalidAfter {
-            task_id,
-            after_id,
-        } => {
+        ValidationError::InvalidAfter { task_id, after_id } => {
             out.push_str(&format!(
                 "task '{}' references invalid after dependency '{}'\n",
                 task_id.yellow(),
@@ -432,7 +495,11 @@ fn format_validation_error(error: &ValidationError, tasks_dir: &str) -> String {
             out.push('\n');
             out.push_str(&format!(
                 "  {}\n",
-                format!("The after dependency '{}' does not exist in {}/", after_id, tasks_dir).dimmed()
+                format!(
+                    "The after dependency '{}' does not exist in {}/",
+                    after_id, tasks_dir
+                )
+                .dimmed()
             ));
             out.push('\n');
             out.push_str(&format!("  {}:\n", "To fix this".bold()));
@@ -449,18 +516,21 @@ fn format_validation_error(error: &ValidationError, tasks_dir: &str) -> String {
             ));
             out.push_str("    3. Change the after dependency to an existing task\n");
         }
-        ValidationError::AfterIsGate {
-            task_id,
-            after_id,
-        } => {
+        ValidationError::AfterIsGate { task_id, after_id } => {
             out.push_str(&format!(
                 "task '{}' has gate '{}' as an after dependency\n",
                 task_id.yellow(),
                 after_id.yellow()
             ));
             out.push('\n');
-            out.push_str(&format!("  {}\n", "Gates define validation criteria, not work dependencies.".dimmed()));
-            out.push_str(&format!("  {}\n", "Use the 'gates' field instead of 'after'.".dimmed()));
+            out.push_str(&format!(
+                "  {}\n",
+                "Gates define validation criteria, not work dependencies.".dimmed()
+            ));
+            out.push_str(&format!(
+                "  {}\n",
+                "Use the 'gates' field instead of 'after'.".dimmed()
+            ));
             out.push('\n');
             out.push_str(&format!("  {}:\n", "To fix this".bold()));
             out.push_str(&format!(
@@ -490,7 +560,11 @@ fn format_validation_error(error: &ValidationError, tasks_dir: &str) -> String {
             out.push('\n');
             out.push_str(&format!(
                 "  {}\n",
-                format!("The gate '{}' does not exist in {}/", validation_id, tasks_dir).dimmed()
+                format!(
+                    "The gate '{}' does not exist in {}/",
+                    validation_id, tasks_dir
+                )
+                .dimmed()
             ));
             out.push('\n');
             out.push_str(&format!("  {}:\n", "To fix this".bold()));
@@ -548,8 +622,14 @@ fn format_validation_error(error: &ValidationError, tasks_dir: &str) -> String {
                 validation_id.yellow()
             ));
             out.push('\n');
-            out.push_str(&format!("  {}\n", "Gates used in the 'gates' field must be root gates".dimmed()));
-            out.push_str(&format!("  {}\n", "(they cannot have a before target).".dimmed()));
+            out.push_str(&format!(
+                "  {}\n",
+                "Gates used in the 'gates' field must be root gates".dimmed()
+            ));
+            out.push_str(&format!(
+                "  {}\n",
+                "(they cannot have a before target).".dimmed()
+            ));
             out.push('\n');
             out.push_str(&format!("  {}:\n", "To fix this".bold()));
             out.push_str(&format!(
@@ -567,8 +647,14 @@ fn format_validation_error(error: &ValidationError, tasks_dir: &str) -> String {
         ValidationError::CycleDetected => {
             out.push_str("cycle detected in task graph\n");
             out.push('\n');
-            out.push_str(&format!("  {}\n", "The task graph contains a circular dependency.".dimmed()));
-            out.push_str(&format!("  {}\n", "Tasks cannot depend on themselves directly or indirectly.".dimmed()));
+            out.push_str(&format!(
+                "  {}\n",
+                "The task graph contains a circular dependency.".dimmed()
+            ));
+            out.push_str(&format!(
+                "  {}\n",
+                "Tasks cannot depend on themselves directly or indirectly.".dimmed()
+            ));
             out.push('\n');
             out.push_str(&format!("  {}:\n", "To fix this".bold()));
             out.push_str("    1. Review before and after relationships\n");
@@ -636,7 +722,10 @@ fn format_dir_not_found(dir: &str) -> String {
     out.push_str(&format!("{}: ", "error".red().bold()));
     out.push_str(&format!("tasks directory not found: {}\n", dir.yellow()));
     out.push('\n');
-    out.push_str(&format!("  {}\n", "The specified tasks directory does not exist.".dimmed()));
+    out.push_str(&format!(
+        "  {}\n",
+        "The specified tasks directory does not exist.".dimmed()
+    ));
     out.push('\n');
     out.push_str(&format!("  {}:\n", "To fix this".bold()));
     out.push_str(&format!(
@@ -657,7 +746,10 @@ fn format_editor_error(error: &EditorError) -> String {
         EditorError::NotFound(msg) => {
             out.push_str(&format!("{}\n", msg));
             out.push('\n');
-            out.push_str(&format!("  {}\n", "No text editor could be resolved.".dimmed()));
+            out.push_str(&format!(
+                "  {}\n",
+                "No text editor could be resolved.".dimmed()
+            ));
             out.push('\n');
             out.push_str(&format!("  {}:\n", "To fix this".bold()));
             out.push_str(&format!(
@@ -678,13 +770,13 @@ fn format_id_or_title_required() -> String {
     out.push_str(&format!("{}: ", "error".red().bold()));
     out.push_str("task content is required\n");
     out.push('\n');
-    out.push_str(&format!("  {}\n", "A task needs content to be created.".dimmed()));
+    out.push_str(&format!(
+        "  {}\n",
+        "A task needs content to be created.".dimmed()
+    ));
     out.push('\n');
     out.push_str(&format!("  {}:\n", "To fix this".bold()));
-    out.push_str(&format!(
-        "    Open the task editor: {}\n",
-        "mont".cyan()
-    ));
+    out.push_str(&format!("    Open the task editor: {}\n", "mont".cyan()));
 
     out
 }
@@ -693,9 +785,15 @@ fn format_id_generation_failed(attempts: u32) -> String {
     let mut out = String::new();
 
     out.push_str(&format!("{}: ", "error".red().bold()));
-    out.push_str(&format!("failed to generate unique id after {} attempts\n", attempts));
+    out.push_str(&format!(
+        "failed to generate unique id after {} attempts\n",
+        attempts
+    ));
     out.push('\n');
-    out.push_str(&format!("  {}\n", "All generated IDs collided with existing tasks.".dimmed()));
+    out.push_str(&format!(
+        "  {}\n",
+        "All generated IDs collided with existing tasks.".dimmed()
+    ));
     out.push('\n');
     out.push_str(&format!("  {}:\n", "To fix this".bold()));
     out.push_str(&format!(
@@ -712,13 +810,13 @@ fn format_temp_file_not_found(path: &str) -> String {
     out.push_str(&format!("{}: ", "error".red().bold()));
     out.push_str(&format!("temp file not found: {}\n", path.yellow()));
     out.push('\n');
-    out.push_str(&format!("  {}\n", "The specified temp file does not exist or was already cleaned up.".dimmed()));
+    out.push_str(&format!(
+        "  {}\n",
+        "The specified temp file does not exist or was already cleaned up.".dimmed()
+    ));
     out.push('\n');
     out.push_str(&format!("  {}:\n", "To fix this".bold()));
-    out.push_str(&format!(
-        "    Start fresh with: {}\n",
-        "mont".cyan()
-    ));
+    out.push_str(&format!("    Start fresh with: {}\n", "mont".cyan()));
 
     out
 }
@@ -729,7 +827,10 @@ fn format_id_already_exists(id: &str) -> String {
     out.push_str(&format!("{}: ", "error".red().bold()));
     out.push_str(&format!("task id '{}' already exists\n", id.yellow()));
     out.push('\n');
-    out.push_str(&format!("  {}\n", "A task with this ID is already in the task graph.".dimmed()));
+    out.push_str(&format!(
+        "  {}\n",
+        "A task with this ID is already in the task graph.".dimmed()
+    ));
     out.push('\n');
     out.push_str(&format!("  {}:\n", "To fix this".bold()));
     out.push_str(&format!(
@@ -740,7 +841,12 @@ fn format_id_already_exists(id: &str) -> String {
     out
 }
 
-fn format_temp_validation_failed(error: &AppError, temp_path: &str, editor_name: Option<&str>, command_name: &str) -> String {
+fn format_temp_validation_failed(
+    error: &AppError,
+    temp_path: &str,
+    editor_name: Option<&str>,
+    command_name: &str,
+) -> String {
     let mut out = String::new();
 
     // First, display the underlying error
@@ -748,14 +854,24 @@ fn format_temp_validation_failed(error: &AppError, temp_path: &str, editor_name:
     out.push('\n');
 
     // Then show how to resume
-    out.push_str(&format!("  {}\n", "Your task file has been saved.".dimmed()));
+    out.push_str(&format!(
+        "  {}\n",
+        "Your task file has been saved.".dimmed()
+    ));
     out.push('\n');
     out.push_str(&format!("  {}:\n", "To fix and retry".bold()));
-    out.push_str(&format!("    {}  {}\n", format!("mont {} -r", command_name).cyan(), "(resume most recent)".dimmed()));
+    out.push_str(&format!(
+        "    {}  {}\n",
+        format!("mont {} -r", command_name).cyan(),
+        "(resume most recent)".dimmed()
+    ));
     out.push('\n');
     out.push_str(&format!("  {}:\n", "Or specify the file directly".dimmed()));
     let resume_cmd = match editor_name {
-        Some(name) => format!("mont {} --resume-path {} --editor {}", command_name, temp_path, name),
+        Some(name) => format!(
+            "mont {} --resume-path {} --editor {}",
+            command_name, temp_path, name
+        ),
         None => format!("mont {} --resume-path {}", command_name, temp_path),
     };
     out.push_str(&format!("    {}\n", resume_cmd.cyan()));
@@ -769,18 +885,23 @@ fn format_no_changes_provided() -> String {
     out.push_str(&format!("{}: ", "error".red().bold()));
     out.push_str("no changes provided\n");
     out.push('\n');
-    out.push_str(&format!("  {}\n", "No changes were detected in the edited content.".dimmed()));
+    out.push_str(&format!(
+        "  {}\n",
+        "No changes were detected in the edited content.".dimmed()
+    ));
     out.push('\n');
     out.push_str(&format!("  {}:\n", "To fix this".bold()));
-    out.push_str(&format!(
-        "    Edit task: {}\n",
-        "mont <task-id>".cyan()
-    ));
+    out.push_str(&format!("    Edit task: {}\n", "mont <task-id>".cyan()));
 
     out
 }
 
-fn format_edit_temp_validation_failed(error: &AppError, _original_id: &str, temp_path: &str, editor_name: Option<&str>) -> String {
+fn format_edit_temp_validation_failed(
+    error: &AppError,
+    _original_id: &str,
+    temp_path: &str,
+    editor_name: Option<&str>,
+) -> String {
     let mut out = String::new();
 
     // First, display the underlying error
@@ -788,10 +909,17 @@ fn format_edit_temp_validation_failed(error: &AppError, _original_id: &str, temp
     out.push('\n');
 
     // Then show how to resume editing
-    out.push_str(&format!("  {}\n", "Your task file has been saved.".dimmed()));
+    out.push_str(&format!(
+        "  {}\n",
+        "Your task file has been saved.".dimmed()
+    ));
     out.push('\n');
     out.push_str(&format!("  {}:\n", "To fix and retry".bold()));
-    out.push_str(&format!("    {}  {}\n", "mont task -r".cyan(), "(resume most recent)".dimmed()));
+    out.push_str(&format!(
+        "    {}  {}\n",
+        "mont task -r".cyan(),
+        "(resume most recent)".dimmed()
+    ));
     out.push('\n');
     out.push_str(&format!("  {}:\n", "Or specify the file directly".dimmed()));
     let resume_cmd = match editor_name {
@@ -809,7 +937,10 @@ fn format_not_a_jot(id: &str) -> String {
     out.push_str(&format!("{}: ", "error".red().bold()));
     out.push_str(&format!("'{}' is not a jot\n", id.yellow()));
     out.push('\n');
-    out.push_str(&format!("  {}\n", "The distill command can only be used on jots.".dimmed()));
+    out.push_str(&format!(
+        "  {}\n",
+        "The distill command can only be used on jots.".dimmed()
+    ));
     out.push('\n');
     out.push_str(&format!("  {}:\n", "To fix this".bold()));
     out.push_str(&format!(
@@ -875,7 +1006,10 @@ fn format_fzf_not_found() -> String {
     out.push_str(&format!("{}: ", "error".red().bold()));
     out.push_str("fzf not found\n");
     out.push('\n');
-    out.push_str(&format!("  {}\n", "The interactive picker requires fzf to be installed.".dimmed()));
+    out.push_str(&format!(
+        "  {}\n",
+        "The interactive picker requires fzf to be installed.".dimmed()
+    ));
     out.push('\n');
     out.push_str(&format!("  {}:\n", "To fix this".bold()));
     out.push_str(&format!(
@@ -897,13 +1031,13 @@ fn format_no_active_tasks() -> String {
     out.push_str(&format!("{}: ", "error".red().bold()));
     out.push_str("no active tasks\n");
     out.push('\n');
-    out.push_str(&format!("  {}\n", "There are no non-completed tasks to pick from.".dimmed()));
+    out.push_str(&format!(
+        "  {}\n",
+        "There are no non-completed tasks to pick from.".dimmed()
+    ));
     out.push('\n');
     out.push_str(&format!("  {}:\n", "To fix this".bold()));
-    out.push_str(&format!(
-        "    Create a new task: {}\n",
-        "mont".cyan()
-    ));
+    out.push_str(&format!("    Create a new task: {}\n", "mont".cyan()));
 
     out
 }
@@ -933,10 +1067,7 @@ fn format_gate_not_valid(gate_id: &str, task_id: &str) -> String {
         gate_id.cyan(),
         ".tasks/config.yml".cyan()
     ));
-    out.push_str(&format!(
-        "    3. Check spelling: {}\n",
-        "mont list".cyan()
-    ));
+    out.push_str(&format!("    3. Check spelling: {}\n", "mont list".cyan()));
 
     out
 }
@@ -947,7 +1078,10 @@ fn format_task_already_complete(id: &str) -> String {
     out.push_str(&format!("{}: ", "error".red().bold()));
     out.push_str(&format!("task '{}' is already complete\n", id.yellow()));
     out.push('\n');
-    out.push_str(&format!("  {}\n", "Cannot start a task that has already been completed.".dimmed()));
+    out.push_str(&format!(
+        "  {}\n",
+        "Cannot start a task that has already been completed.".dimmed()
+    ));
     out.push('\n');
     out.push_str(&format!("  {}:\n", "To fix this".bold()));
     out.push_str(&format!(
@@ -968,7 +1102,10 @@ fn format_task_already_in_progress(id: &str) -> String {
     out.push_str(&format!("{}: ", "error".red().bold()));
     out.push_str(&format!("task '{}' is already in progress\n", id.yellow()));
     out.push('\n');
-    out.push_str(&format!("  {}\n", "This task has already been started.".dimmed()));
+    out.push_str(&format!(
+        "  {}\n",
+        "This task has already been started.".dimmed()
+    ));
     out.push('\n');
     out.push_str(&format!("  {}:\n", "To fix this".bold()));
     out.push_str(&format!(
@@ -989,7 +1126,10 @@ fn format_working_copy_not_empty() -> String {
     out.push_str(&format!("{}: ", "error".red().bold()));
     out.push_str("working copy has uncommitted changes\n");
     out.push('\n');
-    out.push_str(&format!("  {}\n", "Cannot start a new task with uncommitted changes.".dimmed()));
+    out.push_str(&format!(
+        "  {}\n",
+        "Cannot start a new task with uncommitted changes.".dimmed()
+    ));
     out.push('\n');
     out.push_str(&format!("  {}:\n", "To fix this".bold()));
     out.push_str(&format!(
@@ -1015,7 +1155,10 @@ fn format_task_not_in_progress(id: &str) -> String {
     out.push_str(&format!("{}: ", "error".red().bold()));
     out.push_str(&format!("task '{}' is not in progress\n", id.yellow()));
     out.push('\n');
-    out.push_str(&format!("  {}\n", "Cannot complete a task that is not in progress.".dimmed()));
+    out.push_str(&format!(
+        "  {}\n",
+        "Cannot complete a task that is not in progress.".dimmed()
+    ));
     out.push('\n');
     out.push_str(&format!("  {}:\n", "To fix this".bold()));
     out.push_str(&format!(
@@ -1039,7 +1182,10 @@ fn format_gates_not_passed(task_id: &str, blocking: &[(String, crate::GateStatus
         task_id.yellow()
     ));
     out.push('\n');
-    out.push_str(&format!("  {}\n", "The following gates must be passed or skipped:".dimmed()));
+    out.push_str(&format!(
+        "  {}\n",
+        "The following gates must be passed or skipped:".dimmed()
+    ));
     out.push('\n');
 
     for (gate_id, status) in blocking {
@@ -1072,7 +1218,10 @@ fn format_no_in_progress_task() -> String {
     out.push_str(&format!("{}: ", "error".red().bold()));
     out.push_str("no in-progress task found\n");
     out.push('\n');
-    out.push_str(&format!("  {}\n", "No task is currently marked as in progress.".dimmed()));
+    out.push_str(&format!(
+        "  {}\n",
+        "No task is currently marked as in progress.".dimmed()
+    ));
     out.push('\n');
     out.push_str(&format!("  {}:\n", "To fix this".bold()));
     out.push_str(&format!(
@@ -1093,7 +1242,10 @@ fn format_multiple_in_progress_tasks(tasks: &[String]) -> String {
     out.push_str(&format!("{}: ", "error".red().bold()));
     out.push_str("multiple in-progress tasks found\n");
     out.push('\n');
-    out.push_str(&format!("  {}\n", "Found multiple tasks with status: inprogress:".dimmed()));
+    out.push_str(&format!(
+        "  {}\n",
+        "Found multiple tasks with status: inprogress:".dimmed()
+    ));
     out.push('\n');
 
     for task_id in tasks {
@@ -1134,7 +1286,10 @@ fn format_cannot_complete_jot(id: &str) -> String {
     out.push_str(&format!("{}: ", "error".red().bold()));
     out.push_str(&format!("cannot complete jot '{}'\n", id.yellow()));
     out.push('\n');
-    out.push_str(&format!("  {}\n", "Jots are quick ideas that must be distilled into tasks before completion.".dimmed()));
+    out.push_str(&format!(
+        "  {}\n",
+        "Jots are quick ideas that must be distilled into tasks before completion.".dimmed()
+    ));
     out.push('\n');
     out.push_str(&format!("  {}:\n", "To fix this".bold()));
     out.push_str(&format!(
@@ -1151,13 +1306,13 @@ fn format_multi_edit_requires_editor() -> String {
     out.push_str(&format!("{}: ", "error".red().bold()));
     out.push_str("editing multiple tasks requires editor mode\n");
     out.push('\n');
-    out.push_str(&format!("  {}\n", "When specifying multiple task IDs, the editor is used automatically.".dimmed()));
+    out.push_str(&format!(
+        "  {}\n",
+        "When specifying multiple task IDs, the editor is used automatically.".dimmed()
+    ));
     out.push('\n');
     out.push_str(&format!("  {}:\n", "To fix this".bold()));
-    out.push_str(&format!(
-        "    {}\n",
-        "mont task1,task2,task3".cyan()
-    ));
+    out.push_str(&format!("    {}\n", "mont task1,task2,task3".cyan()));
 
     out
 }

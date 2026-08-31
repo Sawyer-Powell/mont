@@ -1,9 +1,9 @@
 //! LLM commands - generate prompts and manage LLM-assisted workflows.
 
-use minijinja::{context, Environment};
+use minijinja::{Environment, context};
 
 use crate::error_fmt::AppError;
-use crate::{jj, GateStatus, MontContext, Task};
+use crate::{GateStatus, MontContext, Task, jj};
 
 // Embed templates at compile time (numbered by state machine order)
 const TEMPLATE_NO_TASK: &str = include_str!("../prompts/00_no-task-in-progress.md");
@@ -17,18 +17,14 @@ const TEMPLATE_JOT_IN_PROGRESS: &str = include_str!("../prompts/05_jot-in-progre
 #[derive(Debug)]
 pub enum TaskGraphState {
     /// No task is currently in progress.
-    NoTaskInProgress {
-        has_uncommitted_changes: bool,
-    },
+    NoTaskInProgress { has_uncommitted_changes: bool },
     /// A task is in progress with the given sub-state.
     TaskInProgress {
         task: Box<Task>,
         state: InProgressState,
     },
     /// A jot is in progress - needs to be distilled into tasks.
-    JotInProgress {
-        jot: Box<Task>,
-    },
+    JotInProgress { jot: Box<Task> },
 }
 
 /// State of an in-progress task.
@@ -37,9 +33,7 @@ pub enum InProgressState {
     /// No code changes outside .tasks/ - need to start implementation.
     NoCodeChanges,
     /// Has code changes but no gates unlocked yet.
-    HasCodeChanges {
-        first_gate: Option<GateInfo>,
-    },
+    HasCodeChanges { first_gate: Option<GateInfo> },
     /// Some gates unlocked but not all.
     SomeGatesUnlocked {
         unlocked: Vec<String>,
@@ -82,13 +76,18 @@ pub fn detect_state(ctx: &MontContext) -> Result<TaskGraphState, AppError> {
 
     // If it's a jot, use the JotInProgress state
     if task.is_jot() {
-        return Ok(TaskGraphState::JotInProgress { jot: Box::new(task) });
+        return Ok(TaskGraphState::JotInProgress {
+            jot: Box::new(task),
+        });
     }
 
     // Determine the in-progress state
     let state = detect_in_progress_state(ctx, &task)?;
 
-    Ok(TaskGraphState::TaskInProgress { task: Box::new(task), state })
+    Ok(TaskGraphState::TaskInProgress {
+        task: Box::new(task),
+        state,
+    })
 }
 
 /// Detect the state of an in-progress task.
@@ -146,7 +145,11 @@ fn detect_in_progress_state(ctx: &MontContext, task: &Task) -> Result<InProgress
         Ok(InProgressState::HasCodeChanges { first_gate })
     } else {
         let next_gate = pending.first().and_then(|id| get_gate_info(id));
-        Ok(InProgressState::SomeGatesUnlocked { unlocked, pending, next_gate })
+        Ok(InProgressState::SomeGatesUnlocked {
+            unlocked,
+            pending,
+            next_gate,
+        })
     }
 }
 
@@ -169,8 +172,11 @@ pub fn generate_prompt(_ctx: &MontContext, state: &TaskGraphState) -> Result<Str
         .map_err(|e| AppError::TemplateError(e.to_string()))?;
 
     match state {
-        TaskGraphState::NoTaskInProgress { has_uncommitted_changes } => {
-            let tmpl = env.get_template("no-task")
+        TaskGraphState::NoTaskInProgress {
+            has_uncommitted_changes,
+        } => {
+            let tmpl = env
+                .get_template("no-task")
                 .map_err(|e| AppError::TemplateError(e.to_string()))?;
             tmpl.render(context! { has_uncommitted_changes })
                 .map_err(|e| AppError::TemplateError(e.to_string()))
@@ -179,7 +185,8 @@ pub fn generate_prompt(_ctx: &MontContext, state: &TaskGraphState) -> Result<Str
             render_in_progress_prompt(&env, task, state)
         }
         TaskGraphState::JotInProgress { jot } => {
-            let tmpl = env.get_template("jot-in-progress")
+            let tmpl = env
+                .get_template("jot-in-progress")
                 .map_err(|e| AppError::TemplateError(e.to_string()))?;
             tmpl.render(context! {
                 jot_id => &jot.id,
@@ -202,7 +209,8 @@ fn render_in_progress_prompt(
 
     match state {
         InProgressState::NoCodeChanges => {
-            let tmpl = env.get_template("no-code-changes")
+            let tmpl = env
+                .get_template("no-code-changes")
                 .map_err(|e| AppError::TemplateError(e.to_string()))?;
             tmpl.render(context! {
                 task_id,
@@ -213,11 +221,16 @@ fn render_in_progress_prompt(
         }
 
         InProgressState::HasCodeChanges { first_gate } => {
-            let tmpl = env.get_template("has-code-changes")
+            let tmpl = env
+                .get_template("has-code-changes")
                 .map_err(|e| AppError::TemplateError(e.to_string()))?;
 
             let (gate_id, gate_title, gate_description) = match first_gate {
-                Some(g) => (g.id.as_str(), g.title.as_deref().unwrap_or(""), g.description.as_str()),
+                Some(g) => (
+                    g.id.as_str(),
+                    g.title.as_deref().unwrap_or(""),
+                    g.description.as_str(),
+                ),
                 None => ("", "", ""),
             };
 
@@ -232,12 +245,21 @@ fn render_in_progress_prompt(
             .map_err(|e| AppError::TemplateError(e.to_string()))
         }
 
-        InProgressState::SomeGatesUnlocked { unlocked, pending, next_gate } => {
-            let tmpl = env.get_template("some-gates-unlocked")
+        InProgressState::SomeGatesUnlocked {
+            unlocked,
+            pending,
+            next_gate,
+        } => {
+            let tmpl = env
+                .get_template("some-gates-unlocked")
                 .map_err(|e| AppError::TemplateError(e.to_string()))?;
 
             let (gate_id, gate_title, gate_description) = match next_gate {
-                Some(g) => (g.id.as_str(), g.title.as_deref().unwrap_or(""), g.description.as_str()),
+                Some(g) => (
+                    g.id.as_str(),
+                    g.title.as_deref().unwrap_or(""),
+                    g.description.as_str(),
+                ),
                 None => ("", "", ""),
             };
 
@@ -254,7 +276,8 @@ fn render_in_progress_prompt(
         }
 
         InProgressState::AllGatesUnlocked => {
-            let tmpl = env.get_template("all-gates-unlocked")
+            let tmpl = env
+                .get_template("all-gates-unlocked")
                 .map_err(|e| AppError::TemplateError(e.to_string()))?;
             tmpl.render(context! {
                 task_id,
@@ -297,8 +320,7 @@ pub fn claude_pre_validate(ctx: &MontContext) -> Result<(), AppError> {
     if !jj_enabled {
         return Ok(());
     }
-    let has_changes = !jj::is_working_copy_empty()
-        .map_err(|e| AppError::JJError(e.to_string()))?;
+    let has_changes = !jj::is_working_copy_empty().map_err(|e| AppError::JJError(e.to_string()))?;
 
     if !has_changes {
         return Ok(());
@@ -311,7 +333,8 @@ pub fn claude_pre_validate(ctx: &MontContext) -> Result<(), AppError> {
         return Err(AppError::CommandFailed(
             "There are uncommitted changes but no task is in progress.\n\
              Either commit your changes first, or run:\n  \
-             mont claude --ignore (to start anyway)".to_string()
+             mont claude --ignore (to start anyway)"
+                .to_string(),
         ));
     }
 
@@ -335,12 +358,10 @@ pub fn claude(ctx: &MontContext, task_id: &str) -> Result<(), AppError> {
         let graph = ctx.graph();
 
         // Check if the task exists
-        let task = graph
-            .get(task_id)
-            .ok_or_else(|| AppError::TaskNotFound {
-                task_id: task_id.to_string(),
-                tasks_dir: ctx.tasks_dir().to_string_lossy().to_string(),
-            })?;
+        let task = graph.get(task_id).ok_or_else(|| AppError::TaskNotFound {
+            task_id: task_id.to_string(),
+            tasks_dir: ctx.tasks_dir().to_string_lossy().to_string(),
+        })?;
 
         // Check for uncommitted changes (skip if jj is disabled)
         let jj_enabled = ctx.config().jj.enabled;
@@ -370,7 +391,8 @@ pub fn claude(ctx: &MontContext, task_id: &str) -> Result<(), AppError> {
                     return Err(AppError::CommandFailed(
                         "There are uncommitted changes but no task is in progress.\n\
                          Either commit your changes first, or run:\n  \
-                         mont claude --ignore (to start anyway)".to_string()
+                         mont claude --ignore (to start anyway)"
+                            .to_string(),
                     ));
                 }
             }
@@ -407,7 +429,9 @@ fn spawn_claude(prompt: &str) -> Result<(), AppError> {
         .map_err(|e| AppError::CommandFailed(format!("failed to launch claude: {}", e)))?;
 
     if !status.success() {
-        return Err(AppError::CommandFailed("claude exited with error".to_string()));
+        return Err(AppError::CommandFailed(
+            "claude exited with error".to_string(),
+        ));
     }
 
     Ok(())

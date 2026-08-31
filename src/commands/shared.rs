@@ -6,7 +6,7 @@ use std::process::{Command, Stdio};
 
 use crate::context::graph::is_available;
 use crate::error_fmt::{AppError, IoResultExt, ParseResultExt};
-use crate::{parse, Task, TaskGraph};
+use crate::{Task, TaskGraph, parse};
 
 /// Filter options for interactive task picker.
 #[derive(Clone, Copy)]
@@ -82,10 +82,14 @@ pub fn pick_task(graph: &TaskGraph, filter: TaskFilter) -> Result<String, AppErr
     // Use {2} to extract the ID (second field) for the preview command
     let mut child = Command::new("fzf")
         .args([
-            "--preview", "mont show {2}",
-            "--preview-window", "right:60%:wrap",
-            "--height", "80%",
-            "--layout", "reverse",
+            "--preview",
+            "mont show {2}",
+            "--preview-window",
+            "right:60%:wrap",
+            "--height",
+            "80%",
+            "--layout",
+            "reverse",
             "--border",
         ])
         .stdin(Stdio::piped())
@@ -96,11 +100,13 @@ pub fn pick_task(graph: &TaskGraph, filter: TaskFilter) -> Result<String, AppErr
 
     // Write task lines to fzf's stdin
     if let Some(mut stdin) = child.stdin.take() {
-        stdin.write_all(input.as_bytes())
+        stdin
+            .write_all(input.as_bytes())
             .with_context("failed to write to fzf stdin")?;
     }
 
-    let output = child.wait_with_output()
+    let output = child
+        .wait_with_output()
         .with_context("failed to wait for fzf")?;
 
     // Reset terminal state after fzf exits - fzf uses /dev/tty for input and may
@@ -117,9 +123,7 @@ pub fn pick_task(graph: &TaskGraph, filter: TaskFilter) -> Result<String, AppErr
         return Err(AppError::PickerCancelled);
     }
 
-    let selected_line = String::from_utf8_lossy(&output.stdout)
-        .trim()
-        .to_string();
+    let selected_line = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
     if selected_line.is_empty() {
         return Err(AppError::PickerCancelled);
@@ -181,7 +185,11 @@ pub fn resolve_ids(
 /// Multiple tasks are separated by their frontmatter delimiters.
 ///
 /// If `comment` is provided, it will be prepended as `# ` lines at the top of the file.
-pub fn make_temp_file(suffix: &str, tasks: &[Task], comment: Option<&str>) -> Result<PathBuf, AppError> {
+pub fn make_temp_file(
+    suffix: &str,
+    tasks: &[Task],
+    comment: Option<&str>,
+) -> Result<PathBuf, AppError> {
     let ulid = ulid::Ulid::new();
     let filename = format!("{}_{}.md", ulid, suffix);
     let path = std::env::temp_dir().join(filename);
@@ -242,8 +250,7 @@ pub fn parse_multi_task_content(content: &str, path: &Path) -> Result<Vec<Task>,
                 // Odd: start of new task's frontmatter
                 // Save previous task if we have one
                 if !current_task.is_empty() {
-                    let task = parse(&current_task)
-                        .with_path(&path.display().to_string())?;
+                    let task = parse(&current_task).with_path(&path.display().to_string())?;
                     tasks.push(task);
                     current_task = String::new();
                 }
@@ -261,8 +268,7 @@ pub fn parse_multi_task_content(content: &str, path: &Path) -> Result<Vec<Task>,
 
     // Don't forget the last task
     if !current_task.is_empty() && delimiter_count >= 2 {
-        let task = parse(&current_task)
-            .with_path(&path.display().to_string())?;
+        let task = parse(&current_task).with_path(&path.display().to_string())?;
         tasks.push(task);
     }
 
@@ -319,8 +325,7 @@ pub enum MultiEditMode {
 /// Build the instruction comment for multieditor temp files.
 pub fn build_multiedit_comment(mode: MultiEditMode) -> String {
     match mode {
-        MultiEditMode::Create => {
-            r#"Create tasks below. Each task starts with --- and ends with ---
+        MultiEditMode::Create => r#"Create tasks below. Each task starts with --- and ends with ---
 Tasks without an id: field will get an auto-generated ID.
 
 Example:
@@ -330,16 +335,15 @@ title: My Task Title
 after:
   - dependency-task
 ---
-Task description here."#.to_string()
-        }
-        MultiEditMode::Edit => {
-            r#"Edit tasks below. Each task starts with --- and ends with ---
+Task description here."#
+            .to_string(),
+        MultiEditMode::Edit => r#"Edit tasks below. Each task starts with --- and ends with ---
 - Change any field to update
 - To rename: add new_id: new-name (keeps references)
 - Delete a task block to delete it
 - Add new task blocks to create new tasks
-- Tasks without an id: field will get an auto-generated ID"#.to_string()
-        }
+- Tasks without an id: field will get an auto-generated ID"#
+            .to_string(),
         MultiEditMode::CreateWithType(task_type) => {
             let type_str = match task_type {
                 crate::TaskType::Task => "task",
@@ -357,7 +361,10 @@ title: My {} Title
 type: {}
 ---
 Description here."#,
-                type_str, type_str, type_str.to_uppercase(), type_str
+                type_str,
+                type_str,
+                type_str.to_uppercase(),
+                type_str
             )
         }
     }
@@ -515,9 +522,15 @@ Description here
         let found_names: Vec<_> = found.iter().filter_map(|p| p.file_name()).collect();
 
         // file3 (01C...) should come before file2 (01B...) which comes before file1 (01A...)
-        let pos1 = found_names.iter().position(|n| n.to_str().unwrap().contains("01ARZ"));
-        let pos2 = found_names.iter().position(|n| n.to_str().unwrap().contains("01BRZ"));
-        let pos3 = found_names.iter().position(|n| n.to_str().unwrap().contains("01CRZ"));
+        let pos1 = found_names
+            .iter()
+            .position(|n| n.to_str().unwrap().contains("01ARZ"));
+        let pos2 = found_names
+            .iter()
+            .position(|n| n.to_str().unwrap().contains("01BRZ"));
+        let pos3 = found_names
+            .iter()
+            .position(|n| n.to_str().unwrap().contains("01CRZ"));
 
         assert!(pos3 < pos2);
         assert!(pos2 < pos1);

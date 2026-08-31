@@ -1,8 +1,8 @@
 //! Ready command - shows tasks ready to work on.
 
-use crate::context::graph::available_tasks;
-use crate::render::{task_marker_for_state, DisplayState, TaskDisplayView};
 use crate::MontContext;
+use crate::context::graph::available_tasks;
+use crate::render::{DisplayState, TaskDisplayView, task_marker_for_state};
 
 /// Max title length for ready output.
 const READY_MAX_TITLE_LEN: usize = 120;
@@ -35,16 +35,16 @@ pub fn ready(ctx: &MontContext) {
         .into_iter()
         .partition(|v| v.state == DisplayState::InProgress);
 
-    let (mut regular, mut jots): (Vec<_>, Vec<_>) = rest
-        .into_iter()
-        .partition(|v| v.state != DisplayState::Jot);
+    let (mut regular, mut jots): (Vec<_>, Vec<_>) =
+        rest.into_iter().partition(|v| v.state != DisplayState::Jot);
 
     // Sort each group by id
     regular.sort_by(|a, b| a.id.cmp(&b.id));
     jots.sort_by(|a, b| a.id.cmp(&b.id));
 
     // Calculate max id length across all groups
-    let all_views: Vec<&TaskDisplayView> = in_progress.iter()
+    let all_views: Vec<&TaskDisplayView> = in_progress
+        .iter()
         .chain(regular.iter())
         .chain(jots.iter())
         .collect();

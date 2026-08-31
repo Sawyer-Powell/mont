@@ -9,15 +9,9 @@ pub enum ValidationError {
     #[error("task '{task_id}' references invalid before target '{before_id}'")]
     InvalidBefore { task_id: String, before_id: String },
     #[error("task '{task_id}' references invalid after dependency '{after_id}'")]
-    InvalidAfter {
-        task_id: String,
-        after_id: String,
-    },
+    InvalidAfter { task_id: String, after_id: String },
     #[error("task '{task_id}' has gate '{after_id}' as after dependency (use validations instead)")]
-    AfterIsGate {
-        task_id: String,
-        after_id: String,
-    },
+    AfterIsGate { task_id: String, after_id: String },
     #[error("task '{task_id}' references non-existent validation '{validation_id}'")]
     ValidationNotFound {
         task_id: String,
@@ -28,7 +22,9 @@ pub enum ValidationError {
         task_id: String,
         validation_id: String,
     },
-    #[error("task '{task_id}' references gate '{validation_id}' which has a before target (must be root gate)")]
+    #[error(
+        "task '{task_id}' references gate '{validation_id}' which has a before target (must be root gate)"
+    )]
     ValidationNotRootGate {
         task_id: String,
         validation_id: String,
@@ -149,7 +145,10 @@ fn dfs_cycle<V: GraphView>(view: &V, task_id: &str, colors: &mut HashMap<String,
 
     let neighbors = task.before.iter().chain(task.after.iter());
     for neighbor_id in neighbors {
-        let neighbor_color = colors.get(neighbor_id.as_str()).copied().unwrap_or(Color::Black);
+        let neighbor_color = colors
+            .get(neighbor_id.as_str())
+            .copied()
+            .unwrap_or(Color::Black);
 
         match neighbor_color {
             Color::Gray => return true,
@@ -170,7 +169,7 @@ fn dfs_cycle<V: GraphView>(view: &V, task_id: &str, colors: &mut HashMap<String,
 mod tests {
     use super::*;
     use crate::context::graph::TaskGraph;
-    use crate::context::task::{TaskType, GateItem, GateStatus};
+    use crate::context::task::{GateItem, GateStatus, TaskType};
 
     fn make_task(id: &str) -> Task {
         Task {

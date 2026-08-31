@@ -53,10 +53,8 @@ pub fn compute_diff(original: &[Task], edited: &[Task]) -> MultiEditDiff {
     let mut diff = MultiEditDiff::default();
 
     // Build lookup of original tasks by ID
-    let original_by_id: HashMap<&str, &Task> = original
-        .iter()
-        .map(|t| (t.id.as_str(), t))
-        .collect();
+    let original_by_id: HashMap<&str, &Task> =
+        original.iter().map(|t| (t.id.as_str(), t)).collect();
 
     // Track which original IDs we've seen in edited (either by id match or rename)
     let mut seen_original_ids: HashSet<&str> = HashSet::new();
@@ -87,7 +85,8 @@ pub fn compute_diff(original: &[Task], edited: &[Task]) -> MultiEditDiff {
             seen_original_ids.insert(&edited_task.id);
 
             if task_content_differs(original_task, edited_task) {
-                diff.updates.push((original_task.id.clone(), edited_task.clone()));
+                diff.updates
+                    .push((original_task.id.clone(), edited_task.clone()));
             }
         } else {
             // New ID - this is an insert
@@ -180,11 +179,12 @@ pub fn apply_diff(ctx: &MontContext, diff: MultiEditDiff) -> Result<ApplyResult,
 
         // Generate ID if empty
         if task.id.is_empty() {
-            task.id = ctx.generate_id(&graph)
-                .map_err(AppError::from)?;
+            task.id = ctx.generate_id(&graph).map_err(AppError::from)?;
         }
 
-        result.updated.push((original_id.clone(), task.id.clone(), id_changed));
+        result
+            .updated
+            .push((original_id.clone(), task.id.clone(), id_changed));
         txn.update(&original_id, task);
     }
 
@@ -192,8 +192,7 @@ pub fn apply_diff(ctx: &MontContext, diff: MultiEditDiff) -> Result<ApplyResult,
     for mut task in diff.inserts {
         // Generate ID if empty
         if task.id.is_empty() {
-            task.id = ctx.generate_id(&graph)
-                .map_err(AppError::from)?;
+            task.id = ctx.generate_id(&graph).map_err(AppError::from)?;
         }
 
         result.created.push(task.id.clone());
@@ -284,10 +283,7 @@ mod tests {
     #[test]
     fn test_compute_diff_insert() {
         let original = vec![make_task("task1", "Task 1")];
-        let edited = vec![
-            make_task("task1", "Task 1"),
-            make_task("task2", "Task 2"),
-        ];
+        let edited = vec![make_task("task1", "Task 1"), make_task("task2", "Task 2")];
 
         let diff = compute_diff(&original, &edited);
         assert!(diff.updates.is_empty());
@@ -298,10 +294,7 @@ mod tests {
 
     #[test]
     fn test_compute_diff_delete() {
-        let original = vec![
-            make_task("task1", "Task 1"),
-            make_task("task2", "Task 2"),
-        ];
+        let original = vec![make_task("task1", "Task 1"), make_task("task2", "Task 2")];
         let edited = vec![make_task("task1", "Task 1")];
 
         let diff = compute_diff(&original, &edited);
@@ -320,9 +313,9 @@ mod tests {
             make_task("task3", "Task 3"),
         ];
         let edited = vec![
-            make_task("task1", "Updated Task 1"),  // ID matches: update
-            make_task("renamed", "Task 2"),        // new ID: insert (task2 deleted)
-            make_task("task4", "Task 4"),          // new ID: insert (task3 deleted)
+            make_task("task1", "Updated Task 1"), // ID matches: update
+            make_task("renamed", "Task 2"),       // new ID: insert (task2 deleted)
+            make_task("task4", "Task 4"),         // new ID: insert (task3 deleted)
         ];
 
         let diff = compute_diff(&original, &edited);
@@ -348,9 +341,9 @@ mod tests {
         ];
         // Keep task1 and task2, remove task3
         let edited = vec![
-            make_task("task1", "Task 1"),          // ID matches: no change
-            make_task("task2", "Task 2"),          // ID matches: no change
-            // task3 ID not present: deleted
+            make_task("task1", "Task 1"), // ID matches: no change
+            make_task("task2", "Task 2"), // ID matches: no change
+                                          // task3 ID not present: deleted
         ];
 
         let diff = compute_diff(&original, &edited);
@@ -368,12 +361,10 @@ mod tests {
 
     #[test]
     fn test_compute_diff_insert_only() {
-        let original = vec![
-            make_task("task1", "Task 1"),
-        ];
+        let original = vec![make_task("task1", "Task 1")];
         let edited = vec![
-            make_task("task1", "Task 1"),          // ID matches: no change
-            make_task("task2", "Task 2"),          // new ID: insert
+            make_task("task1", "Task 1"), // ID matches: no change
+            make_task("task2", "Task 2"), // new ID: insert
         ];
 
         let diff = compute_diff(&original, &edited);
@@ -387,10 +378,7 @@ mod tests {
     #[test]
     fn test_compute_diff_empty_to_tasks() {
         let original: Vec<Task> = vec![];
-        let edited = vec![
-            make_task("task1", "Task 1"),
-            make_task("task2", "Task 2"),
-        ];
+        let edited = vec![make_task("task1", "Task 1"), make_task("task2", "Task 2")];
 
         let diff = compute_diff(&original, &edited);
         assert!(diff.updates.is_empty());
@@ -400,10 +388,7 @@ mod tests {
 
     #[test]
     fn test_compute_diff_tasks_to_empty() {
-        let original = vec![
-            make_task("task1", "Task 1"),
-            make_task("task2", "Task 2"),
-        ];
+        let original = vec![make_task("task1", "Task 1"), make_task("task2", "Task 2")];
         let edited: Vec<Task> = vec![];
 
         let diff = compute_diff(&original, &edited);

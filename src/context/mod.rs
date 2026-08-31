@@ -20,7 +20,7 @@ use std::sync::RwLock;
 // Re-export public types
 pub use graph::{GraphReadError, TaskGraph};
 pub use settings::{GlobalConfig, SettingsError};
-pub use task::{parse, GateItem, GateStatus, ParseError, Priority, Status, Task, TaskType};
+pub use task::{GateItem, GateStatus, ParseError, Priority, Status, Task, TaskType, parse};
 pub use transaction::{Op, Transaction};
 pub use validations::ValidationError;
 pub use view::{GraphView, ValidationView};
@@ -146,7 +146,11 @@ impl MontContext {
         config.validate(&graph).map_err(LoadError::Settings)?;
 
         Ok(Self {
-            inner: RwLock::new(ContextInner { graph, config, version: 0 }),
+            inner: RwLock::new(ContextInner {
+                graph,
+                config,
+                version: 0,
+            }),
             tasks_dir,
         })
     }

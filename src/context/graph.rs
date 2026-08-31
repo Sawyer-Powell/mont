@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 use super::task::{ParseError, Task};
-use super::validations::{validate_view, ValidationError};
+use super::validations::{ValidationError, validate_view};
 
 /// Error collecting multiple issues found when reading a task graph.
 ///
@@ -21,7 +21,9 @@ impl GraphReadError {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.io_errors.is_empty() && self.parse_errors.is_empty() && self.validation_errors.is_empty()
+        self.io_errors.is_empty()
+            && self.parse_errors.is_empty()
+            && self.validation_errors.is_empty()
     }
 
     pub fn add_io_error(&mut self, path: PathBuf, error: std::io::Error) {
@@ -477,16 +479,21 @@ impl PartialEq for TaskGraph {
 impl FromIterator<Task> for TaskGraph {
     fn from_iter<I: IntoIterator<Item = Task>>(iter: I) -> Self {
         let tasks = iter.into_iter().map(|t| (t.id.clone(), t)).collect();
-        Self { tasks, dirty: HashSet::new() }
+        Self {
+            tasks,
+            dirty: HashSet::new(),
+        }
     }
 }
 
 impl FromIterator<(String, Task)> for TaskGraph {
     fn from_iter<I: IntoIterator<Item = (String, Task)>>(iter: I) -> Self {
-        Self { tasks: iter.into_iter().collect(), dirty: HashSet::new() }
+        Self {
+            tasks: iter.into_iter().collect(),
+            dirty: HashSet::new(),
+        }
     }
 }
-
 
 // ============================================================================
 // Graph Query Operations
@@ -568,8 +575,8 @@ pub fn form_graph(tasks: Vec<Task>) -> Result<TaskGraph, ValidationError> {
 
 #[cfg(test)]
 mod tests {
+    use super::super::task::{GateItem, GateStatus, TaskType};
     use super::*;
-    use super::super::task::{TaskType, GateItem, GateStatus};
 
     fn make_task(id: &str) -> Task {
         Task {

@@ -1,7 +1,7 @@
 //! Stop command - clear in-progress status from a task.
 
-use crate::error_fmt::AppError;
 use crate::MontContext;
+use crate::error_fmt::AppError;
 
 /// Stop working on a task, making it ready for work again.
 ///

@@ -5,7 +5,9 @@ use std::collections::HashSet;
 use owo_colors::OwoColorize;
 
 use crate::jj;
-use crate::render::{format_task_line, print_gates_section, task_marker_for_state, TaskDisplayView};
+use crate::render::{
+    TaskDisplayView, format_task_line, print_gates_section, task_marker_for_state,
+};
 use crate::{MontContext, Task, TaskGraph, TaskType};
 
 /// Show status of in-progress tasks with full details, up-next tasks, and info.
@@ -19,10 +21,7 @@ pub fn status(ctx: &MontContext) {
     }
 
     // Find all in-progress tasks
-    let in_progress: Vec<_> = graph
-        .values()
-        .filter(|t| t.is_in_progress())
-        .collect();
+    let in_progress: Vec<_> = graph.values().filter(|t| t.is_in_progress()).collect();
 
     // Track if we've printed a section (for spacing)
     let mut has_printed_section = false;
@@ -61,18 +60,30 @@ pub fn status(ctx: &MontContext) {
     }
     println!("{}", "Info".bold());
     let ready_count = count_ready_tasks(&graph);
-    let jot_count = graph.values().filter(|t| t.is_jot() && !t.is_complete()).count();
+    let jot_count = graph
+        .values()
+        .filter(|t| t.is_jot() && !t.is_complete())
+        .count();
     let stopped_count = graph.values().filter(|t| t.is_stopped()).count();
     let gate_count = graph.values().filter(|t| t.is_gate()).count();
 
     let completed_count = graph.values().filter(|t| t.is_complete()).count();
 
     // Left-align numbers in a 4-char field
-    println!("  {:<4} tasks ready for work", ready_count.to_string().cyan());
-    println!("  {:<4} jots needing distillation", jot_count.to_string().yellow());
+    println!(
+        "  {:<4} tasks ready for work",
+        ready_count.to_string().cyan()
+    );
+    println!(
+        "  {:<4} jots needing distillation",
+        jot_count.to_string().yellow()
+    );
     println!("  {:<4} stopped", stopped_count.to_string().yellow());
     println!("  {:<4} gates", gate_count.to_string().purple());
-    println!("  {:<4} completed", completed_count.to_string().bright_black());
+    println!(
+        "  {:<4} completed",
+        completed_count.to_string().bright_black()
+    );
 
     // Working Copy section (jj status) - skip if jj is disabled
     if config.jj.enabled
@@ -107,7 +118,11 @@ fn print_task_details(ctx: &MontContext, task: &Task) {
     }
 
     // Status
-    println!("  {:LABEL_WIDTH$} {}", "Status".bold(), view.status_colored());
+    println!(
+        "  {:LABEL_WIDTH$} {}",
+        "Status".bold(),
+        view.status_colored()
+    );
 
     // Type
     let type_value = match task.task_type {

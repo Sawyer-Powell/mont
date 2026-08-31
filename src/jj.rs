@@ -25,9 +25,7 @@ pub struct CommitResult {
 
 /// Gets the diff for the current working copy as a PatchSet.
 pub fn working_copy_diff() -> Result<PatchSet, JJError> {
-    let output = Command::new("jj")
-        .args(["diff", "--git"])
-        .output()?;
+    let output = Command::new("jj").args(["diff", "--git"]).output()?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -78,9 +76,7 @@ pub fn commit_interactive() -> Result<CommitResult, JJError> {
 
 /// Checks if the current working copy revision is empty (has no changes).
 pub fn is_working_copy_empty() -> Result<bool, JJError> {
-    let output = Command::new("jj")
-        .args(["diff"])
-        .output()?;
+    let output = Command::new("jj").args(["diff"]).output()?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -159,9 +155,7 @@ pub fn commit(message: &str, paths: &[&Path]) -> Result<CommitResult, JJError> {
 
 /// Gets the output of `jj status`.
 pub fn status() -> Result<String, JJError> {
-    let output = Command::new("jj")
-        .args(["status"])
-        .output()?;
+    let output = Command::new("jj").args(["status"]).output()?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();

@@ -4,9 +4,9 @@ use std::io::Write;
 
 use owo_colors::OwoColorize;
 
+use crate::MontContext;
 use crate::error_fmt::{AppError, IoResultExt};
 use crate::jj;
-use crate::MontContext;
 
 /// Delete a task and remove all references to it from other tasks.
 pub fn delete(ctx: &MontContext, id: &str, force: bool) -> Result<(), AppError> {
@@ -41,7 +41,9 @@ pub fn delete(ctx: &MontContext, id: &str, force: bool) -> Result<(), AppError> 
 
         println!();
         print!("Continue? [y/N] ");
-        std::io::stdout().flush().with_context("failed to flush stdout")?;
+        std::io::stdout()
+            .flush()
+            .with_context("failed to flush stdout")?;
 
         let mut input = String::new();
         std::io::stdin()

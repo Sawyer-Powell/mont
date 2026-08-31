@@ -4,7 +4,7 @@ use owo_colors::OwoColorize;
 use renderdag::{Ancestor, GraphRowRenderer, Renderer};
 
 use crate::context::graph;
-use crate::{Task, TaskGraph, TaskType, GateStatus};
+use crate::{GateStatus, Task, TaskGraph, TaskType};
 
 type BoxRenderer = renderdag::BoxDrawingRenderer<String, GraphRowRenderer<String>>;
 
@@ -51,7 +51,8 @@ impl TaskDisplayView {
     /// - `graph` is used to determine if the task is available (dependencies complete)
     /// - `default_gates` is used to calculate gate progress for in-progress tasks
     pub fn from_task(task: &Task, graph: &TaskGraph, default_gates: &[String]) -> Self {
-        let is_available = !task.is_complete() && !task.is_gate() && graph::is_available(task, graph);
+        let is_available =
+            !task.is_complete() && !task.is_gate() && graph::is_available(task, graph);
 
         let state = if task.is_complete() {
             DisplayState::Complete
@@ -199,8 +200,14 @@ impl TaskDisplayView {
 /// Format a gate status as (icon, colored_gate_id).
 pub fn format_gate_status(gate_id: &str, status: GateStatus) -> (String, String) {
     match status {
-        GateStatus::Passed => ("✓".bright_green().to_string(), gate_id.bright_black().to_string()),
-        GateStatus::Skipped => ("○".bright_black().to_string(), gate_id.bright_black().to_string()),
+        GateStatus::Passed => (
+            "✓".bright_green().to_string(),
+            gate_id.bright_black().to_string(),
+        ),
+        GateStatus::Skipped => (
+            "○".bright_black().to_string(),
+            gate_id.bright_black().to_string(),
+        ),
         GateStatus::Pending => ("•".red().to_string(), gate_id.white().to_string()),
         GateStatus::Failed => ("✗".red().to_string(), gate_id.red().to_string()),
     }
@@ -235,7 +242,13 @@ pub fn print_gates_section(task: &Task, all_gate_ids: &[String], indent: &str, l
             .copied()
             .unwrap_or(GateStatus::Pending);
         let (icon, gate_display) = format_gate_status(gate_id, status);
-        println!("{}{:label_width$} {} {}", indent, label.bold(), icon, gate_display);
+        println!(
+            "{}{:label_width$} {} {}",
+            indent,
+            label.bold(),
+            icon,
+            gate_display
+        );
     }
 }
 
@@ -261,7 +274,10 @@ fn calculate_gate_progress(task: &Task, default_gates: &[String]) -> GateProgres
 
     let total = all_gates.len();
     if total == 0 {
-        return GateProgress { passed: 0, total: 0 };
+        return GateProgress {
+            passed: 0,
+            total: 0,
+        };
     }
 
     // Count passed or skipped from task's validations
@@ -277,7 +293,11 @@ fn calculate_gate_progress(task: &Task, default_gates: &[String]) -> GateProgres
     GateProgress { passed, total }
 }
 
-pub fn render_task_graph(graph: &TaskGraph, default_gates: &[String], show_completed: bool) -> String {
+pub fn render_task_graph(
+    graph: &TaskGraph,
+    default_gates: &[String],
+    show_completed: bool,
+) -> String {
     if graph.is_empty() {
         return String::new();
     }
@@ -397,7 +417,10 @@ fn render_component(graph: &TaskGraph, default_gates: &[String]) -> String {
     output
 }
 
-fn build_ancestors(task_id: &str, effective_successors: &HashMap<&str, Vec<&str>>) -> Vec<Ancestor<String>> {
+fn build_ancestors(
+    task_id: &str,
+    effective_successors: &HashMap<&str, Vec<&str>>,
+) -> Vec<Ancestor<String>> {
     effective_successors
         .get(task_id)
         .map(|succs| {

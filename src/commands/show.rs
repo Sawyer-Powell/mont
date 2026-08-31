@@ -5,7 +5,7 @@ use std::collections::HashSet;
 use owo_colors::OwoColorize;
 
 use crate::error_fmt::AppError;
-use crate::render::{print_gates_section, TaskDisplayView};
+use crate::render::{TaskDisplayView, print_gates_section};
 use crate::{MontContext, Task, TaskType};
 
 /// Show details for a single task, or multiple tasks if group mode is enabled.

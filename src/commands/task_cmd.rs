@@ -6,13 +6,13 @@ use std::path::PathBuf;
 use owo_colors::OwoColorize;
 
 use super::shared::{
-    build_multiedit_comment, find_most_recent_temp_file, make_temp_file, MultiEditMode,
-    parse_multi_task_content, remove_temp_file, resolve_ids, TaskFilter,
+    MultiEditMode, TaskFilter, build_multiedit_comment, find_most_recent_temp_file, make_temp_file,
+    parse_multi_task_content, remove_temp_file, resolve_ids,
 };
 use crate::error_fmt::AppError;
 use crate::jj;
-use crate::multieditor::{apply_diff, compute_diff, fill_empty_ids, ApplyResult};
-use crate::{resolve_editor, MontContext, Priority, Task, TaskType};
+use crate::multieditor::{ApplyResult, apply_diff, compute_diff, fill_empty_ids};
+use crate::{MontContext, Priority, Task, TaskType, resolve_editor};
 
 /// Arguments for the unified task command.
 pub struct TaskArgs {
@@ -43,10 +43,12 @@ pub struct TaskArgs {
 /// Read all content from stdin.
 fn read_stdin() -> Result<String, AppError> {
     let mut content = String::new();
-    io::stdin().read_to_string(&mut content).map_err(|e| AppError::Io {
-        context: "failed to read from stdin".to_string(),
-        source: e,
-    })?;
+    io::stdin()
+        .read_to_string(&mut content)
+        .map_err(|e| AppError::Io {
+            context: "failed to read from stdin".to_string(),
+            source: e,
+        })?;
     Ok(content)
 }
 
@@ -61,7 +63,11 @@ fn parse_original_ids_from_file(path: &PathBuf) -> Vec<String> {
     };
     for line in content.lines() {
         if let Some(rest) = line.strip_prefix("# ORIGINAL_IDS: ") {
-            return rest.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+            return rest
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
         }
     }
     vec![]
@@ -83,8 +89,9 @@ fn resume_from_temp_file(
     let temp_path = if let Some(path) = resume_path {
         path
     } else {
-        find_most_recent_temp_file(suffix)
-            .ok_or_else(|| AppError::TempFileNotFound(format!("No recent {} temp file found", suffix)))?
+        find_most_recent_temp_file(suffix).ok_or_else(|| {
+            AppError::TempFileNotFound(format!("No recent {} temp file found", suffix))
+        })?
     };
 
     if !temp_path.exists() {
@@ -101,7 +108,14 @@ fn resume_from_temp_file(
             .collect()
     };
 
-    run_editor_workflow(ctx, &temp_path, &[], &graph_tasks, editor_name, command_name)
+    run_editor_workflow(
+        ctx,
+        &temp_path,
+        &[],
+        &graph_tasks,
+        editor_name,
+        command_name,
+    )
 }
 
 /// Run the unified task command.
@@ -172,22 +186,28 @@ pub fn task(ctx: &MontContext, args: TaskArgs) -> Result<(), AppError> {
 
 /// Resume editing from a temp file.
 fn resume_mode(ctx: &MontContext, args: TaskArgs) -> Result<(), AppError> {
-    resume_from_temp_file(ctx, "task", args.resume_path, args.editor.as_deref(), "task")
+    resume_from_temp_file(
+        ctx,
+        "task",
+        args.resume_path,
+        args.editor.as_deref(),
+        "task",
+    )
 }
 
 /// Create tasks from direct content (skip editor).
 fn content_mode(ctx: &MontContext, content: &str, ids: &[String]) -> Result<(), AppError> {
     let temp_path = std::env::temp_dir().join("content_mode.md");
-    std::fs::write(&temp_path, content)
-        .map_err(|e| AppError::Io {
-            context: "failed to write content".to_string(),
-            source: e,
-        })?;
+    std::fs::write(&temp_path, content).map_err(|e| AppError::Io {
+        context: "failed to write content".to_string(),
+        source: e,
+    })?;
 
     let edited = parse_multi_task_content(content, &temp_path)?;
 
     // Get original tasks if editing
-    let original: Vec<Task> = ids.iter()
+    let original: Vec<Task> = ids
+        .iter()
         .filter_map(|id| ctx.graph().get(id).cloned())
         .collect();
 
@@ -246,7 +266,8 @@ fn patch_mode(ctx: &MontContext, ids: &[String], patch_yaml: &str) -> Result<(),
 
     // Get the task
     let graph = ctx.graph();
-    let mut task = graph.get(original_id)
+    let mut task = graph
+        .get(original_id)
         .ok_or_else(|| AppError::TaskNotFound {
             task_id: original_id.clone(),
             tasks_dir: ctx.tasks_dir().display().to_string(),
@@ -293,10 +314,13 @@ fn patch_mode(ctx: &MontContext, ids: &[String], patch_yaml: &str) -> Result<(),
     }
     if let Some(gates) = patch.gates {
         use crate::{GateItem, GateStatus};
-        task.gates = gates.into_iter().map(|g| GateItem {
-            id: g,
-            status: GateStatus::Pending,
-        }).collect();
+        task.gates = gates
+            .into_iter()
+            .map(|g| GateItem {
+                id: g,
+                status: GateStatus::Pending,
+            })
+            .collect();
     }
     if let Some(status) = patch.status {
         use crate::Status;
@@ -316,7 +340,12 @@ fn patch_mode(ctx: &MontContext, ids: &[String], patch_yaml: &str) -> Result<(),
             "task" => TaskType::Task,
             "jot" => TaskType::Jot,
             "gate" => TaskType::Gate,
-            _ => return Err(AppError::InvalidArgs(format!("invalid type: {}", task_type))),
+            _ => {
+                return Err(AppError::InvalidArgs(format!(
+                    "invalid type: {}",
+                    task_type
+                )));
+            }
         };
     }
     if task.is_gate() && task.priority.is_some() {
@@ -363,7 +392,8 @@ fn append_mode(ctx: &MontContext, ids: &[String], text: &str) -> Result<(), AppE
 
     // Get the task
     let graph = ctx.graph();
-    let mut task = graph.get(id)
+    let mut task = graph
+        .get(id)
         .ok_or_else(|| AppError::TaskNotFound {
             task_id: id.clone(),
             tasks_dir: ctx.tasks_dir().display().to_string(),
@@ -414,11 +444,7 @@ fn tasks_for_ids(ctx: &MontContext, ids: &[String]) -> Result<Vec<Task>, AppErro
 }
 
 /// Apply a priority to every selected task or jot atomically.
-fn priority_mode(
-    ctx: &MontContext,
-    ids: &[String],
-    priority: Priority,
-) -> Result<(), AppError> {
+fn priority_mode(ctx: &MontContext, ids: &[String], priority: Priority) -> Result<(), AppError> {
     let original_tasks = tasks_for_ids(ctx, ids)?;
     if let Some(gate) = original_tasks.iter().find(|task| task.is_gate()) {
         return Err(AppError::InvalidArgs(format!(
@@ -466,7 +492,14 @@ fn create_mode(
     let temp_path = make_temp_file("task", std::slice::from_ref(&starter), Some(&comment))?;
 
     // template = [starter] (for no-changes check), graph = [] (all inserts)
-    run_editor_workflow(ctx, &temp_path, std::slice::from_ref(&starter), &[], editor_name, "task")
+    run_editor_workflow(
+        ctx,
+        &temp_path,
+        std::slice::from_ref(&starter),
+        &[],
+        editor_name,
+        "task",
+    )
 }
 
 /// Build the record shown when `mont task` is invoked without IDs.
@@ -481,60 +514,50 @@ fn new_task_template(
     }
 
     Ok(match task_type {
-        Some(TaskType::Gate) => {
-            Task {
-                id: "new-gate".to_string(),
-                new_id: None,
-                title: Some("New Gate".to_string()),
-                description: "Description here.".to_string(),
-                before: vec![],
-                after: vec![],
-                gates: vec![],
-                task_type: TaskType::Gate,
-                status: None,
-                priority,
-                deleted: false,
-            }
-        }
-        Some(TaskType::Jot) => {
-            Task {
-                id: "new-jot".to_string(),
-                new_id: None,
-                title: Some("New Jot".to_string()),
-                description: "Quick idea here.".to_string(),
-                before: vec![],
-                after: vec![],
-                gates: vec![],
-                task_type: TaskType::Jot,
-                status: None,
-                priority,
-                deleted: false,
-            }
-        }
-        _ => {
-            Task {
-                id: "new-task".to_string(),
-                new_id: None,
-                title: Some("New Task".to_string()),
-                description: "Description here.".to_string(),
-                before: vec![],
-                after: vec![],
-                gates: vec![],
-                task_type: TaskType::Task,
-                status: None,
-                priority,
-                deleted: false,
-            }
-        }
+        Some(TaskType::Gate) => Task {
+            id: "new-gate".to_string(),
+            new_id: None,
+            title: Some("New Gate".to_string()),
+            description: "Description here.".to_string(),
+            before: vec![],
+            after: vec![],
+            gates: vec![],
+            task_type: TaskType::Gate,
+            status: None,
+            priority,
+            deleted: false,
+        },
+        Some(TaskType::Jot) => Task {
+            id: "new-jot".to_string(),
+            new_id: None,
+            title: Some("New Jot".to_string()),
+            description: "Quick idea here.".to_string(),
+            before: vec![],
+            after: vec![],
+            gates: vec![],
+            task_type: TaskType::Jot,
+            status: None,
+            priority,
+            deleted: false,
+        },
+        _ => Task {
+            id: "new-task".to_string(),
+            new_id: None,
+            title: Some("New Task".to_string()),
+            description: "Description here.".to_string(),
+            before: vec![],
+            after: vec![],
+            gates: vec![],
+            task_type: TaskType::Task,
+            status: None,
+            priority,
+            deleted: false,
+        },
     })
 }
 
 /// Edit existing tasks.
-fn edit_mode(
-    ctx: &MontContext,
-    ids: &[String],
-    editor_name: Option<&str>,
-) -> Result<(), AppError> {
+fn edit_mode(ctx: &MontContext, ids: &[String], editor_name: Option<&str>) -> Result<(), AppError> {
     let original_tasks = tasks_for_ids(ctx, ids)?;
 
     // Build comment with ORIGINAL_IDS header so resume can recover context
@@ -544,7 +567,14 @@ fn edit_mode(
     let temp_path = make_temp_file("task", &original_tasks, Some(&comment))?;
 
     // Both template and graph are the same for edit mode
-    run_editor_workflow(ctx, &temp_path, &original_tasks, &original_tasks, editor_name, "task")
+    run_editor_workflow(
+        ctx,
+        &temp_path,
+        &original_tasks,
+        &original_tasks,
+        editor_name,
+        "task",
+    )
 }
 
 /// Core editor workflow: open editor, parse result, compute diff, confirm, apply.
@@ -639,14 +669,12 @@ fn run_editor_workflow(
             remove_temp_file(temp_path)?;
             Ok(())
         }
-        Err(e) => {
-            Err(AppError::TempValidationFailed {
-                error: Box::new(e),
-                temp_path: temp_path_str,
-                editor_name: editor_name.map(String::from),
-                command_name: command_name.to_string(),
-            })
-        }
+        Err(e) => Err(AppError::TempValidationFailed {
+            error: Box::new(e),
+            temp_path: temp_path_str,
+            editor_name: editor_name.map(String::from),
+            command_name: command_name.to_string(),
+        }),
     }
 }
 
@@ -684,24 +712,29 @@ fn print_diff_summary(
     // Deleted tasks
     if !diff.deletes.is_empty() {
         // Get titles for deleted tasks
-        let deleted_info: Vec<String> = diff.deletes.iter().map(|id| {
-            if let Some(task) = original.iter().find(|t| &t.id == id) {
-                if let Some(title) = &task.title {
-                    format!("{} ({})", id, title)
+        let deleted_info: Vec<String> = diff
+            .deletes
+            .iter()
+            .map(|id| {
+                if let Some(task) = original.iter().find(|t| &t.id == id) {
+                    if let Some(title) = &task.title {
+                        format!("{} ({})", id, title)
+                    } else {
+                        id.clone()
+                    }
                 } else {
                     id.clone()
                 }
-            } else {
-                id.clone()
-            }
-        }).collect();
+            })
+            .collect();
         println!("  {}: {}", "deleted".bright_red(), deleted_info.join(", "));
     }
 
     // Warning when creates == deletes and types match (potential forgotten rename)
     // Skip if types differ (e.g., distilling jot to task is intentional)
     if diff.inserts.len() == 1 && diff.deletes.len() == 1 {
-        let deleted_type = original.iter()
+        let deleted_type = original
+            .iter()
             .find(|t| t.id == diff.deletes[0])
             .map(|t| t.task_type);
         let inserted_type = Some(diff.inserts[0].task_type);
@@ -727,10 +760,12 @@ fn confirm_changes() -> Result<bool, AppError> {
     })?;
 
     let mut input = String::new();
-    io::stdin().read_line(&mut input).map_err(|e| AppError::Io {
-        context: "failed to read input".to_string(),
-        source: e,
-    })?;
+    io::stdin()
+        .read_line(&mut input)
+        .map_err(|e| AppError::Io {
+            context: "failed to read input".to_string(),
+            source: e,
+        })?;
 
     let input = input.trim().to_lowercase();
     Ok(input == "y" || input == "yes")
@@ -740,7 +775,10 @@ fn confirm_changes() -> Result<bool, AppError> {
 fn print_result(ctx: &MontContext, result: &ApplyResult) {
     for id in &result.created {
         let file_path = ctx.tasks_dir().join(format!("{}.md", id));
-        println!("created: {}", file_path.display().to_string().bright_green());
+        println!(
+            "created: {}",
+            file_path.display().to_string().bright_green()
+        );
     }
 
     for (original_id, new_id, id_changed) in &result.updated {
@@ -783,11 +821,7 @@ fn auto_commit(ctx: &MontContext, result: &ApplyResult) {
         }
         Ok(_) => {} // Nothing to commit (e.g., .tasks is gitignored)
         Err(e) => {
-            eprintln!(
-                "{}: failed to auto-commit: {}",
-                "warning".yellow(),
-                e
-            );
+            eprintln!("{}: failed to auto-commit: {}", "warning".yellow(), e);
         }
     }
 }
@@ -805,10 +839,14 @@ fn build_commit_message(result: &ApplyResult) -> String {
     }
 
     if !result.updated.is_empty() {
-        let renamed: Vec<_> = result.updated.iter()
+        let renamed: Vec<_> = result
+            .updated
+            .iter()
             .filter(|(_, _, changed)| *changed)
             .collect();
-        let updated: Vec<_> = result.updated.iter()
+        let updated: Vec<_> = result
+            .updated
+            .iter()
             .filter(|(_, _, changed)| !*changed)
             .collect();
 
@@ -885,7 +923,10 @@ pub fn jot(ctx: &MontContext, args: JotArgs) -> Result<(), AppError> {
         ctx.insert(jot)?;
 
         let file_path = ctx.tasks_dir().join(format!("{}.md", id));
-        println!("created: {}", file_path.display().to_string().bright_green());
+        println!(
+            "created: {}",
+            file_path.display().to_string().bright_green()
+        );
 
         // Auto-commit
         if ctx.config().jj.enabled {
@@ -922,7 +963,6 @@ pub struct DistillArgs {
     pub editor: Option<String>,
 }
 
-
 /// Distill a jot into concrete tasks.
 ///
 /// Opens editor with the jot commented out and space for new tasks.
@@ -933,8 +973,9 @@ pub fn distill(ctx: &MontContext, args: DistillArgs) -> Result<(), AppError> {
         let temp_path = if let Some(path) = args.resume_path {
             path
         } else {
-            find_most_recent_temp_file("distill")
-                .ok_or_else(|| AppError::TempFileNotFound("No recent distill temp file found".to_string()))?
+            find_most_recent_temp_file("distill").ok_or_else(|| {
+                AppError::TempFileNotFound("No recent distill temp file found".to_string())
+            })?
         };
 
         if !temp_path.exists() {
@@ -951,7 +992,14 @@ pub fn distill(ctx: &MontContext, args: DistillArgs) -> Result<(), AppError> {
                 .collect()
         };
 
-        return run_editor_workflow(ctx, &temp_path, &[], &graph_tasks, args.editor.as_deref(), "distill");
+        return run_editor_workflow(
+            ctx,
+            &temp_path,
+            &[],
+            &graph_tasks,
+            args.editor.as_deref(),
+            "distill",
+        );
     }
 
     // Stdin mode: read task definitions from stdin (LLM-friendly)
@@ -1013,7 +1061,14 @@ when you save and confirm."#,
 
     // template = [starter] (for no-changes check)
     // graph = [jot] (jot exists in graph and will be deleted when user makes changes)
-    run_editor_workflow(ctx, &temp_path, std::slice::from_ref(&starter), std::slice::from_ref(&jot), args.editor.as_deref(), "distill")
+    run_editor_workflow(
+        ctx,
+        &temp_path,
+        std::slice::from_ref(&starter),
+        std::slice::from_ref(&jot),
+        args.editor.as_deref(),
+        "distill",
+    )
 }
 
 /// Distill a jot using stdin content (LLM-friendly, skips editor).
@@ -1042,7 +1097,8 @@ fn distill_stdin_mode(ctx: &MontContext, jot_id: &str, content: &str) -> Result<
 
     if edited.is_empty() {
         return Err(AppError::CommandFailed(
-            "No tasks defined in stdin. Provide task definitions in frontmatter format.".to_string(),
+            "No tasks defined in stdin. Provide task definitions in frontmatter format."
+                .to_string(),
         ));
     }
 
@@ -1068,7 +1124,12 @@ fn distill_stdin_mode(ctx: &MontContext, jot_id: &str, content: &str) -> Result<
     }
     for (old_id, new_id, id_changed) in &result.updated {
         if *id_changed {
-            println!("  {}: {} -> {}", "renamed".blue(), old_id.bright_yellow(), new_id.cyan());
+            println!(
+                "  {}: {} -> {}",
+                "renamed".blue(),
+                old_id.bright_yellow(),
+                new_id.cyan()
+            );
         } else {
             println!("  {}: {}", "updated".yellow(), new_id.cyan());
         }
@@ -1101,10 +1162,12 @@ mod priority_tests {
 
     fn create_temp_context() -> (TempDir, MontContext) {
         let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
-        std::fs::write(temp_dir.path().join("config.yml"), "jj:\n  enabled: false\n")
-            .expect("failed to disable jj integration");
-        let ctx = MontContext::load(temp_dir.path().to_path_buf())
-            .expect("failed to load context");
+        std::fs::write(
+            temp_dir.path().join("config.yml"),
+            "jj:\n  enabled: false\n",
+        )
+        .expect("failed to disable jj integration");
+        let ctx = MontContext::load(temp_dir.path().to_path_buf()).expect("failed to load context");
         (temp_dir, ctx)
     }
 
@@ -1173,20 +1236,16 @@ mod priority_tests {
         let result = task(&ctx, task_args(&["task", "gate"], Some(Priority::High)));
 
         assert!(matches!(result, Err(AppError::InvalidArgs(_))));
-        assert_eq!(
-            ctx.graph().get("task").and_then(|task| task.priority),
-            None
-        );
+        assert_eq!(ctx.graph().get("task").and_then(|task| task.priority), None);
     }
 
     #[test]
     fn new_record_templates_seed_priority_and_omit_it_by_default() {
-        let task_template = new_task_template(None, Some(Priority::High))
-            .expect("failed to build task template");
+        let task_template =
+            new_task_template(None, Some(Priority::High)).expect("failed to build task template");
         let jot_template = new_task_template(Some(TaskType::Jot), Some(Priority::Crit))
             .expect("failed to build jot template");
-        let unset_template =
-            new_task_template(None, None).expect("failed to build unset template");
+        let unset_template = new_task_template(None, None).expect("failed to build unset template");
 
         assert_eq!(task_template.priority, Some(Priority::High));
         assert_eq!(jot_template.priority, Some(Priority::Crit));

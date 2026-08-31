@@ -597,9 +597,8 @@ Minimal task.
             assert!(parse(&task.to_markdown()).unwrap().priority.is_none());
 
             for (yaml_value, expected) in priorities {
-                let content = format!(
-                    "---\nid: priority-item\n{type_line}priority: {yaml_value}\n---\n"
-                );
+                let content =
+                    format!("---\nid: priority-item\n{type_line}priority: {yaml_value}\n---\n");
 
                 let task = parse(&content).unwrap();
                 assert_eq!(task.priority, Some(expected));
@@ -703,10 +702,7 @@ Implement login functionality.
         let task = parse(content).unwrap();
         assert_eq!(task.id, "implement-feature");
         assert_eq!(task.task_type, TaskType::Task);
-        assert_eq!(
-            task.title,
-            Some("Implement the login feature".to_string())
-        );
+        assert_eq!(task.title, Some("Implement the login feature".to_string()));
     }
 
     #[test]
@@ -1018,6 +1014,9 @@ Task description.
         assert!(markdown.contains(r#"title: "Task with \"quotes\" inside""#));
         // Roundtrip should work
         let parsed = parse(&markdown).unwrap();
-        assert_eq!(parsed.title, Some("Task with \"quotes\" inside".to_string()));
+        assert_eq!(
+            parsed.title,
+            Some("Task with \"quotes\" inside".to_string())
+        );
     }
 }

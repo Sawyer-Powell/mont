@@ -7,9 +7,9 @@ pub mod render;
 
 // Re-export commonly used types from context module for convenience
 pub use context::{
-    parse, GlobalConfig, GraphReadError, LoadError, MontContext, Op, ParseError, SettingsError,
-    Priority, Status, Task, TaskGraph, TaskType, Transaction, TransactionError, ValidationError,
-    GateItem, GateStatus,
+    GateItem, GateStatus, GlobalConfig, GraphReadError, LoadError, MontContext, Op, ParseError,
+    Priority, SettingsError, Status, Task, TaskGraph, TaskType, Transaction, TransactionError,
+    ValidationError, parse,
 };
 
 // Re-export graph functions for binary
@@ -58,9 +58,5 @@ pub fn resolve_editor(editor: Option<&str>, file: &Path) -> Result<Command, Edit
 
 /// Returns the default editor for the current OS.
 fn default_editor() -> &'static str {
-    if cfg!(windows) {
-        "notepad"
-    } else {
-        "nano"
-    }
+    if cfg!(windows) { "notepad" } else { "nano" }
 }

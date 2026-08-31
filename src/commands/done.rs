@@ -3,7 +3,7 @@
 use owo_colors::OwoColorize;
 
 use crate::error_fmt::AppError;
-use crate::{jj, GateStatus, MontContext, Status};
+use crate::{GateStatus, MontContext, Status, jj};
 
 /// Complete a task.
 ///

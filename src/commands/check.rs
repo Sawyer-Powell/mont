@@ -1,7 +1,7 @@
 //! Check command - validates the task graph.
 
-use crate::error_fmt::AppError;
 use crate::MontContext;
+use crate::error_fmt::AppError;
 
 /// Validate the task graph, optionally checking a specific task.
 pub fn check(ctx: &MontContext, id: Option<&str>) -> Result<(), AppError> {

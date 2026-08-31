@@ -88,9 +88,7 @@ impl TrackingState {
         }
 
         // Check if .tasks is in git's index
-        let output = Command::new("git")
-            .args(["ls-files", ".tasks"])
-            .output();
+        let output = Command::new("git").args(["ls-files", ".tasks"]).output();
 
         match output {
             Ok(out) => !out.stdout.is_empty(),
@@ -156,10 +154,7 @@ fn display_state(state: &TrackingState) {
 
     // .tasks directory
     if state.tasks_dir_exists {
-        println!(
-            "  {} .tasks directory exists",
-            "✓".green()
-        );
+        println!("  {} .tasks directory exists", "✓".green());
     } else {
         println!(
             "  {} .tasks directory does not exist (will be created)",
@@ -181,10 +176,7 @@ fn display_state(state: &TrackingState) {
     match current {
         TrackingPreference::Tracked => {
             if state.is_tracked_in_vcs() {
-                println!(
-                    "  {} .tasks is tracked in version control",
-                    "✓".green()
-                );
+                println!("  {} .tasks is tracked in version control", "✓".green());
             } else {
                 println!(
                     "  {} .tasks is not excluded (will be tracked)",
@@ -209,15 +201,9 @@ fn display_state(state: &TrackingState) {
     // Global exclude warning
     if state.in_global_exclude {
         println!();
-        println!(
-            "  {} .tasks is in your global git exclude",
-            "!".yellow()
-        );
+        println!("  {} .tasks is in your global git exclude", "!".yellow());
         if let Some(ref path) = state.global_exclude_path {
-            println!(
-                "    To change this, edit: {}",
-                path.cyan()
-            );
+            println!("    To change this, edit: {}", path.cyan());
         }
     }
 }
@@ -257,7 +243,9 @@ fn prompt_preference(state: &TrackingState) -> Result<TrackingPreference, AppErr
     };
 
     print!("Enter choice [1-3] (default: {}): ", default);
-    std::io::stdout().flush().with_context("failed to flush stdout")?;
+    std::io::stdout()
+        .flush()
+        .with_context("failed to flush stdout")?;
 
     let mut input = String::new();
     std::io::stdin()
@@ -281,10 +269,7 @@ fn prompt_preference(state: &TrackingState) -> Result<TrackingPreference, AppErr
 }
 
 /// Apply the tracking preference.
-fn apply_preference(
-    state: &TrackingState,
-    preference: TrackingPreference,
-) -> Result<(), AppError> {
+fn apply_preference(state: &TrackingState, preference: TrackingPreference) -> Result<(), AppError> {
     // Create .tasks directory if needed
     if !state.tasks_dir_exists {
         std::fs::create_dir(".tasks").with_context("failed to create .tasks directory")?;
@@ -295,8 +280,7 @@ fn apply_preference(
     let config_path = Path::new(".tasks/config.yml");
     if !config_path.exists() {
         let default_config = "# Mont configuration\n# See https://github.com/Sawyer-Powell/mont for options\n\njj:\n  enabled: true\n\ndefault_gates: []\n";
-        std::fs::write(config_path, default_config)
-            .with_context("failed to create config.yml")?;
+        std::fs::write(config_path, default_config).with_context("failed to create config.yml")?;
         println!("  {} Created .tasks/config.yml", "✓".green());
     }
 
@@ -322,7 +306,10 @@ fn apply_preference(
     // Add to new location (must happen before untracking for jj)
     match preference {
         TrackingPreference::Tracked => {
-            println!("  {} .tasks will be tracked in version control", "✓".green());
+            println!(
+                "  {} .tasks will be tracked in version control",
+                "✓".green()
+            );
             // Auto-commit .tasks changes
             commit_tasks_init()?;
         }
@@ -386,7 +373,10 @@ fn commit_tasks_init() -> Result<(), AppError> {
 
 /// Untrack .tasks from git/jj while keeping files on disk.
 fn untrack_tasks() -> Result<(), AppError> {
-    println!("  {} Removing .tasks from version control tracking...", "→".cyan());
+    println!(
+        "  {} Removing .tasks from version control tracking...",
+        "→".cyan()
+    );
 
     // First, try git rm --cached (for git index)
     let git_output = Command::new("git")
@@ -413,22 +403,35 @@ fn untrack_tasks() -> Result<(), AppError> {
 
     match jj_output {
         Ok(output) if output.status.success() => {
-            println!("  {} Removed .tasks from tracking (files preserved)", "✓".green());
+            println!(
+                "  {} Removed .tasks from tracking (files preserved)",
+                "✓".green()
+            );
         }
         Ok(output) => {
             // jj file untrack failed - might not be a jj repo or files not ignored yet
             let stderr = String::from_utf8_lossy(&output.stderr);
             // If jj isn't available or this isn't a jj repo, that's fine
             if !stderr.contains("not ignored") {
-                println!("  {} Removed .tasks from git index (files preserved)", "✓".green());
+                println!(
+                    "  {} Removed .tasks from git index (files preserved)",
+                    "✓".green()
+                );
             } else {
                 // Files not ignored - shouldn't happen since we add to ignore first
-                eprintln!("  {} Warning: jj untrack failed: {}", "!".yellow(), stderr.trim());
+                eprintln!(
+                    "  {} Warning: jj untrack failed: {}",
+                    "!".yellow(),
+                    stderr.trim()
+                );
             }
         }
         Err(_) => {
             // jj not available, that's fine - we already did git rm --cached
-            println!("  {} Removed .tasks from git index (files preserved)", "✓".green());
+            println!(
+                "  {} Removed .tasks from git index (files preserved)",
+                "✓".green()
+            );
         }
     }
 
@@ -463,7 +466,8 @@ fn remove_from_gitignore() -> Result<(), AppError> {
         return Ok(());
     }
 
-    let content = std::fs::read_to_string(gitignore_path).with_context("failed to read .gitignore")?;
+    let content =
+        std::fs::read_to_string(gitignore_path).with_context("failed to read .gitignore")?;
     let new_content: String = content
         .lines()
         .filter(|line| !contains_tasks_pattern(&format!("{}\n", line)))

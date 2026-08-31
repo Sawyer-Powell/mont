@@ -2,7 +2,7 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 use mont::commands;
-use mont::commands::shared::{pick_task, TaskFilter};
+use mont::commands::shared::{TaskFilter, pick_task};
 use mont::error_fmt::AppError;
 use mont::{Priority, TaskType};
 
@@ -320,7 +320,13 @@ fn run(cli: Cli) -> Result<(), AppError> {
                 editor,
             },
         ),
-        Commands::Distill { id, resume, resume_path, stdin, editor } => {
+        Commands::Distill {
+            id,
+            resume,
+            resume_path,
+            stdin,
+            editor,
+        } => {
             // Resume mode doesn't need an ID
             if resume || resume_path.is_some() {
                 return commands::distill(
@@ -367,7 +373,11 @@ fn run(cli: Cli) -> Result<(), AppError> {
             };
             commands::show(&ctx, &resolved_id, short, group)
         }
-        Commands::Unlock { id, passed, skipped } => {
+        Commands::Unlock {
+            id,
+            passed,
+            skipped,
+        } => {
             let resolved_id = match id {
                 Some(id) if id == "?" => pick_task(&ctx.graph(), TaskFilter::InProgress)?,
                 Some(id) => id,
@@ -639,8 +649,7 @@ title: Parent
         assert!(temp_dir.path().join("renamed-parent.md").exists());
 
         // Verify child's before reference was updated
-        let child_content =
-            std::fs::read_to_string(temp_dir.path().join("child-task.md")).unwrap();
+        let child_content = std::fs::read_to_string(temp_dir.path().join("child-task.md")).unwrap();
         assert!(child_content.contains("- renamed-parent"));
         assert!(!child_content.contains("- parent-task"));
     }

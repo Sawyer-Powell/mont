@@ -50,7 +50,10 @@ pub enum SettingsError {
     GateNotFound { gate_id: String },
 
     #[error("default gate '{gate_id}' is not a gate (type: {actual_type})")]
-    NotAGate { gate_id: String, actual_type: String },
+    NotAGate {
+        gate_id: String,
+        actual_type: String,
+    },
 }
 
 impl GlobalConfig {
@@ -200,7 +203,9 @@ mod tests {
         };
 
         let err = config.validate(&graph).unwrap_err();
-        assert!(matches!(err, SettingsError::NotAGate { gate_id, .. } if gate_id == "regular-task"));
+        assert!(
+            matches!(err, SettingsError::NotAGate { gate_id, .. } if gate_id == "regular-task")
+        );
     }
 
     #[test]

@@ -5,7 +5,7 @@ use std::collections::HashSet;
 use owo_colors::OwoColorize;
 
 use crate::error_fmt::AppError;
-use crate::{MontContext, Task, GateItem, GateStatus};
+use crate::{GateItem, GateStatus, MontContext, Task};
 
 /// Arguments for unlocking gates on a task.
 pub struct UnlockArgs {
@@ -124,14 +124,22 @@ pub fn unlock(ctx: &MontContext, args: UnlockArgs) -> Result<(), AppError> {
         println!(
             "{} {} marked as passed",
             args.passed.join(", ").bright_green(),
-            if args.passed.len() == 1 { "gate" } else { "gates" }
+            if args.passed.len() == 1 {
+                "gate"
+            } else {
+                "gates"
+            }
         );
     }
     if !args.skipped.is_empty() {
         println!(
             "{} {} marked as skipped",
             args.skipped.join(", ").yellow(),
-            if args.skipped.len() == 1 { "gate" } else { "gates" }
+            if args.skipped.len() == 1 {
+                "gate"
+            } else {
+                "gates"
+            }
         );
     }
 
@@ -157,7 +165,11 @@ pub fn lock(ctx: &MontContext, args: LockArgs) -> Result<(), AppError> {
         println!(
             "{} {} reset to pending",
             args.gates.join(", ").bright_black(),
-            if args.gates.len() == 1 { "gate" } else { "gates" }
+            if args.gates.len() == 1 {
+                "gate"
+            } else {
+                "gates"
+            }
         );
     } else {
         println!("No gates updated");

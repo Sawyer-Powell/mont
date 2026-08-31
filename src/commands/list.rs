@@ -1,7 +1,7 @@
 //! List command - displays all tasks in the task graph.
 
-use crate::render;
 use crate::MontContext;
+use crate::render;
 
 /// List all tasks in the task graph.
 pub fn list(ctx: &MontContext, show_completed: bool) {

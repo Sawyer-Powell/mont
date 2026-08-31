@@ -1,7 +1,7 @@
 //! Start command - begin working on a task.
 
 use crate::error_fmt::AppError;
-use crate::{jj, MontContext, Status};
+use crate::{MontContext, Status, jj};
 
 /// Start working on a task.
 ///
